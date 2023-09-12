@@ -189,4 +189,57 @@ impl Contract {
             .insert(reward_token_id, asset_farm_reward);
         self.internal_set_asset_farm(&farm_id, asset_farm);
     }
+
+    /// Withdraw released from asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn withdraw_released(&mut self, token_id: AccountId, stdd_amount: Option<U128>) -> PromiseOrValue<bool> {
+        assert_one_yocto();
+        self.assert_owner();
+        let owner_id = self.internal_config().owner_id;
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        
+        let extra_decimals = 10u128.pow(asset.config.extra_decimals as u32);
+        let stdd_amount: u128 = stdd_amount.map(|v| v.into()).unwrap_or(asset.released);
+        
+        if stdd_amount > 0 {
+            asset.released = asset.released.checked_sub(stdd_amount).expect("Released balance not enough!");
+            self.internal_set_asset(&token_id, asset);
+            events::emit::withdraw_released_started(&owner_id, stdd_amount, &token_id);
+            self.internal_ft_transfer_released(&owner_id, &token_id, stdd_amount / extra_decimals, stdd_amount).into()
+        } else {
+            PromiseOrValue::Value(true)
+        }
+    }
+
+    /// Withdraw reserved from asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn withdraw_reserved(&mut self, token_id: AccountId, stdd_amount: Option<U128>) -> PromiseOrValue<bool> {
+        assert_one_yocto();
+        self.assert_owner();
+        let owner_id = self.internal_config().owner_id;
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        
+        let extra_decimals = 10u128.pow(asset.config.extra_decimals as u32);
+        let stdd_amount: u128 = stdd_amount.map(|v| v.into()).unwrap_or(asset.reserved);
+        
+        if stdd_amount > 0 {
+            require!(stdd_amount <= asset.available_amount(), "Available balance not enough!");
+            let current_utilization = BigDecimal::from(asset.borrowed.balance).div_u128(asset.supplied.balance + asset.reserved);
+            asset.reserved = asset.reserved.checked_sub(stdd_amount).expect("Reserved balance not enough!");
+            let new_utilization = BigDecimal::from(asset.borrowed.balance).div_u128(asset.supplied.balance + asset.reserved);
+            let utilization_change_limit = BigDecimal::from_ratio(asset.config.max_utilization_impact_rate);
+            require!(new_utilization - current_utilization <= utilization_change_limit, "Too much to withdraw at once!");
+            self.internal_set_asset(&token_id, asset);
+            events::emit::withdraw_reserved_started(&owner_id, stdd_amount, &token_id);
+            self.internal_ft_transfer_reserved(&owner_id, &token_id, stdd_amount / extra_decimals, stdd_amount).into()
+        } else {
+            PromiseOrValue::Value(true)
+        }
+    }
 }

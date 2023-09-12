@@ -6,6 +6,8 @@ use near_sdk::{is_promise_success, serde_json, PromiseOrValue};
 
 const GAS_FOR_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
 const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 20);
+const GAS_FOR_AFTER_FT_TRANSFER_RELEASED: Gas = Gas(Gas::ONE_TERA.0 * 20);
+const GAS_FOR_AFTER_FT_TRANSFER_RESERVED: Gas = Gas(Gas::ONE_TERA.0 * 20);
 
 #[derive(Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Serialize))]
@@ -91,16 +93,78 @@ impl Contract {
             GAS_FOR_AFTER_FT_TRANSFER,
         ))
     }
+
+    pub fn internal_ft_transfer_released(
+        &mut self,
+        account_id: &AccountId,
+        token_id: &TokenId,
+        amount: Balance,
+        stdd_amount: Balance,
+    ) -> Promise {
+        ext_fungible_token::ft_transfer(
+            account_id.clone(),
+            amount.into(),
+            None,
+            token_id.clone(),
+            ONE_YOCTO,
+            GAS_FOR_FT_TRANSFER,
+        )
+        .then(ext_self::after_ft_transfer_released(
+            account_id.clone(),
+            token_id.clone(),
+            stdd_amount.into(),
+            env::current_account_id(),
+            NO_DEPOSIT,
+            GAS_FOR_AFTER_FT_TRANSFER_RELEASED,
+        ))
+    }
+
+    pub fn internal_ft_transfer_reserved(
+        &mut self,
+        account_id: &AccountId,
+        token_id: &TokenId,
+        amount: Balance,
+        stdd_amount: Balance,
+    ) -> Promise {
+        ext_fungible_token::ft_transfer(
+            account_id.clone(),
+            amount.into(),
+            None,
+            token_id.clone(),
+            ONE_YOCTO,
+            GAS_FOR_FT_TRANSFER,
+        )
+        .then(ext_self::after_ft_transfer_reserved(
+            account_id.clone(),
+            token_id.clone(),
+            stdd_amount.into(),
+            env::current_account_id(),
+            NO_DEPOSIT,
+            GAS_FOR_AFTER_FT_TRANSFER_RESERVED,
+        ))
+    }
 }
 
 #[ext_contract(ext_self)]
 trait ExtSelf {
     fn after_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
         -> bool;
+    
+    fn after_ft_transfer_released(&mut self, account_id: AccountId, token_id: TokenId, stdd_amount: U128)
+        -> bool;
+
+    fn after_ft_transfer_reserved(&mut self, account_id: AccountId, token_id: TokenId, stdd_amount: U128)
+        -> bool;
 }
 
 trait ExtSelf {
     fn after_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
+        -> bool;
+
+    fn after_ft_transfer_released(&mut self, account_id: AccountId, token_id: TokenId, stdd_amount: U128)
+        -> bool;
+    
+    fn after_ft_transfer_reserved(&mut self, account_id: AccountId, token_id: TokenId, stdd_amount: U128)
         -> bool;
 }
 
@@ -122,6 +186,44 @@ impl ExtSelf for Contract {
             self.internal_set_account(&account_id, account);
         } else {
             events::emit::withdraw_succeeded(&account_id, amount.0, &token_id);
+        }
+        promise_success
+    }
+
+    #[private]
+    fn after_ft_transfer_released(
+        &mut self,
+        account_id: AccountId,
+        token_id: TokenId,
+        stdd_amount: U128,
+    ) -> bool {
+        let promise_success = is_promise_success();
+        if !promise_success {
+            let mut asset = self.internal_unwrap_asset(&token_id);
+            asset.released += stdd_amount.0;
+            events::emit::withdraw_released_failed(&account_id, stdd_amount.0, &token_id);
+            self.internal_set_asset(&token_id, asset);
+        } else {
+            events::emit::withdraw_released_succeeded(&account_id, stdd_amount.0, &token_id);
+        }
+        promise_success
+    }
+
+    #[private]
+    fn after_ft_transfer_reserved(
+        &mut self,
+        account_id: AccountId,
+        token_id: TokenId,
+        stdd_amount: U128,
+    ) -> bool {
+        let promise_success = is_promise_success();
+        if !promise_success {
+            let mut asset = self.internal_unwrap_asset(&token_id);
+            asset.reserved += stdd_amount.0;
+            events::emit::withdraw_reserved_failed(&account_id, stdd_amount.0, &token_id);
+            self.internal_set_asset(&token_id, asset);
+        } else {
+            events::emit::withdraw_reserved_succeeded(&account_id, stdd_amount.0, &token_id);
         }
         promise_success
     }

@@ -23,7 +23,7 @@ near_sdk_sim::lazy_static_include::lazy_static_include_bytes! {
     BURROWLAND_WASM_BYTES => "res/burrowland.wasm",
     BURROWLAND_0_3_0_WASM_BYTES => "res/burrowland_0.3.0.wasm",
     BURROWLAND_0_4_0_WASM_BYTES => "res/burrowland_0.4.0.wasm",
-    BURROWLAND_PREVIOUS_WASM_BYTES => "res/burrowland_0.6.0.wasm",
+    BURROWLAND_PREVIOUS_WASM_BYTES => "res/burrowland_0.7.0.wasm",
     TEST_ORACLE_WASM_BYTES => "res/test_oracle.wasm",
 
     FUNGIBLE_TOKEN_WASM_BYTES => "res/fungible_token.wasm",
@@ -237,6 +237,7 @@ impl Env {
                     self.booster_token.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        release_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000008319516250272147),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -247,6 +248,7 @@ impl Env {
                         can_use_as_collateral: false,
                         can_borrow: false,
                         net_tvl_multiplier: 10000,
+                        max_utilization_impact_rate: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -260,6 +262,7 @@ impl Env {
                     tokens.neth.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        release_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000001547125956667610),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -270,6 +273,7 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
+                        max_utilization_impact_rate: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -283,6 +287,7 @@ impl Env {
                     tokens.ndai.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        release_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000002440418605283556),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -293,6 +298,7 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
+                        max_utilization_impact_rate: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -306,6 +312,7 @@ impl Env {
                     tokens.nusdt.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        release_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000002440418605283556),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -316,6 +323,7 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
+                        max_utilization_impact_rate: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -329,6 +337,7 @@ impl Env {
                     tokens.nusdc.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        release_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000002440418605283556),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -339,6 +348,7 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
+                        max_utilization_impact_rate: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -352,6 +362,7 @@ impl Env {
                     tokens.wnear.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        release_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000003593629036885046),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -362,12 +373,58 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
+                        max_utilization_impact_rate: 0
                     },
                 ),
                 DEFAULT_GAS.0,
                 ONE_YOCTO,
             )
             .assert_success();
+    }
+
+    pub fn update_asset(&self, token: &UserAccount, asset_config: AssetConfig) {
+        self.owner
+            .function_call(
+                self.contract.contract.update_asset(
+                    token.account_id(),
+                    asset_config,
+                ),
+                DEFAULT_GAS.0,
+                ONE_YOCTO,
+            )
+            .assert_success();
+    }
+
+    pub fn withdraw_released(
+        &self,
+        token: &UserAccount,
+        amount: Option<U128>
+    ) -> ExecutionResult {
+        self.owner
+            .function_call(
+                self.contract.contract.withdraw_released(
+                    token.account_id(),
+                    amount,
+                ),
+                MAX_GAS.0,
+                ONE_YOCTO,
+            )
+    }
+
+    pub fn withdraw_reserved(
+        &self,
+        token: &UserAccount,
+        amount: Option<U128>
+    ) -> ExecutionResult {
+        self.owner
+            .function_call(
+                self.contract.contract.withdraw_reserved(
+                    token.account_id(),
+                    amount,
+                ),
+                MAX_GAS.0,
+                ONE_YOCTO,
+            )
     }
 
     pub fn deposit_reserves(&self, tokens: &Tokens) {
@@ -409,6 +466,20 @@ impl Env {
             MAX_GAS.0,
             1,
         )
+    }
+
+    pub fn ft_balance_of(&self, token: &UserAccount, account: &UserAccount) -> U128 {
+        account
+            .view(
+                token.account_id(), 
+                "ft_balance_of",
+                &json!({
+                    "account_id": account.account_id(),
+                })
+                .to_string()
+                .into_bytes(),
+            )
+            .unwrap_json()
     }
 
     pub fn mint_ft(&self, token: &UserAccount, receiver: &UserAccount, amount: Balance) {

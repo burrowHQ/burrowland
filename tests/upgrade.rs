@@ -3,8 +3,8 @@ mod setup;
 use crate::setup::*;
 use near_sdk::serde_json;
 
-const PREVIOUS_VERSION: &'static str = "0.6.0";
-const LATEST_VERSION: &'static str = "0.7.0";
+const PREVIOUS_VERSION: &'static str = "0.7.0";
+const LATEST_VERSION: &'static str = "0.8.0";
 
 #[test]
 fn test_version() {
@@ -143,7 +143,8 @@ fn test_upgrade_by_owner() {
     );
 
     let after_action_storage_balance = e.debug_storage_balance_of(&users.alice).unwrap();
-    assert!(before_action_storage_balance.available.0 < after_action_storage_balance.available.0);
+    // 0.6.0 --> 0.7.0  <
+    assert!(before_action_storage_balance.available.0 == after_action_storage_balance.available.0);
 
     e.contract_ft_transfer_call(&tokens.wnear, &users.alice, amount, "")
         .assert_success();

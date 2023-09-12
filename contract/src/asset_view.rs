@@ -13,6 +13,10 @@ pub struct AssetDetailedView {
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
     pub reserved: Balance,
+    /// The amount can be withdrawn. This amount cannot be borrowed and does not affects the 
+    /// borrowing rate.
+    #[serde(with = "u128_dec_format")]
+    pub released: Balance,
     /// When the asset was last updated. It's always going to be the current block timestamp.
     #[serde(with = "u64_dec_format")]
     pub last_update_timestamp: Timestamp,
@@ -54,6 +58,7 @@ impl Contract {
             supplied,
             borrowed,
             reserved,
+            released,
             last_update_timestamp,
             config,
         } = asset;
@@ -62,6 +67,7 @@ impl Contract {
             supplied,
             borrowed,
             reserved,
+            released,
             last_update_timestamp,
             config,
             supply_apr,

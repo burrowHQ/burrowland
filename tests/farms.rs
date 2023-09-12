@@ -1188,6 +1188,7 @@ fn test_farm_net_tvl_multipliers() {
                 tokens.wnear.account_id(),
                 AssetConfig {
                     reserve_ratio: 2500,
+                    release_ratio: 0,
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000003593629036885046),
                     max_utilization_rate: U128(1000000000039724853136740579),
@@ -1198,6 +1199,7 @@ fn test_farm_net_tvl_multipliers() {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 8000,
+                    max_utilization_impact_rate: 0
                 },
             ),
             DEFAULT_GAS.0,

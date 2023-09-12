@@ -17,6 +17,10 @@ pub struct Asset {
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
     pub reserved: Balance,
+    /// The amount can be withdrawn. This amount cannot be borrowed and does not affects the 
+    /// borrowing rate.
+    #[serde(with = "u128_dec_format")]
+    pub released: Balance,
     /// When the asset was last updated. It's always going to be the current block timestamp.
     #[serde(with = "u64_dec_format")]
     pub last_update_timestamp: Timestamp,
@@ -27,6 +31,7 @@ pub struct Asset {
 #[derive(BorshSerialize, BorshDeserialize)]
 pub enum VAsset {
     V0(AssetV0),
+    V1(AssetV1),
     Current(Asset),
 }
 
@@ -34,6 +39,7 @@ impl From<VAsset> for Asset {
     fn from(v: VAsset) -> Self {
         match v {
             VAsset::V0(v) => v.into(),
+            VAsset::V1(v) => v.into(),
             VAsset::Current(c) => c,
         }
     }
@@ -51,6 +57,7 @@ impl Asset {
             supplied: Pool::new(),
             borrowed: Pool::new(),
             reserved: 0,
+            released: 0,
             last_update_timestamp: timestamp,
             config,
         }
@@ -100,9 +107,14 @@ impl Asset {
         let reserved = ratio(interest, self.config.reserve_ratio);
         if self.supplied.shares.0 > 0 {
             self.supplied.balance += interest - reserved;
-            self.reserved += reserved;
+            
+            let released = ratio(reserved, self.config.release_ratio);
+            self.reserved += reserved - released;
+            self.released += released;
         } else {
-            self.reserved += interest;
+            let released = ratio(interest, self.config.release_ratio);
+            self.reserved += interest - released;
+            self.released += released;
         }
         self.borrowed.balance += interest;
     }

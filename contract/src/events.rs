@@ -79,6 +79,72 @@ pub mod emit {
         );
     }
 
+    pub fn withdraw_released_started(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_released_started",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn withdraw_released_failed(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_released_failed",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn withdraw_released_succeeded(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_released_succeeded",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn withdraw_reserved_started(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_reserved_started",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn withdraw_reserved_failed(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_reserved_failed",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn withdraw_reserved_succeeded(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_reserved_succeeded",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
     pub fn increase_collateral(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
         log_event(
             "increase_collateral",
