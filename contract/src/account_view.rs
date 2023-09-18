@@ -99,6 +99,9 @@ impl Contract {
                 }
             })
             .collect();
+        if potential_farms.contains(&FarmId::NetTvl) && self.get_account_tvl_shares(&account) == 0 {
+            potential_farms.remove(&FarmId::NetTvl);
+        }
         // Check whether some asset can be farmed, but not farming yet.
         let has_non_farmed_assets = potential_farms
             .into_iter()
