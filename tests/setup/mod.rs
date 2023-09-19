@@ -237,7 +237,7 @@ impl Env {
                     self.booster_token.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
-                        release_ratio: 0,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000008319516250272147),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -248,7 +248,7 @@ impl Env {
                         can_use_as_collateral: false,
                         can_borrow: false,
                         net_tvl_multiplier: 10000,
-                        max_utilization_impact_rate: 0
+                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -262,7 +262,7 @@ impl Env {
                     tokens.neth.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
-                        release_ratio: 0,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000001547125956667610),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -273,7 +273,7 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
-                        max_utilization_impact_rate: 0
+                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -287,7 +287,7 @@ impl Env {
                     tokens.ndai.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
-                        release_ratio: 0,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000002440418605283556),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -298,7 +298,7 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
-                        max_utilization_impact_rate: 0
+                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -312,7 +312,7 @@ impl Env {
                     tokens.nusdt.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
-                        release_ratio: 0,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000002440418605283556),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -323,7 +323,7 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
-                        max_utilization_impact_rate: 0
+                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -337,7 +337,7 @@ impl Env {
                     tokens.nusdc.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
-                        release_ratio: 0,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000002440418605283556),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -348,7 +348,7 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
-                        max_utilization_impact_rate: 0
+                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -362,7 +362,7 @@ impl Env {
                     tokens.wnear.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
-                        release_ratio: 0,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000003593629036885046),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -373,7 +373,7 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
-                        max_utilization_impact_rate: 0
+                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -395,14 +395,14 @@ impl Env {
             .assert_success();
     }
 
-    pub fn withdraw_released(
+    pub fn withdraw_prot_own(
         &self,
         token: &UserAccount,
         amount: Option<U128>
     ) -> ExecutionResult {
         self.owner
             .function_call(
-                self.contract.contract.withdraw_released(
+                self.contract.contract.withdraw_prot_own(
                     token.account_id(),
                     amount,
                 ),

@@ -190,25 +190,25 @@ impl Contract {
         self.internal_set_asset_farm(&farm_id, asset_farm);
     }
 
-    /// Withdraw released from asset with the a given token_id.
+    /// Withdraw prot_own from asset with the a given token_id.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner.
     #[payable]
-    pub fn withdraw_released(&mut self, token_id: AccountId, stdd_amount: Option<U128>) -> PromiseOrValue<bool> {
+    pub fn withdraw_prot_own(&mut self, token_id: AccountId, stdd_amount: Option<U128>) -> PromiseOrValue<bool> {
         assert_one_yocto();
         self.assert_owner();
         let owner_id = self.internal_config().owner_id;
         let mut asset = self.internal_unwrap_asset(&token_id);
         
         let extra_decimals = 10u128.pow(asset.config.extra_decimals as u32);
-        let stdd_amount: u128 = stdd_amount.map(|v| v.into()).unwrap_or(asset.released);
+        let stdd_amount: u128 = stdd_amount.map(|v| v.into()).unwrap_or(asset.prot_own);
         
         if stdd_amount > 0 {
-            asset.released = asset.released.checked_sub(stdd_amount).expect("Released balance not enough!");
+            asset.prot_own = asset.prot_own.checked_sub(stdd_amount).expect("Asset prot_own balance not enough!");
             self.internal_set_asset(&token_id, asset);
-            events::emit::withdraw_released_started(&owner_id, stdd_amount, &token_id);
-            self.internal_ft_transfer_released(&owner_id, &token_id, stdd_amount / extra_decimals, stdd_amount).into()
+            events::emit::withdraw_prot_own_started(&owner_id, stdd_amount, &token_id);
+            self.internal_ft_transfer_prot_own(&owner_id, &token_id, stdd_amount / extra_decimals, stdd_amount).into()
         } else {
             PromiseOrValue::Value(true)
         }
@@ -233,8 +233,7 @@ impl Contract {
             let current_utilization = BigDecimal::from(asset.borrowed.balance).div_u128(asset.supplied.balance + asset.reserved);
             asset.reserved = asset.reserved.checked_sub(stdd_amount).expect("Reserved balance not enough!");
             let new_utilization = BigDecimal::from(asset.borrowed.balance).div_u128(asset.supplied.balance + asset.reserved);
-            let utilization_change_limit = BigDecimal::from_ratio(asset.config.max_utilization_impact_rate);
-            require!(new_utilization - current_utilization <= utilization_change_limit, "Too much to withdraw at once!");
+            require!(new_utilization - current_utilization <= BigDecimal::from_ratio(asset.config.utilization_change_limit), "Exceed utilization change limit!");
             self.internal_set_asset(&token_id, asset);
             events::emit::withdraw_reserved_started(&owner_id, stdd_amount, &token_id);
             self.internal_ft_transfer_reserved(&owner_id, &token_id, stdd_amount / extra_decimals, stdd_amount).into()

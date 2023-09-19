@@ -167,7 +167,7 @@ fn test_interest() {
 }
 
 #[test]
-fn test_withdraw_released_reserved() {
+fn test_withdraw_prot_own_reserved() {
     let (e, tokens, users) = basic_setup();
 
     let amount = d(100, 18);
@@ -192,7 +192,7 @@ fn test_withdraw_released_reserved() {
     let asset_view_old = e.get_asset(&tokens.ndai);
 
     let mut new_config = asset_view_old.config;
-    new_config.release_ratio = 10000;
+    new_config.prot_ratio = 10000;
     // new_config.max_utilization_impact_rate = 1000;
     e.update_asset(&tokens.ndai, new_config.clone());
     e.skip_time(31536000);
@@ -204,24 +204,24 @@ fn test_withdraw_released_reserved() {
 
     // max_utilization_impact_rate is 0, means can not withdraw reserved
     assert!(format!("{:?}", e.withdraw_reserved(&tokens.ndai, Some(1.into()))
-        .promise_errors()[0].as_ref().unwrap().status()).contains("Too much to withdraw at once!"));
+        .promise_errors()[0].as_ref().unwrap().status()).contains("Exceed utilization change limit!"));
 
-    new_config.max_utilization_impact_rate = 1000;
+    new_config.utilization_change_limit = 1000;
     e.update_asset(&tokens.ndai, new_config.clone());
 
-    e.withdraw_released(&tokens.ndai, Some(10000.into())).assert_success();
+    e.withdraw_prot_own(&tokens.ndai, Some(10000.into())).assert_success();
     e.withdraw_reserved(&tokens.ndai, Some(10000.into())).assert_success();
     
     let asset_after_withdraw = e.get_asset(&tokens.ndai);
     assert_eq!(asset.reserved - 10000, asset_after_withdraw.reserved);
-    assert_eq!(asset.released - 10000, asset_after_withdraw.released);
+    assert_eq!(asset.prot_own - 10000, asset_after_withdraw.prot_own);
 
     let current_balance = e.ft_balance_of(&tokens.ndai, &e.owner).0;
     
     assert_eq!(20000, current_balance - old_balance);
 
-    assert!(format!("{:?}", e.withdraw_released(&tokens.ndai, Some((asset_after_withdraw.released * 2).into()))
-        .promise_errors()[0].as_ref().unwrap().status()).contains("Released balance not enough!"));
+    assert!(format!("{:?}", e.withdraw_prot_own(&tokens.ndai, Some((asset_after_withdraw.prot_own * 2).into()))
+        .promise_errors()[0].as_ref().unwrap().status()).contains("Asset prot_own balance not enough!"));
 
     // borrow / new_supply - borrow / supply = 10%
     // borrow * supply - borrow * new_supply = 10% * supply * new_supply
@@ -232,7 +232,7 @@ fn test_withdraw_released_reserved() {
     let new_supply = (BigDecimal::from(asset_after_withdraw.borrowed.balance) * BigDecimal::from(supply) / (BigDecimal::from_ratio(1000) * BigDecimal::from(supply) + BigDecimal::from(asset_after_withdraw.borrowed.balance))).round_u128();
     // if withdraw (supply - new_supply - 1), will success
     assert!(format!("{:?}", e.withdraw_reserved(&tokens.ndai, Some((supply - new_supply).into()))
-        .promise_errors()[0].as_ref().unwrap().status()).contains("Too much to withdraw at once!"));
+        .promise_errors()[0].as_ref().unwrap().status()).contains("Exceed utilization change limit!"));
 
     assert!(format!("{:?}", e.withdraw_reserved(&tokens.ndai, Some((asset_after_withdraw.supplied.balance + asset_after_withdraw.reserved - asset_after_withdraw.borrowed.balance + 1).into()))
         .promise_errors()[0].as_ref().unwrap().status()).contains("Available balance not enough!"));
@@ -241,14 +241,14 @@ fn test_withdraw_released_reserved() {
         .promise_errors()[0].as_ref().unwrap().status()).contains("Reserved balance not enough!"));
 
     assert_eq!(e.get_asset(&tokens.ndai).reserved, asset_after_withdraw.reserved);
-    assert_eq!(e.get_asset(&tokens.ndai).released, asset_after_withdraw.released);
+    assert_eq!(e.get_asset(&tokens.ndai).prot_own, asset_after_withdraw.prot_own);
 
     // withdraw 10%
     let asset = e.get_asset(&tokens.ndai);
     e.withdraw_reserved(&tokens.ndai, Some((supply - new_supply - 1).into())).assert_success();
     let asset_after_withdraw = e.get_asset(&tokens.ndai);
     assert_eq!(asset.reserved - (supply - new_supply - 1), asset_after_withdraw.reserved);
-    assert_eq!(asset.released, asset_after_withdraw.released);
+    assert_eq!(asset.prot_own, asset_after_withdraw.prot_own);
 
     e.owner.call(
         tokens.ndai.account_id(),
@@ -266,9 +266,9 @@ fn test_withdraw_released_reserved() {
     assert!(format!("{:?}", e.withdraw_reserved(&tokens.ndai, Some(10000.into()))
         .promise_errors()[0].as_ref().unwrap().status()).contains("The account owner.near is not registered"));
 
-    assert!(format!("{:?}", e.withdraw_released(&tokens.ndai, Some(10000.into()))
+    assert!(format!("{:?}", e.withdraw_prot_own(&tokens.ndai, Some(10000.into()))
         .promise_errors()[0].as_ref().unwrap().status()).contains("The account owner.near is not registered"));
 
     assert_eq!(e.get_asset(&tokens.ndai).reserved, asset_after_withdraw.reserved);
-    assert_eq!(e.get_asset(&tokens.ndai).released, asset_after_withdraw.released);
+    assert_eq!(e.get_asset(&tokens.ndai).prot_own, asset_after_withdraw.prot_own);
 }

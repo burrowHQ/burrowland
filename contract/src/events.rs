@@ -79,9 +79,9 @@ pub mod emit {
         );
     }
 
-    pub fn withdraw_released_started(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+    pub fn withdraw_prot_own_started(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
         log_event(
-            "withdraw_released_started",
+            "withdraw_prot_own_started",
             AccountAmountToken {
                 account_id: &account_id,
                 amount,
@@ -90,9 +90,9 @@ pub mod emit {
         );
     }
 
-    pub fn withdraw_released_failed(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+    pub fn withdraw_prot_own_failed(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
         log_event(
-            "withdraw_released_failed",
+            "withdraw_prot_own_failed",
             AccountAmountToken {
                 account_id: &account_id,
                 amount,
@@ -101,9 +101,9 @@ pub mod emit {
         );
     }
 
-    pub fn withdraw_released_succeeded(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+    pub fn withdraw_prot_own_succeeded(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
         log_event(
-            "withdraw_released_succeeded",
+            "withdraw_prot_own_succeeded",
             AccountAmountToken {
                 account_id: &account_id,
                 amount,

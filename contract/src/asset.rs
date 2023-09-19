@@ -20,7 +20,7 @@ pub struct Asset {
     /// The amount can be withdrawn. This amount cannot be borrowed and does not affects the 
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
-    pub released: Balance,
+    pub prot_own: Balance,
     /// When the asset was last updated. It's always going to be the current block timestamp.
     #[serde(with = "u64_dec_format")]
     pub last_update_timestamp: Timestamp,
@@ -57,7 +57,7 @@ impl Asset {
             supplied: Pool::new(),
             borrowed: Pool::new(),
             reserved: 0,
-            released: 0,
+            prot_own: 0,
             last_update_timestamp: timestamp,
             config,
         }
@@ -108,13 +108,13 @@ impl Asset {
         if self.supplied.shares.0 > 0 {
             self.supplied.balance += interest - reserved;
             
-            let released = ratio(reserved, self.config.release_ratio);
-            self.reserved += reserved - released;
-            self.released += released;
+            let prot_own = ratio(reserved, self.config.prot_ratio);
+            self.reserved += reserved - prot_own;
+            self.prot_own += prot_own;
         } else {
-            let released = ratio(interest, self.config.release_ratio);
-            self.reserved += interest - released;
-            self.released += released;
+            let prot_own = ratio(interest, self.config.prot_ratio);
+            self.reserved += interest - prot_own;
+            self.prot_own += prot_own;
         }
         self.borrowed.balance += interest;
     }

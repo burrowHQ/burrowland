@@ -170,7 +170,7 @@ impl From<AssetConfigV0> for AssetConfig {
         } = a;
         Self {
             reserve_ratio,
-            release_ratio: 0,
+            prot_ratio: 0,
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
@@ -181,7 +181,7 @@ impl From<AssetConfigV0> for AssetConfig {
             can_use_as_collateral,
             can_borrow,
             net_tvl_multiplier: DEFAULT_NET_TVL_MULTIPLIER,
-            max_utilization_impact_rate: 0
+            utilization_change_limit: 0
         }
     }
 }
@@ -214,7 +214,7 @@ impl From<AssetV0> for Asset {
             supplied,
             borrowed,
             reserved,
-            released: 0,
+            prot_own: 0,
             last_update_timestamp,
             config: config.into(),
         }
@@ -281,7 +281,7 @@ impl From<AssetConfigV1> for AssetConfig {
         } = a;
         Self {
             reserve_ratio,
-            release_ratio: 0,
+            prot_ratio: 0,
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
@@ -292,7 +292,7 @@ impl From<AssetConfigV1> for AssetConfig {
             can_use_as_collateral,
             can_borrow,
             net_tvl_multiplier,
-            max_utilization_impact_rate: 0
+            utilization_change_limit: 0
         }
     }
 }
@@ -325,7 +325,7 @@ impl From<AssetV1> for Asset {
             supplied,
             borrowed,
             reserved,
-            released: 0,
+            prot_own: 0,
             last_update_timestamp,
             config: config.into(),
         }

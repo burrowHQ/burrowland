@@ -6,7 +6,7 @@ use near_sdk::{is_promise_success, serde_json, PromiseOrValue};
 
 const GAS_FOR_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
 const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 20);
-const GAS_FOR_AFTER_FT_TRANSFER_RELEASED: Gas = Gas(Gas::ONE_TERA.0 * 20);
+const GAS_FOR_AFTER_FT_TRANSFER_PROT_OWN: Gas = Gas(Gas::ONE_TERA.0 * 20);
 const GAS_FOR_AFTER_FT_TRANSFER_RESERVED: Gas = Gas(Gas::ONE_TERA.0 * 20);
 
 #[derive(Deserialize)]
@@ -94,7 +94,7 @@ impl Contract {
         ))
     }
 
-    pub fn internal_ft_transfer_released(
+    pub fn internal_ft_transfer_prot_own(
         &mut self,
         account_id: &AccountId,
         token_id: &TokenId,
@@ -109,13 +109,13 @@ impl Contract {
             ONE_YOCTO,
             GAS_FOR_FT_TRANSFER,
         )
-        .then(ext_self::after_ft_transfer_released(
+        .then(ext_self::after_ft_transfer_prot_own(
             account_id.clone(),
             token_id.clone(),
             stdd_amount.into(),
             env::current_account_id(),
             NO_DEPOSIT,
-            GAS_FOR_AFTER_FT_TRANSFER_RELEASED,
+            GAS_FOR_AFTER_FT_TRANSFER_PROT_OWN,
         ))
     }
 
@@ -150,7 +150,7 @@ trait ExtSelf {
     fn after_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
         -> bool;
     
-    fn after_ft_transfer_released(&mut self, account_id: AccountId, token_id: TokenId, stdd_amount: U128)
+    fn after_ft_transfer_prot_own(&mut self, account_id: AccountId, token_id: TokenId, stdd_amount: U128)
         -> bool;
 
     fn after_ft_transfer_reserved(&mut self, account_id: AccountId, token_id: TokenId, stdd_amount: U128)
@@ -161,7 +161,7 @@ trait ExtSelf {
     fn after_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
         -> bool;
 
-    fn after_ft_transfer_released(&mut self, account_id: AccountId, token_id: TokenId, stdd_amount: U128)
+    fn after_ft_transfer_prot_own(&mut self, account_id: AccountId, token_id: TokenId, stdd_amount: U128)
         -> bool;
     
     fn after_ft_transfer_reserved(&mut self, account_id: AccountId, token_id: TokenId, stdd_amount: U128)
@@ -191,7 +191,7 @@ impl ExtSelf for Contract {
     }
 
     #[private]
-    fn after_ft_transfer_released(
+    fn after_ft_transfer_prot_own(
         &mut self,
         account_id: AccountId,
         token_id: TokenId,
@@ -200,11 +200,11 @@ impl ExtSelf for Contract {
         let promise_success = is_promise_success();
         if !promise_success {
             let mut asset = self.internal_unwrap_asset(&token_id);
-            asset.released += stdd_amount.0;
-            events::emit::withdraw_released_failed(&account_id, stdd_amount.0, &token_id);
+            asset.prot_own += stdd_amount.0;
+            events::emit::withdraw_prot_own_failed(&account_id, stdd_amount.0, &token_id);
             self.internal_set_asset(&token_id, asset);
         } else {
-            events::emit::withdraw_released_succeeded(&account_id, stdd_amount.0, &token_id);
+            events::emit::withdraw_prot_own_succeeded(&account_id, stdd_amount.0, &token_id);
         }
         promise_success
     }

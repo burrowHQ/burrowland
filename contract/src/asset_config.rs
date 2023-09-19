@@ -31,9 +31,9 @@ pub struct AssetConfig {
     /// The ratio of interest that is reserved by the protocol (multiplied by 10000).
     /// E.g. 2500 means 25% from borrowed interests goes to the reserve.
     pub reserve_ratio: u32,
-    /// The ratio of reserved interest that is released by the protocol (multiplied by 10000).
-    /// E.g. 2500 means 25% from reserved interests goes to the released.
-    pub release_ratio: u32,
+    /// The ratio of reserved interest that belongs to the protocol (multiplied by 10000).
+    /// E.g. 2500 means 25% from reserved interests goes to the prot.
+    pub prot_ratio: u32,
     /// Target utilization ratio (multiplied by 10000).
     /// E.g. 8000 means the protocol targets 80% of assets are borrowed.
     pub target_utilization: u32,
@@ -70,21 +70,21 @@ pub struct AssetConfig {
     /// Example: a multiplier of 5000 means the asset in TVL should only counted as 50%, e.g. if an
     /// asset is not useful for borrowing, but only useful as a collateral.
     pub net_tvl_multiplier: u32,
-    /// The maximum impact ratio of withdraw reserved to utilization (multiplied by 10000).
+    /// The utilization change limit when withdraw reserved (multiplied by 10000).
     /// E.g. 2000 means 20%. If the current utilization is 5%, the utilization cannot be greater 
     /// than 25% after the withdraw reserved
-    pub max_utilization_impact_rate: u32,
+    pub utilization_change_limit: u32,
 }
 
 impl AssetConfig {
     pub fn assert_valid(&self) {
         assert!(self.reserve_ratio <= MAX_RATIO);
-        assert!(self.release_ratio <= MAX_RATIO);
+        assert!(self.prot_ratio <= MAX_RATIO);
         assert!(self.target_utilization < MAX_POS);
         assert!(self.target_utilization_rate.0 <= self.max_utilization_rate.0);
         // The volatility ratio can't be 100% to avoid free liquidations of such assets.
         assert!(self.volatility_ratio < MAX_RATIO);
-        assert!(self.max_utilization_impact_rate <= MAX_RATIO);
+        assert!(self.utilization_change_limit <= MAX_RATIO);
     }
 
     pub fn get_rate(
@@ -121,7 +121,7 @@ mod tests {
     fn test_config() -> AssetConfig {
         AssetConfig {
             reserve_ratio: 2500,
-            release_ratio: 0,
+            prot_ratio: 0,
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
@@ -132,7 +132,7 @@ mod tests {
             can_use_as_collateral: true,
             can_borrow: true,
             net_tvl_multiplier: 10000,
-            max_utilization_impact_rate: 0
+            utilization_change_limit: 0
         }
     }
 
