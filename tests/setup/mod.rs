@@ -21,12 +21,12 @@ use test_oracle::ContractContract as OracleContract;
 
 near_sdk_sim::lazy_static_include::lazy_static_include_bytes! {
     BURROWLAND_WASM_BYTES => "res/burrowland.wasm",
-    BURROWLAND_0_3_0_WASM_BYTES => "res/burrowland_0.3.0.wasm",
-    BURROWLAND_0_4_0_WASM_BYTES => "res/burrowland_0.4.0.wasm",
-    BURROWLAND_PREVIOUS_WASM_BYTES => "res/burrowland_0.7.0.wasm",
+    BURROWLAND_0_3_0_WASM_BYTES => "releases/burrowland_0.3.0.wasm",
+    BURROWLAND_0_4_0_WASM_BYTES => "releases/burrowland_0.4.0.wasm",
+    BURROWLAND_PREVIOUS_WASM_BYTES => "releases/burrowland_0.7.0.wasm",
     TEST_ORACLE_WASM_BYTES => "res/test_oracle.wasm",
 
-    FUNGIBLE_TOKEN_WASM_BYTES => "res/fungible_token.wasm",
+    FUNGIBLE_TOKEN_WASM_BYTES => "releases/fungible_token.wasm",
 }
 
 pub fn burrowland_0_3_0_wasm_bytes() -> &'static [u8] {
