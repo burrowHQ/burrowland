@@ -79,72 +79,6 @@ pub mod emit {
         );
     }
 
-    pub fn withdraw_prot_own_started(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
-        log_event(
-            "withdraw_prot_own_started",
-            AccountAmountToken {
-                account_id: &account_id,
-                amount,
-                token_id: &token_id,
-            },
-        );
-    }
-
-    pub fn withdraw_prot_own_failed(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
-        log_event(
-            "withdraw_prot_own_failed",
-            AccountAmountToken {
-                account_id: &account_id,
-                amount,
-                token_id: &token_id,
-            },
-        );
-    }
-
-    pub fn withdraw_prot_own_succeeded(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
-        log_event(
-            "withdraw_prot_own_succeeded",
-            AccountAmountToken {
-                account_id: &account_id,
-                amount,
-                token_id: &token_id,
-            },
-        );
-    }
-
-    pub fn withdraw_reserved_started(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
-        log_event(
-            "withdraw_reserved_started",
-            AccountAmountToken {
-                account_id: &account_id,
-                amount,
-                token_id: &token_id,
-            },
-        );
-    }
-
-    pub fn withdraw_reserved_failed(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
-        log_event(
-            "withdraw_reserved_failed",
-            AccountAmountToken {
-                account_id: &account_id,
-                amount,
-                token_id: &token_id,
-            },
-        );
-    }
-
-    pub fn withdraw_reserved_succeeded(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
-        log_event(
-            "withdraw_reserved_succeeded",
-            AccountAmountToken {
-                account_id: &account_id,
-                amount,
-                token_id: &token_id,
-            },
-        );
-    }
-
     pub fn increase_collateral(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
         log_event(
             "increase_collateral",
@@ -249,6 +183,28 @@ pub mod emit {
                 "total_booster_amount": U128(booster_staking.staked_booster_amount),
                 "total_x_booster_amount": U128(booster_staking.x_booster_amount),
             }),
+        );
+    }
+
+    pub fn claim_prot_fee(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "claim_prot_fee",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn decrease_reserved(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "decrease_reserved",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
         );
     }
 }

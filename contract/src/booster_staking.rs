@@ -100,7 +100,6 @@ impl Contract {
         account
             .affected_farms
             .extend(account.get_all_potential_farms());
-        account.add_affected_farm(FarmId::Supplied(config.booster_token_id.clone()));
         self.internal_account_apply_affected_farms(&mut account);
         self.internal_set_account(&account_id, account);
     }

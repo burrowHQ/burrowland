@@ -50,7 +50,7 @@ use near_sdk::json_types::U128;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     assert_one_yocto, env, ext_contract, log, near_bindgen, AccountId, Balance, BorshStorageKey,
-    Duration, Gas, PanicOnDefault, Promise, PromiseOrValue, Timestamp, require
+    Duration, Gas, PanicOnDefault, Promise, Timestamp,
 };
 use once_cell::sync::Lazy;
 use std::collections::HashMap;

@@ -1199,7 +1199,6 @@ fn test_farm_net_tvl_multipliers() {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 8000,
-                    utilization_change_limit: 0
                 },
             ),
             DEFAULT_GAS.0,

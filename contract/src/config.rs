@@ -190,55 +190,55 @@ impl Contract {
         self.internal_set_asset_farm(&farm_id, asset_farm);
     }
 
-    /// Withdraw prot_own from asset with the a given token_id.
+    /// Claim prot_fee from asset with the a given token_id.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner.
     #[payable]
-    pub fn withdraw_prot_own(&mut self, token_id: AccountId, stdd_amount: Option<U128>) -> PromiseOrValue<bool> {
+    pub fn claim_prot_fee(&mut self, token_id: AccountId, stdd_amount: Option<U128>) {
         assert_one_yocto();
         self.assert_owner();
-        let owner_id = self.internal_config().owner_id;
         let mut asset = self.internal_unwrap_asset(&token_id);
-        
-        let extra_decimals = 10u128.pow(asset.config.extra_decimals as u32);
-        let stdd_amount: u128 = stdd_amount.map(|v| v.into()).unwrap_or(asset.prot_own);
+        let stdd_amount: u128 = stdd_amount.map(|v| v.into()).unwrap_or(asset.prot_fee);
         
         if stdd_amount > 0 {
-            asset.prot_own = asset.prot_own.checked_sub(stdd_amount).expect("Asset prot_own balance not enough!");
+            asset.prot_fee = asset.prot_fee.checked_sub(stdd_amount).expect("Asset prot_fee balance not enough!");
             self.internal_set_asset(&token_id, asset);
-            events::emit::withdraw_prot_own_started(&owner_id, stdd_amount, &token_id);
-            self.internal_ft_transfer_prot_own(&owner_id, &token_id, stdd_amount / extra_decimals, stdd_amount).into()
-        } else {
-            PromiseOrValue::Value(true)
+
+            self.deposit_to_owner(&token_id, stdd_amount);
+
+            events::emit::claim_prot_fee(&self.internal_config().owner_id, stdd_amount, &token_id);
         }
     }
 
-    /// Withdraw reserved from asset with the a given token_id.
+    /// Decrease reserved from asset with the a given token_id.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner.
     #[payable]
-    pub fn withdraw_reserved(&mut self, token_id: AccountId, stdd_amount: Option<U128>) -> PromiseOrValue<bool> {
+    pub fn decrease_reserved(&mut self, token_id: AccountId, stdd_amount: Option<U128>) {
         assert_one_yocto();
         self.assert_owner();
-        let owner_id = self.internal_config().owner_id;
         let mut asset = self.internal_unwrap_asset(&token_id);
-        
-        let extra_decimals = 10u128.pow(asset.config.extra_decimals as u32);
         let stdd_amount: u128 = stdd_amount.map(|v| v.into()).unwrap_or(asset.reserved);
         
         if stdd_amount > 0 {
-            require!(stdd_amount <= asset.available_amount(), "Available balance not enough!");
-            let current_utilization = BigDecimal::from(asset.borrowed.balance).div_u128(asset.supplied.balance + asset.reserved);
-            asset.reserved = asset.reserved.checked_sub(stdd_amount).expect("Reserved balance not enough!");
-            let new_utilization = BigDecimal::from(asset.borrowed.balance).div_u128(asset.supplied.balance + asset.reserved);
-            require!(new_utilization - current_utilization <= BigDecimal::from_ratio(asset.config.utilization_change_limit), "Exceed utilization change limit!");
+            asset.reserved = asset.reserved.checked_sub(stdd_amount).expect("Asset reserved balance not enough!");
             self.internal_set_asset(&token_id, asset);
-            events::emit::withdraw_reserved_started(&owner_id, stdd_amount, &token_id);
-            self.internal_ft_transfer_reserved(&owner_id, &token_id, stdd_amount / extra_decimals, stdd_amount).into()
-        } else {
-            PromiseOrValue::Value(true)
+
+            self.deposit_to_owner(&token_id, stdd_amount);
+
+            events::emit::decrease_reserved(&self.internal_config().owner_id, stdd_amount, &token_id);
         }
+    }
+}
+
+impl Contract {
+    pub fn deposit_to_owner(&mut self, token_id: &AccountId, stdd_amount: u128) {
+        let owner_id = self.internal_config().owner_id;
+        let mut account = self.internal_unwrap_account(&owner_id);
+        self.internal_deposit(&mut account, &token_id, stdd_amount);
+        self.internal_account_apply_affected_farms(&mut account);
+        self.internal_set_account(&owner_id, account)
     }
 }

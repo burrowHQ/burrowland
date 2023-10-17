@@ -248,7 +248,6 @@ impl Env {
                         can_use_as_collateral: false,
                         can_borrow: false,
                         net_tvl_multiplier: 10000,
-                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -273,7 +272,6 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
-                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -298,7 +296,6 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
-                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -323,7 +320,6 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
-                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -348,7 +344,6 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
-                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -373,7 +368,6 @@ impl Env {
                         can_use_as_collateral: true,
                         can_borrow: true,
                         net_tvl_multiplier: 10000,
-                        utilization_change_limit: 0
                     },
                 ),
                 DEFAULT_GAS.0,
@@ -395,14 +389,14 @@ impl Env {
             .assert_success();
     }
 
-    pub fn withdraw_prot_own(
+    pub fn claim_prot_fee(
         &self,
         token: &UserAccount,
         amount: Option<U128>
     ) -> ExecutionResult {
         self.owner
             .function_call(
-                self.contract.contract.withdraw_prot_own(
+                self.contract.contract.claim_prot_fee(
                     token.account_id(),
                     amount,
                 ),
@@ -411,16 +405,31 @@ impl Env {
             )
     }
 
-    pub fn withdraw_reserved(
+    pub fn decrease_reserved(
         &self,
         token: &UserAccount,
         amount: Option<U128>
     ) -> ExecutionResult {
         self.owner
             .function_call(
-                self.contract.contract.withdraw_reserved(
+                self.contract.contract.decrease_reserved(
                     token.account_id(),
                     amount,
+                ),
+                MAX_GAS.0,
+                ONE_YOCTO,
+            )
+    }
+
+    pub fn withdraw(
+        &self,
+        token: &UserAccount,
+        amount: Balance,
+    ) -> ExecutionResult {
+        self.owner
+            .function_call(
+                self.contract.contract.execute(
+                    vec![Action::Withdraw(asset_amount(token, amount))]
                 ),
                 MAX_GAS.0,
                 ONE_YOCTO,
@@ -860,6 +869,12 @@ pub fn basic_setup_with_contract(contract_bytes: &[u8]) -> (Env, Tokens, Users) 
     let tokens = Tokens::init(&e);
     e.setup_assets(&tokens);
     e.deposit_reserves(&tokens);
+    storage_deposit(
+        &e.owner,
+        &e.contract.account_id(),
+        &e.owner.account_id(),
+        d(1, 23),
+    );
 
     let users = Users::init(&e);
     e.mint_tokens(&tokens, &users.alice);

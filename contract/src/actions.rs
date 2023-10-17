@@ -48,7 +48,6 @@ impl Contract {
         for action in actions {
             match action {
                 Action::Withdraw(asset_amount) => {
-                    account.add_affected_farm(FarmId::Supplied(asset_amount.token_id.clone()));
                     let amount = self.internal_withdraw(account, &asset_amount);
                     self.internal_ft_transfer(account_id, &asset_amount.token_id, amount);
                     events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
@@ -73,14 +72,12 @@ impl Contract {
                 Action::Borrow(asset_amount) => {
                     need_number_check = true;
                     need_risk_check = true;
-                    account.add_affected_farm(FarmId::Supplied(asset_amount.token_id.clone()));
                     account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
                     let amount = self.internal_borrow(account, &asset_amount);
                     events::emit::borrow(&account_id, amount, &asset_amount.token_id);
                 }
                 Action::Repay(asset_amount) => {
                     let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
-                    account.add_affected_farm(FarmId::Supplied(asset_amount.token_id.clone()));
                     account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
                     let amount = self.internal_repay(&mut account_asset, account, &asset_amount);
                     events::emit::repay(&account_id, amount, &asset_amount.token_id);
@@ -240,7 +237,7 @@ impl Contract {
         let max_borrow_shares = asset.borrowed.amount_to_shares(available_amount, false);
 
         let (borrowed_shares, amount) =
-            asset_amount_to_shares(&asset.borrowed, max_borrow_shares, &asset_amount, true);
+            asset_amount_to_shares(&asset.borrowed, max_borrow_shares, &asset_amount, false);
 
         assert!(
             amount <= available_amount,

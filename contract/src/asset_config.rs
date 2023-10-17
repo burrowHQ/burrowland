@@ -21,7 +21,6 @@ const MAX_RATIO: u32 = 10000;
 ///   "can_withdraw": true,
 ///   "can_use_as_collateral": true,
 ///   "can_borrow": true
-///   "max_utilization_impact_rate": 0
 /// }
 /// ```
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
@@ -70,10 +69,6 @@ pub struct AssetConfig {
     /// Example: a multiplier of 5000 means the asset in TVL should only counted as 50%, e.g. if an
     /// asset is not useful for borrowing, but only useful as a collateral.
     pub net_tvl_multiplier: u32,
-    /// The utilization change limit when withdraw reserved (multiplied by 10000).
-    /// E.g. 2000 means 20%. If the current utilization is 5%, the utilization cannot be greater 
-    /// than 25% after the withdraw reserved
-    pub utilization_change_limit: u32,
 }
 
 impl AssetConfig {
@@ -84,7 +79,6 @@ impl AssetConfig {
         assert!(self.target_utilization_rate.0 <= self.max_utilization_rate.0);
         // The volatility ratio can't be 100% to avoid free liquidations of such assets.
         assert!(self.volatility_ratio < MAX_RATIO);
-        assert!(self.utilization_change_limit <= MAX_RATIO);
     }
 
     pub fn get_rate(
@@ -132,7 +126,6 @@ mod tests {
             can_use_as_collateral: true,
             can_borrow: true,
             net_tvl_multiplier: 10000,
-            utilization_change_limit: 0
         }
     }
 

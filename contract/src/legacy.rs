@@ -181,7 +181,6 @@ impl From<AssetConfigV0> for AssetConfig {
             can_use_as_collateral,
             can_borrow,
             net_tvl_multiplier: DEFAULT_NET_TVL_MULTIPLIER,
-            utilization_change_limit: 0
         }
     }
 }
@@ -214,7 +213,7 @@ impl From<AssetV0> for Asset {
             supplied,
             borrowed,
             reserved,
-            prot_own: 0,
+            prot_fee: 0,
             last_update_timestamp,
             config: config.into(),
         }
@@ -292,7 +291,6 @@ impl From<AssetConfigV1> for AssetConfig {
             can_use_as_collateral,
             can_borrow,
             net_tvl_multiplier,
-            utilization_change_limit: 0
         }
     }
 }
@@ -325,7 +323,7 @@ impl From<AssetV1> for Asset {
             supplied,
             borrowed,
             reserved,
-            prot_own: 0,
+            prot_fee: 0,
             last_update_timestamp,
             config: config.into(),
         }
