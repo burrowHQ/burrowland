@@ -92,6 +92,15 @@ impl Contract {
         assert_one_yocto();
         self.assert_owner();
         config.assert_valid();
+        let current_config = self.internal_config();
+        if current_config.booster_token_id != config.booster_token_id || 
+            current_config.booster_decimals != config.booster_decimals {
+            let asset = self.internal_unwrap_asset(&current_config.booster_token_id);
+            assert!(
+                asset.borrowed.balance == 0 && asset.supplied.balance == 0 && asset.prot_fee == 0 && asset.reserved == 0,
+                "Can't change booster_token_id/booster_decimals if any of the balances are not 0"
+            );
+        }
         self.config.set(&config);
     }
 
@@ -122,7 +131,7 @@ impl Contract {
         let mut asset = self.internal_unwrap_asset(&token_id);
         if asset.config.extra_decimals != asset_config.extra_decimals {
             assert!(
-                asset.borrowed.balance == 0 && asset.supplied.balance == 0 && asset.reserved == 0,
+                asset.borrowed.balance == 0 && asset.supplied.balance == 0 && asset.prot_fee == 0 && asset.reserved == 0,
                 "Can't change extra decimals if any of the balances are not 0"
             );
         }
@@ -230,6 +239,32 @@ impl Contract {
 
             events::emit::decrease_reserved(&self.internal_config().owner_id, stdd_amount, &token_id);
         }
+    }
+
+    /// Increase reserved from asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn increase_reserved(&mut self, asset_amount: AssetAmount) {
+        assert_one_yocto();
+        self.assert_owner();
+        let owner_id = self.internal_config().owner_id;
+        let mut account = self.internal_unwrap_account(&owner_id);
+        let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
+        
+        let mut asset = self.internal_unwrap_asset(&asset_amount.token_id);
+        let (shares, increase_amount) =
+            asset_amount_to_shares(&asset.supplied, account_asset.shares, &asset_amount, false);
+        
+        account_asset.withdraw_shares(shares);
+        account.internal_set_asset(&asset_amount.token_id, account_asset);
+
+        asset.supplied.withdraw(shares, increase_amount);
+        asset.reserved += increase_amount;
+        self.internal_set_asset(&asset_amount.token_id, asset);
+
+        events::emit::increase_reserved(&owner_id, increase_amount, &asset_amount.token_id);
     }
 }
 

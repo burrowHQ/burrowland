@@ -494,7 +494,7 @@ impl Contract {
     }
 }
 
-fn asset_amount_to_shares(
+pub fn asset_amount_to_shares(
     pool: &Pool,
     available_shares: Shares,
     asset_amount: &AssetAmount,

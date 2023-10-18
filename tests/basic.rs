@@ -226,6 +226,16 @@ fn test_withdraw_prot_fee_reserved() {
     assert!(format!("{:?}", e.decrease_reserved(&tokens.ndai, Some((asset_after_decrease_reserved.reserved * 2).into()))
         .promise_errors()[0].as_ref().unwrap().status()).contains("Asset reserved balance not enough!"));
 
+    e.increase_reserved(AssetAmount{
+        token_id: tokens.ndai.account_id(),
+        amount: Some(500.into()),
+        max_amount: None
+    }).assert_success();
+
+    let asset_after_increase_reserved = e.get_asset(&tokens.ndai);
+    assert_eq!(asset_after_decrease_reserved.reserved + 500, asset_after_increase_reserved.reserved);
+    assert_eq!(asset_after_decrease_reserved.supplied.balance - 10500, asset_after_increase_reserved.supplied.balance);
+
     e.owner.call(
         tokens.ndai.account_id(),
         "storage_unregister",

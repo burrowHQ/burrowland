@@ -421,6 +421,20 @@ impl Env {
             )
     }
 
+    pub fn increase_reserved(
+        &self,
+        asset_amount: AssetAmount
+    ) -> ExecutionResult {
+        self.owner
+            .function_call(
+                self.contract.contract.increase_reserved(
+                    asset_amount
+                ),
+                MAX_GAS.0,
+                ONE_YOCTO,
+            )
+    }
+
     pub fn withdraw(
         &self,
         token: &UserAccount,
