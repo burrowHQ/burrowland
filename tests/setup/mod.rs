@@ -389,6 +389,17 @@ impl Env {
             .assert_success();
     }
 
+    pub fn update_config(&self, config: Config) -> ExecutionResult {
+        self.owner
+            .function_call(
+                self.contract.contract.update_config(
+                    config,
+                ),
+                DEFAULT_GAS.0,
+                ONE_YOCTO,
+            )
+    }
+
     pub fn claim_prot_fee(
         &self,
         token: &UserAccount,
@@ -545,6 +556,13 @@ impl Env {
             .view_method_call(self.contract.contract.get_asset(token.account_id()))
             .unwrap_json();
         asset.unwrap()
+    }
+
+    pub fn get_config(&self) -> Config {
+        self
+            .near
+            .view_method_call(self.contract.contract.get_config())
+            .unwrap_json()
     }
 
     pub fn get_asset_farm(&self, farm_id: FarmId) -> AssetFarmView {

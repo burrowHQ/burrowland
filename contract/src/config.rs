@@ -95,11 +95,7 @@ impl Contract {
         let current_config = self.internal_config();
         if current_config.booster_token_id != config.booster_token_id || 
             current_config.booster_decimals != config.booster_decimals {
-            let asset = self.internal_unwrap_asset(&current_config.booster_token_id);
-            assert!(
-                asset.borrowed.balance == 0 && asset.supplied.balance == 0 && asset.prot_fee == 0 && asset.reserved == 0,
-                "Can't change booster_token_id/booster_decimals if any of the balances are not 0"
-            );
+            env::panic_str("Can't change booster_token_id/booster_decimals");
         }
         self.config.set(&config);
     }
@@ -263,6 +259,9 @@ impl Contract {
         asset.supplied.withdraw(shares, increase_amount);
         asset.reserved += increase_amount;
         self.internal_set_asset(&asset_amount.token_id, asset);
+        
+        self.internal_account_apply_affected_farms(&mut account);
+        self.internal_set_account(&owner_id, account);
 
         events::emit::increase_reserved(&owner_id, increase_amount, &asset_amount.token_id);
     }
@@ -274,6 +273,6 @@ impl Contract {
         let mut account = self.internal_unwrap_account(&owner_id);
         self.internal_deposit(&mut account, &token_id, stdd_amount);
         self.internal_account_apply_affected_farms(&mut account);
-        self.internal_set_account(&owner_id, account)
+        self.internal_set_account(&owner_id, account);
     }
 }

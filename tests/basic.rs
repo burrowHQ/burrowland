@@ -2,7 +2,7 @@ mod setup;
 
 use crate::setup::*;
 
-use contract::{BigDecimal, MS_PER_YEAR};
+use contract::{BigDecimal, MS_PER_YEAR, asset_amount_to_shares};
 
 const SEC_PER_YEAR: u32 = (MS_PER_YEAR / 1000) as u32;
 
@@ -226,6 +226,19 @@ fn test_withdraw_prot_fee_reserved() {
     assert!(format!("{:?}", e.decrease_reserved(&tokens.ndai, Some((asset_after_decrease_reserved.reserved * 2).into()))
         .promise_errors()[0].as_ref().unwrap().status()).contains("Asset reserved balance not enough!"));
 
+    let account_before_increase_reserved = e.get_account(&e.owner);
+    let asset_before_increase_reserved = e.get_asset(&tokens.ndai);
+    let (shares, amount) =
+            asset_amount_to_shares(
+                &e.get_asset(&tokens.ndai).supplied, 
+            account_before_increase_reserved.supplied[0].shares, 
+            &AssetAmount{
+                token_id: tokens.ndai.account_id(),
+                amount: Some(500.into()),
+                max_amount: None
+            }, 
+            false);
+
     e.increase_reserved(AssetAmount{
         token_id: tokens.ndai.account_id(),
         amount: Some(500.into()),
@@ -233,8 +246,11 @@ fn test_withdraw_prot_fee_reserved() {
     }).assert_success();
 
     let asset_after_increase_reserved = e.get_asset(&tokens.ndai);
-    assert_eq!(asset_after_decrease_reserved.reserved + 500, asset_after_increase_reserved.reserved);
-    assert_eq!(asset_after_decrease_reserved.supplied.balance - 10500, asset_after_increase_reserved.supplied.balance);
+    assert_eq!(asset_before_increase_reserved.reserved + amount, asset_after_increase_reserved.reserved);
+    assert_eq!(asset_before_increase_reserved.supplied.shares.0 - shares.0, asset_after_increase_reserved.supplied.shares.0);
+    assert_eq!(asset_before_increase_reserved.supplied.balance - amount, asset_after_increase_reserved.supplied.balance);
+    let account_after_increase_reserved = e.get_account(&e.owner);
+    assert_eq!(account_before_increase_reserved.supplied[0].shares.0 - shares.0, account_after_increase_reserved.supplied[0].shares.0);
 
     e.owner.call(
         tokens.ndai.account_id(),
@@ -254,4 +270,21 @@ fn test_withdraw_prot_fee_reserved() {
         .promise_errors()[0].as_ref().unwrap().status()).contains("The account owner.near is not registered"));
 
     assert_eq!(e.get_asset(&tokens.ndai).supplied.balance, asset_before_withdraw.supplied.balance);
+}
+
+#[test]
+fn test_modify_booster_token_id_and_decimals() {
+    let (e, _, _) = basic_setup();
+    let mut config = e.get_config();
+    config.booster_token_id = e.near.account_id();
+    assert!(format!("{:?}", e.update_config(config)
+        .promise_errors()[0].as_ref().unwrap().status()).contains("Can't change booster_token_id/booster_decimals"));
+
+    let mut config = e.get_config();
+    config.booster_decimals = 0;
+    assert!(format!("{:?}", e.update_config(config)
+        .promise_errors()[0].as_ref().unwrap().status()).contains("Can't change booster_token_id/booster_decimals"));
+
+    let config = e.get_config();
+    e.update_config(config).assert_success();
 }
