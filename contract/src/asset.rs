@@ -65,7 +65,7 @@ impl Asset {
 
     pub fn get_rate(&self) -> BigDecimal {
         self.config
-            .get_rate(self.borrowed.balance, self.supplied.balance + self.reserved)
+            .get_rate(self.borrowed.balance, self.supplied.balance + self.reserved + self.prot_fee)
     }
 
     pub fn get_borrow_apr(&self) -> BigDecimal {
