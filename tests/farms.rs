@@ -1188,6 +1188,7 @@ fn test_farm_net_tvl_multipliers() {
                 tokens.wnear.account_id(),
                 AssetConfig {
                     reserve_ratio: 2500,
+                    prot_ratio: 0,
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000003593629036885046),
                     max_utilization_rate: U128(1000000000039724853136740579),

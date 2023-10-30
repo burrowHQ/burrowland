@@ -13,6 +13,10 @@ pub struct AssetDetailedView {
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
     pub reserved: Balance,
+    /// The amount belongs to the protocol. This amount can also be borrowed and affects
+    /// borrowing rate.
+    #[serde(with = "u128_dec_format")]
+    pub prot_fee: Balance,
     /// When the asset was last updated. It's always going to be the current block timestamp.
     #[serde(with = "u64_dec_format")]
     pub last_update_timestamp: Timestamp,
@@ -54,6 +58,7 @@ impl Contract {
             supplied,
             borrowed,
             reserved,
+            prot_fee,
             last_update_timestamp,
             config,
         } = asset;
@@ -62,6 +67,7 @@ impl Contract {
             supplied,
             borrowed,
             reserved,
+            prot_fee,
             last_update_timestamp,
             config,
             supply_apr,

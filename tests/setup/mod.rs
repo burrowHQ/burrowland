@@ -21,12 +21,12 @@ use test_oracle::ContractContract as OracleContract;
 
 near_sdk_sim::lazy_static_include::lazy_static_include_bytes! {
     BURROWLAND_WASM_BYTES => "res/burrowland.wasm",
-    BURROWLAND_0_3_0_WASM_BYTES => "res/burrowland_0.3.0.wasm",
-    BURROWLAND_0_4_0_WASM_BYTES => "res/burrowland_0.4.0.wasm",
-    BURROWLAND_PREVIOUS_WASM_BYTES => "res/burrowland_0.6.0.wasm",
+    BURROWLAND_0_3_0_WASM_BYTES => "releases/burrowland_0.3.0.wasm",
+    BURROWLAND_0_4_0_WASM_BYTES => "releases/burrowland_0.4.0.wasm",
+    BURROWLAND_PREVIOUS_WASM_BYTES => "releases/burrowland_0.7.0.wasm",
     TEST_ORACLE_WASM_BYTES => "res/test_oracle.wasm",
 
-    FUNGIBLE_TOKEN_WASM_BYTES => "res/fungible_token.wasm",
+    FUNGIBLE_TOKEN_WASM_BYTES => "releases/fungible_token.wasm",
 }
 
 pub fn burrowland_0_3_0_wasm_bytes() -> &'static [u8] {
@@ -237,6 +237,7 @@ impl Env {
                     self.booster_token.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000008319516250272147),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -260,6 +261,7 @@ impl Env {
                     tokens.neth.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000001547125956667610),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -283,6 +285,7 @@ impl Env {
                     tokens.ndai.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000002440418605283556),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -306,6 +309,7 @@ impl Env {
                     tokens.nusdt.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000002440418605283556),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -329,6 +333,7 @@ impl Env {
                     tokens.nusdc.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000002440418605283556),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -352,6 +357,7 @@ impl Env {
                     tokens.wnear.account_id(),
                     AssetConfig {
                         reserve_ratio: 2500,
+                        prot_ratio: 0,
                         target_utilization: 8000,
                         target_utilization_rate: U128(1000000000003593629036885046),
                         max_utilization_rate: U128(1000000000039724853136740579),
@@ -368,6 +374,91 @@ impl Env {
                 ONE_YOCTO,
             )
             .assert_success();
+    }
+
+    pub fn update_asset(&self, token: &UserAccount, asset_config: AssetConfig) {
+        self.owner
+            .function_call(
+                self.contract.contract.update_asset(
+                    token.account_id(),
+                    asset_config,
+                ),
+                DEFAULT_GAS.0,
+                ONE_YOCTO,
+            )
+            .assert_success();
+    }
+
+    pub fn update_config(&self, config: Config) -> ExecutionResult {
+        self.owner
+            .function_call(
+                self.contract.contract.update_config(
+                    config,
+                ),
+                DEFAULT_GAS.0,
+                ONE_YOCTO,
+            )
+    }
+
+    pub fn claim_prot_fee(
+        &self,
+        token: &UserAccount,
+        amount: Option<U128>
+    ) -> ExecutionResult {
+        self.owner
+            .function_call(
+                self.contract.contract.claim_prot_fee(
+                    token.account_id(),
+                    amount,
+                ),
+                MAX_GAS.0,
+                ONE_YOCTO,
+            )
+    }
+
+    pub fn decrease_reserved(
+        &self,
+        token: &UserAccount,
+        amount: Option<U128>
+    ) -> ExecutionResult {
+        self.owner
+            .function_call(
+                self.contract.contract.decrease_reserved(
+                    token.account_id(),
+                    amount,
+                ),
+                MAX_GAS.0,
+                ONE_YOCTO,
+            )
+    }
+
+    pub fn increase_reserved(
+        &self,
+        asset_amount: AssetAmount
+    ) -> ExecutionResult {
+        self.owner
+            .function_call(
+                self.contract.contract.increase_reserved(
+                    asset_amount
+                ),
+                MAX_GAS.0,
+                ONE_YOCTO,
+            )
+    }
+
+    pub fn withdraw(
+        &self,
+        token: &UserAccount,
+        amount: Balance,
+    ) -> ExecutionResult {
+        self.owner
+            .function_call(
+                self.contract.contract.execute(
+                    vec![Action::Withdraw(asset_amount(token, amount))]
+                ),
+                MAX_GAS.0,
+                ONE_YOCTO,
+            )
     }
 
     pub fn deposit_reserves(&self, tokens: &Tokens) {
@@ -411,6 +502,20 @@ impl Env {
         )
     }
 
+    pub fn ft_balance_of(&self, token: &UserAccount, account: &UserAccount) -> U128 {
+        account
+            .view(
+                token.account_id(), 
+                "ft_balance_of",
+                &json!({
+                    "account_id": account.account_id(),
+                })
+                .to_string()
+                .into_bytes(),
+            )
+            .unwrap_json()
+    }
+
     pub fn mint_ft(&self, token: &UserAccount, receiver: &UserAccount, amount: Balance) {
         self.owner
             .call(
@@ -451,6 +556,13 @@ impl Env {
             .view_method_call(self.contract.contract.get_asset(token.account_id()))
             .unwrap_json();
         asset.unwrap()
+    }
+
+    pub fn get_config(&self) -> Config {
+        self
+            .near
+            .view_method_call(self.contract.contract.get_config())
+            .unwrap_json()
     }
 
     pub fn get_asset_farm(&self, farm_id: FarmId) -> AssetFarmView {
@@ -789,6 +901,12 @@ pub fn basic_setup_with_contract(contract_bytes: &[u8]) -> (Env, Tokens, Users) 
     let tokens = Tokens::init(&e);
     e.setup_assets(&tokens);
     e.deposit_reserves(&tokens);
+    storage_deposit(
+        &e.owner,
+        &e.contract.account_id(),
+        &e.owner.account_id(),
+        d(1, 23),
+    );
 
     let users = Users::init(&e);
     e.mint_tokens(&tokens, &users.alice);

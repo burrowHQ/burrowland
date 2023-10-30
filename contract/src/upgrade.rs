@@ -7,34 +7,8 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     pub fn migrate_state() -> Self {
-        #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
-        pub struct Contract060 {
-            pub accounts: UnorderedMap<AccountId, VAccount>,
-            pub storage: LookupMap<AccountId, VStorage>,
-            pub assets: LookupMap<TokenId, VAsset>,
-            pub asset_farms: LookupMap<FarmId, VAssetFarm>,
-            pub asset_ids: UnorderedSet<TokenId>,
-            pub config: LazyOption<Config>,
-        }
-
-        let Contract060 {
-            accounts,
-            storage,
-            assets,
-            asset_farms,
-            asset_ids,
-            config,
-        } = env::state_read().unwrap();
-
-        Self {
-            accounts,
-            storage,
-            assets,
-            asset_farms,
-            asset_ids,
-            config,
-            last_prices: Default::default(),
-        }
+        let contract: Contract = env::state_read().unwrap();
+        contract
     }
 
     /// Returns semver of this contract.

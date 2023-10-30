@@ -20,6 +20,19 @@ release:
 	cp target/wasm32-unknown-unknown/release/contract.wasm res/burrowland_release.wasm
 	cp target/wasm32-unknown-unknown/release/test_oracle.wasm res/test_oracle_release.wasm
 
+unittest: build
+ifdef TC
+	RUSTFLAGS=$(RFLAGS) cargo test $(TC) -p contract --lib -- --nocapture
+else
+	RUSTFLAGS=$(RFLAGS) cargo test -p contract --lib -- --nocapture
+endif
+
+test: build
+ifdef TF
+	RUSTFLAGS=$(RFLAGS) cargo test --test $(TF) -- --nocapture
+else
+	RUSTFLAGS=$(RFLAGS) cargo test --tests -- --nocapture
+endif
 
 clean:
 	cargo clean

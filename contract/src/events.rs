@@ -185,4 +185,37 @@ pub mod emit {
             }),
         );
     }
+
+    pub fn claim_prot_fee(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "claim_prot_fee",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn increase_reserved(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "increase_reserved",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn decrease_reserved(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "decrease_reserved",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
 }

@@ -64,6 +64,49 @@ impl From<AccountFarm> for VAccountFarm {
 }
 
 impl Contract {
+    pub fn get_account_tvl_shares(&self, account: &Account) -> u128 {
+        let mut total_supplied: BigDecimal = BigDecimal::zero();
+        let mut total_borrowed: BigDecimal = BigDecimal::zero();
+        for (token_id, price) in self.last_prices.iter() {
+            let supplied_shares = account.get_supplied_shares(token_id);
+            let borrowed_shares = account.get_borrowed_shares(token_id);
+            if supplied_shares.0 > 0 || borrowed_shares.0 > 0 {
+                let asset = self.internal_unwrap_asset(&token_id);
+
+                if supplied_shares.0 > 0 {
+                    let amount =
+                        asset.supplied.shares_to_amount(supplied_shares, false);
+
+                    total_supplied = total_supplied
+                        + BigDecimal::from_balance_price(
+                            amount,
+                            price,
+                            asset.config.extra_decimals,
+                        )
+                        .mul_ratio(asset.config.net_tvl_multiplier)
+                }
+
+                if borrowed_shares.0 > 0 {
+                    let amount = asset.borrowed.shares_to_amount(borrowed_shares, true);
+
+                    total_borrowed = total_borrowed
+                        + BigDecimal::from_balance_price(
+                            amount,
+                            price,
+                            asset.config.extra_decimals,
+                        )
+                        .mul_ratio(asset.config.net_tvl_multiplier)
+                }
+            }
+        }
+        if total_supplied > total_borrowed {
+            let net_supplied = total_supplied - total_borrowed;
+            net_supplied.round_mul_u128(NET_TVL_SHARES_DIVISOR)
+        } else {
+            0
+        }
+    }
+
     pub fn internal_account_farm_claim(
         &self,
         account: &Account,
@@ -175,48 +218,7 @@ impl Contract {
             let shares = match &farm_id {
                 FarmId::Supplied(token_id) => account.get_supplied_shares(token_id).0,
                 FarmId::Borrowed(token_id) => account.get_borrowed_shares(token_id).0,
-                FarmId::NetTvl => {
-                    let mut total_supplied: BigDecimal = BigDecimal::zero();
-                    let mut total_borrowed: BigDecimal = BigDecimal::zero();
-                    for (token_id, price) in self.last_prices.iter() {
-                        let supplied_shares = account.get_supplied_shares(token_id);
-                        let borrowed_shares = account.get_borrowed_shares(token_id);
-                        if supplied_shares.0 > 0 || borrowed_shares.0 > 0 {
-                            let asset = self.internal_unwrap_asset(&token_id);
-
-                            if supplied_shares.0 > 0 {
-                                let amount =
-                                    asset.supplied.shares_to_amount(supplied_shares, false);
-
-                                total_supplied = total_supplied
-                                    + BigDecimal::from_balance_price(
-                                        amount,
-                                        price,
-                                        asset.config.extra_decimals,
-                                    )
-                                    .mul_ratio(asset.config.net_tvl_multiplier)
-                            }
-
-                            if borrowed_shares.0 > 0 {
-                                let amount = asset.borrowed.shares_to_amount(borrowed_shares, true);
-
-                                total_borrowed = total_borrowed
-                                    + BigDecimal::from_balance_price(
-                                        amount,
-                                        price,
-                                        asset.config.extra_decimals,
-                                    )
-                                    .mul_ratio(asset.config.net_tvl_multiplier)
-                            }
-                        }
-                    }
-                    if total_supplied > total_borrowed {
-                        let net_supplied = total_supplied - total_borrowed;
-                        net_supplied.round_mul_u128(NET_TVL_SHARES_DIVISOR)
-                    } else {
-                        0
-                    }
-                }
+                FarmId::NetTvl => self.get_account_tvl_shares(account)
             };
             for (token_id, asset_farm_reward) in asset_farm.rewards.iter_mut() {
                 let account_farm_reward = account_farm.rewards.get_mut(token_id).unwrap();

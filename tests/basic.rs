@@ -2,7 +2,7 @@ mod setup;
 
 use crate::setup::*;
 
-use contract::{BigDecimal, MS_PER_YEAR};
+use contract::{BigDecimal, MS_PER_YEAR, asset_amount_to_shares};
 
 const SEC_PER_YEAR: u32 = (MS_PER_YEAR / 1000) as u32;
 
@@ -164,4 +164,127 @@ fn test_interest() {
         expected_borrow_amount as f64
     );
     assert_eq!(account.borrowed[0].token_id, tokens.ndai.account_id());
+}
+
+#[test]
+fn test_withdraw_prot_fee_reserved() {
+    let (e, tokens, users) = basic_setup();
+
+    let amount = d(100, 18);
+    e.contract_ft_transfer_call(&tokens.ndai, &users.alice, amount, "")
+        .assert_success();
+
+    let supply_amount = d(100, 24);
+    e.supply_to_collateral(&users.alice, &tokens.wnear, supply_amount)
+        .assert_success();
+
+    let borrow_amount = d(200, 18);
+    e.borrow(
+        &users.alice,
+        &tokens.ndai,
+        price_data(&tokens, Some(100000), None),
+        borrow_amount,
+    )
+    .assert_success();
+
+    e.skip_time(31536000);
+
+    let asset_view_old = e.get_asset(&tokens.ndai);
+    assert_eq!(asset_view_old.prot_fee, 0);
+
+    let mut new_config = asset_view_old.config;
+    new_config.prot_ratio = 10000;
+    e.update_asset(&tokens.ndai, new_config.clone());
+    e.skip_time(31536000);
+
+    let asset = e.get_asset(&tokens.ndai);
+    assert_eq!(asset_view_old.reserved, asset.reserved);
+
+    e.claim_prot_fee(&tokens.ndai, Some(10000.into())).assert_success();
+    
+    let asset_after_decrease_prot_fee = e.get_asset(&tokens.ndai);
+    assert_eq!(asset.prot_fee - 10000, asset_after_decrease_prot_fee.prot_fee);
+    assert_eq!(asset.supplied.balance + 10000, asset_after_decrease_prot_fee.supplied.balance);
+    assert_eq!(asset.supplied.shares.0 + asset.supplied.amount_to_shares(10000, false).0, 
+        asset_after_decrease_prot_fee.supplied.shares.0);
+
+    e.decrease_reserved(&tokens.ndai, Some(10000.into())).assert_success();
+    let asset_after_decrease_reserved = e.get_asset(&tokens.ndai);
+    assert_eq!(asset_after_decrease_prot_fee.reserved - 10000, asset_after_decrease_reserved.reserved);
+    assert_eq!(asset_after_decrease_prot_fee.supplied.balance + 10000, asset_after_decrease_reserved.supplied.balance);
+    assert_eq!(asset_after_decrease_prot_fee.supplied.shares.0 + asset.supplied.amount_to_shares(10000, false).0, 
+        asset_after_decrease_reserved.supplied.shares.0);
+    
+    let old_balance = e.ft_balance_of(&tokens.ndai, &e.owner).0;
+    e.withdraw(&tokens.ndai, 10000).assert_success();
+    let current_balance = e.ft_balance_of(&tokens.ndai, &e.owner).0;
+    assert_eq!(10000, current_balance - old_balance);
+
+    assert!(format!("{:?}", e.claim_prot_fee(&tokens.ndai, Some((asset_after_decrease_reserved.prot_fee * 2).into()))
+        .promise_errors()[0].as_ref().unwrap().status()).contains("Asset prot_fee balance not enough!"));
+
+    assert!(format!("{:?}", e.decrease_reserved(&tokens.ndai, Some((asset_after_decrease_reserved.reserved * 2).into()))
+        .promise_errors()[0].as_ref().unwrap().status()).contains("Asset reserved balance not enough!"));
+
+    let account_before_increase_reserved = e.get_account(&e.owner);
+    let asset_before_increase_reserved = e.get_asset(&tokens.ndai);
+    let (shares, amount) =
+            asset_amount_to_shares(
+                &e.get_asset(&tokens.ndai).supplied, 
+            account_before_increase_reserved.supplied[0].shares, 
+            &AssetAmount{
+                token_id: tokens.ndai.account_id(),
+                amount: Some(500.into()),
+                max_amount: None
+            }, 
+            false);
+
+    e.increase_reserved(AssetAmount{
+        token_id: tokens.ndai.account_id(),
+        amount: Some(500.into()),
+        max_amount: None
+    }).assert_success();
+
+    let asset_after_increase_reserved = e.get_asset(&tokens.ndai);
+    assert_eq!(asset_before_increase_reserved.reserved + amount, asset_after_increase_reserved.reserved);
+    assert_eq!(asset_before_increase_reserved.supplied.shares.0 - shares.0, asset_after_increase_reserved.supplied.shares.0);
+    assert_eq!(asset_before_increase_reserved.supplied.balance - amount, asset_after_increase_reserved.supplied.balance);
+    let account_after_increase_reserved = e.get_account(&e.owner);
+    assert_eq!(account_before_increase_reserved.supplied[0].shares.0 - shares.0, account_after_increase_reserved.supplied[0].shares.0);
+
+    e.owner.call(
+        tokens.ndai.account_id(),
+        "storage_unregister",
+        &near_sdk::serde_json::json!({
+            "force": true
+        })
+            .to_string()
+            .into_bytes(),
+        DEFAULT_GAS.0,
+        1,
+    )
+    .assert_success();
+
+    let asset_before_withdraw = e.get_asset(&tokens.ndai);
+    assert!(format!("{:?}", e.withdraw(&tokens.ndai, 500)
+        .promise_errors()[0].as_ref().unwrap().status()).contains("The account owner.near is not registered"));
+
+    assert_eq!(e.get_asset(&tokens.ndai).supplied.balance, asset_before_withdraw.supplied.balance);
+}
+
+#[test]
+fn test_modify_booster_token_id_and_decimals() {
+    let (e, _, _) = basic_setup();
+    let mut config = e.get_config();
+    config.booster_token_id = e.near.account_id();
+    assert!(format!("{:?}", e.update_config(config)
+        .promise_errors()[0].as_ref().unwrap().status()).contains("Can't change booster_token_id/booster_decimals"));
+
+    let mut config = e.get_config();
+    config.booster_decimals = 0;
+    assert!(format!("{:?}", e.update_config(config)
+        .promise_errors()[0].as_ref().unwrap().status()).contains("Can't change booster_token_id/booster_decimals"));
+
+    let config = e.get_config();
+    e.update_config(config).assert_success();
 }

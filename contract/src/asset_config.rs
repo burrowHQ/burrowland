@@ -11,6 +11,7 @@ const MAX_RATIO: u32 = 10000;
 /// ```json
 /// {
 ///   "reserve_ratio": 2500,
+///   "release_ratio": 0,
 ///   "target_utilization": 8000,
 ///   "target_utilization_rate": "1000000000003593629036885046",
 ///   "max_utilization_rate": "1000000000039724853136740579",
@@ -29,6 +30,9 @@ pub struct AssetConfig {
     /// The ratio of interest that is reserved by the protocol (multiplied by 10000).
     /// E.g. 2500 means 25% from borrowed interests goes to the reserve.
     pub reserve_ratio: u32,
+    /// The ratio of reserved interest that belongs to the protocol (multiplied by 10000).
+    /// E.g. 2500 means 25% from reserved interests goes to the prot.
+    pub prot_ratio: u32,
     /// Target utilization ratio (multiplied by 10000).
     /// E.g. 8000 means the protocol targets 80% of assets are borrowed.
     pub target_utilization: u32,
@@ -70,6 +74,7 @@ pub struct AssetConfig {
 impl AssetConfig {
     pub fn assert_valid(&self) {
         assert!(self.reserve_ratio <= MAX_RATIO);
+        assert!(self.prot_ratio <= MAX_RATIO);
         assert!(self.target_utilization < MAX_POS);
         assert!(self.target_utilization_rate.0 <= self.max_utilization_rate.0);
         // The volatility ratio can't be 100% to avoid free liquidations of such assets.
@@ -110,6 +115,7 @@ mod tests {
     fn test_config() -> AssetConfig {
         AssetConfig {
             reserve_ratio: 2500,
+            prot_ratio: 0,
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
