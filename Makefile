@@ -1,18 +1,24 @@
 RFLAGS="-C link-arg=-s"
 
-build: build-burrowland build-testoracle
+build: build-burrowland build-testoracle build-mock-ft
 
-build-burrowland: 
+build-burrowland: contracts/contract
 	rustup target add wasm32-unknown-unknown
 	RUSTFLAGS=$(RFLAGS) cargo build -p contract --target wasm32-unknown-unknown --release
 	mkdir -p res
 	cp target/wasm32-unknown-unknown/release/contract.wasm ./res/burrowland.wasm
 
-build-testoracle:
+build-testoracle: contracts/test-oracle
 	rustup target add wasm32-unknown-unknown
 	RUSTFLAGS=$(RFLAGS) cargo build -p test-oracle --target wasm32-unknown-unknown --release
 	mkdir -p res
 	cp target/wasm32-unknown-unknown/release/test_oracle.wasm ./res/
+
+build-mock-ft: contracts/mock-ft
+	rustup target add wasm32-unknown-unknown
+	RUSTFLAGS=$(RFLAGS) cargo build -p mock-ft --target wasm32-unknown-unknown --release
+	mkdir -p res
+	cp target/wasm32-unknown-unknown/release/mock_ft.wasm ./res/mock_ft.wasm
 
 release:
 	$(call docker_build,_rust_setup.sh)
@@ -25,13 +31,14 @@ ifdef TC
 	RUSTFLAGS=$(RFLAGS) cargo test $(TC) -p contract --lib -- --nocapture
 else
 	RUSTFLAGS=$(RFLAGS) cargo test -p contract --lib -- --nocapture
+	RUSTFLAGS=$(RFLAGS) cargo test -p contract --lib -- --test-threads=1 --ignored --nocapture
 endif
 
 test: build
 ifdef TF
-	RUSTFLAGS=$(RFLAGS) cargo test --test $(TF) -- --nocapture
+	RUSTFLAGS=$(RFLAGS) cargo test -p contract --test $(TF) -- --nocapture
 else
-	RUSTFLAGS=$(RFLAGS) cargo test --tests -- --nocapture
+	RUSTFLAGS=$(RFLAGS) cargo test -p contract --tests -- --nocapture
 endif
 
 clean:

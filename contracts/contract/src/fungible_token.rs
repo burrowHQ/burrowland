@@ -1,8 +1,12 @@
 use crate::*;
-use near_contract_standards::fungible_token::core_impl::ext_fungible_token;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_sdk::json_types::U128;
 use near_sdk::{is_promise_success, serde_json, PromiseOrValue};
+
+#[ext_contract(ext_fungible_token)]
+pub trait FungibleToken {
+    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
+}
 
 const GAS_FOR_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
 const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 20);
@@ -73,31 +77,27 @@ impl Contract {
     ) -> Promise {
         let asset = self.internal_unwrap_asset(token_id);
         let ft_amount = amount / 10u128.pow(asset.config.extra_decimals as u32);
-        ext_fungible_token::ft_transfer(
+        ext_fungible_token::ext(token_id.clone())
+        .with_attached_deposit(ONE_YOCTO)
+        .with_static_gas(GAS_FOR_FT_TRANSFER)
+        .ft_transfer(
             account_id.clone(),
             ft_amount.into(),
             None,
-            token_id.clone(),
-            ONE_YOCTO,
-            GAS_FOR_FT_TRANSFER,
         )
-        .then(ext_self::after_ft_transfer(
-            account_id.clone(),
-            token_id.clone(),
-            amount.into(),
-            env::current_account_id(),
-            NO_DEPOSIT,
-            GAS_FOR_AFTER_FT_TRANSFER,
-        ))
+        .then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
+                .after_ft_transfer(
+                    account_id.clone(),
+                    token_id.clone(),
+                    amount.into(),
+                )
+        )
     }
 }
 
 #[ext_contract(ext_self)]
-trait ExtSelf {
-    fn after_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
-        -> bool;
-}
-
 trait ExtSelf {
     fn after_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
         -> bool;

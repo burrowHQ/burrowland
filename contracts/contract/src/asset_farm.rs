@@ -219,3 +219,9 @@ impl Contract {
         self.get_asset_farms(farm_ids)
     }
 }
+
+#[cfg(test)]
+pub fn clean_assets_farm_cache(){
+    let mut cache = ASSET_FARMS.lock().unwrap();
+    cache.clear();
+}

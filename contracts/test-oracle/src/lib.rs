@@ -28,13 +28,13 @@ impl Contract {
         let remaining_gas = env::prepaid_gas() - env::used_gas();
         assert!(remaining_gas >= GAS_FOR_PROMISE);
 
-        ext_price_receiver::oracle_on_call(
+        ext_price_receiver::ext(receiver_id.clone())
+        .with_attached_deposit(NO_DEPOSIT)
+        .with_static_gas(remaining_gas - GAS_FOR_PROMISE)
+        .oracle_on_call(
             sender_id,
             price_data,
             msg,
-            receiver_id,
-            NO_DEPOSIT,
-            remaining_gas - GAS_FOR_PROMISE,
         )
     }
 }

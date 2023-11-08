@@ -228,3 +228,9 @@ impl Contract {
             .collect()
     }
 }
+
+#[cfg(test)]
+pub fn clean_assets_cache(){
+    let mut cache = ASSETS.lock().unwrap();
+    cache.clear();
+}

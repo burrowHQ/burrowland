@@ -266,7 +266,7 @@ impl BorshDeserialize for BigDecimal {
 }
 
 #[cfg(test)]
-mod tests {
+mod big_decimal {
     use super::*;
     use rand::RngCore;
 

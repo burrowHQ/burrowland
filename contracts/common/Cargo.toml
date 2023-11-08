@@ -5,4 +5,4 @@ authors = ["Eugene The Dream <ek@proximity.dev>"]
 edition = "2018"
 
 [dependencies]
-near-sdk = "=4.0.0-pre.7"
+near-sdk = "4.1.1"
