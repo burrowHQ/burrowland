@@ -1,6 +1,6 @@
 RFLAGS="-C link-arg=-s"
 
-build: build-burrowland build-testoracle build-mock-ft
+build: build-burrowland build-testoracle build-mock-ref-exchange build-mock-boost-farming build-mock-ft
 
 build-burrowland: contracts/contract
 	rustup target add wasm32-unknown-unknown
@@ -13,6 +13,18 @@ build-testoracle: contracts/test-oracle
 	RUSTFLAGS=$(RFLAGS) cargo build -p test-oracle --target wasm32-unknown-unknown --release
 	mkdir -p res
 	cp target/wasm32-unknown-unknown/release/test_oracle.wasm ./res/
+
+build-mock-boost-farming: contracts/mock-boost-farming
+	rustup target add wasm32-unknown-unknown
+	RUSTFLAGS=$(RFLAGS) cargo build -p mock-boost-farming --target wasm32-unknown-unknown --release
+	mkdir -p res
+	cp target/wasm32-unknown-unknown/release/mock_boost_farming.wasm ./res/mock_boost_farming.wasm
+
+build-mock-ref-exchange: contracts/mock-ref-exchange
+	rustup target add wasm32-unknown-unknown
+	RUSTFLAGS=$(RFLAGS) cargo build -p mock-ref-exchange --target wasm32-unknown-unknown --release
+	mkdir -p res
+	cp target/wasm32-unknown-unknown/release/mock_ref_exchange.wasm ./res/mock_ref_exchange.wasm
 
 build-mock-ft: contracts/mock-ft
 	rustup target add wasm32-unknown-unknown
