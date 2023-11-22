@@ -23,13 +23,14 @@ pub struct AccountDetailedView {
     /// A list of assets that are used as a collateral.
     pub collateral: Vec<AssetView>,
     /// A list of assets that are borrowed.
-    pub borrowed: Vec<AssetView>,
+    pub borrowed: HashMap<String, Vec<AssetView>>,
     /// Account farms
     pub farms: Vec<AccountFarmView>,
     /// Whether the account has assets, that can be farmed.
     pub has_non_farmed_assets: bool,
     /// Staking of booster token.
     pub booster_staking: Option<BoosterStaking>,
+    pub is_locked: bool
 }
 
 #[derive(Serialize)]
@@ -121,11 +122,14 @@ impl Contract {
             borrowed: account
                 .borrowed
                 .into_iter()
-                .map(|(token_id, shares)| self.get_asset_view(token_id, shares, true))
+                .map(|(position, borrowed_info)| {
+                    (position, borrowed_info.into_iter().map(|(token_id, shares)|self.get_asset_view(token_id, shares, true)).collect())
+                })
                 .collect(),
             farms,
             has_non_farmed_assets,
             booster_staking: account.booster_staking,
+            is_locked: account.is_locked
         }
     }
 

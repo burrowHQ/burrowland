@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::*;
 
 #[derive(Deserialize, Serialize)]
@@ -21,16 +23,26 @@ pub enum Action {
     IncreaseCollateral(AssetAmount),
     DecreaseCollateral(AssetAmount),
     Borrow(AssetAmount),
+    PositionBorrow{
+        position: Option<String>,
+        asset_amount: AssetAmount
+    },
     Repay(AssetAmount),
+    PositionRepay{
+        position: Option<String>,
+        asset_amount: AssetAmount
+    },
     Liquidate {
         account_id: AccountId,
         in_assets: Vec<AssetAmount>,
         out_assets: Vec<AssetAmount>,
+        position: Option<String>,
     },
     /// If the sum of burrowed assets exceeds the collateral, the account will be liquidated
     /// using reserves.
     ForceClose {
         account_id: AccountId,
+        position: Option<String>,
     },
 }
 
@@ -43,9 +55,10 @@ impl Contract {
         prices: Prices,
     ) {
         self.internal_set_prices(&prices);
-        let mut need_risk_check = false;
         let mut need_number_check = false;
+        let mut risk_check_positions = HashSet::new();
         for action in actions {
+            assert!(!account.is_locked, "Account is locked!");
             match action {
                 Action::Withdraw(asset_amount) => {
                     let amount = self.internal_withdraw(account, &asset_amount);
@@ -58,7 +71,7 @@ impl Contract {
                     events::emit::increase_collateral(&account_id, amount, &asset_amount.token_id);
                 }
                 Action::DecreaseCollateral(asset_amount) => {
-                    need_risk_check = true;
+                    risk_check_positions.insert(parse_position(&asset_amount.token_id));
                     let mut account_asset =
                         account.internal_get_asset_or_default(&asset_amount.token_id);
                     let amount = self.internal_decrease_collateral(
@@ -71,15 +84,30 @@ impl Contract {
                 }
                 Action::Borrow(asset_amount) => {
                     need_number_check = true;
-                    need_risk_check = true;
+                    risk_check_positions.insert(NEP_POSITION.to_string());
                     account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
-                    let amount = self.internal_borrow(account, &asset_amount);
+                    let amount = self.internal_borrow(&NEP_POSITION.to_string(), account, &asset_amount);
+                    events::emit::borrow(&account_id, amount, &asset_amount.token_id);
+                }
+                Action::PositionBorrow{asset_amount, position} => {
+                    need_number_check = true;
+                    let position = position.unwrap_or(NEP_POSITION.to_string());
+                    risk_check_positions.insert(position.clone());
+                    account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
+                    let amount = self.internal_borrow(&position, account, &asset_amount);
                     events::emit::borrow(&account_id, amount, &asset_amount.token_id);
                 }
                 Action::Repay(asset_amount) => {
                     let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
                     account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
-                    let amount = self.internal_repay(&mut account_asset, account, &asset_amount);
+                    let amount = self.internal_repay(&NEP_POSITION.to_string(), &mut account_asset, account, &asset_amount);
+                    events::emit::repay(&account_id, amount, &asset_amount.token_id);
+                    account.internal_set_asset(&asset_amount.token_id, account_asset);
+                }
+                Action::PositionRepay{asset_amount, position} => {
+                    let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
+                    account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
+                    let amount = self.internal_repay(&position.unwrap_or(NEP_POSITION.to_string()), &mut account_asset, account, &asset_amount);
                     events::emit::repay(&account_id, amount, &asset_amount.token_id);
                     account.internal_set_asset(&asset_amount.token_id, account_asset);
                 }
@@ -87,40 +115,72 @@ impl Contract {
                     account_id: liquidation_account_id,
                     in_assets,
                     out_assets,
+                    position
                 } => {
                     assert_ne!(
                         account_id, &liquidation_account_id,
                         "Can't liquidate yourself"
                     );
-                    assert!(!in_assets.is_empty() && !out_assets.is_empty());
-                    self.internal_liquidate(
-                        account_id,
-                        account,
-                        &prices,
-                        &liquidation_account_id,
-                        in_assets,
-                        out_assets,
-                    );
+                    let position = position.unwrap_or(NEP_POSITION.to_string());
+                    if position == NEP_POSITION {
+                        assert!(!in_assets.is_empty() && !out_assets.is_empty());
+                        self.internal_liquidate(
+                            account_id,
+                            account,
+                            &prices,
+                            &liquidation_account_id,
+                            in_assets,
+                            out_assets,
+                        );
+                    } else {
+                        assert!(!in_assets.is_empty() && !out_assets.is_empty() 
+                            && out_assets.len() == 1 && out_assets[0].token_id.to_string() == position);
+                        let mut in_asset_tokens = HashSet::new();
+                        in_assets.iter().for_each(|v| assert!(in_asset_tokens.insert(&v.token_id), "Duplicate assets!"));
+                        let mut temp_account = account.clone();
+                        self.internal_shadow_liquidate(
+                            &position,
+                            account_id,
+                            &mut temp_account,
+                            &prices,
+                            &liquidation_account_id,
+                            in_assets,
+                            out_assets,
+                        );
+                        let mut liquidation_account = self.internal_unwrap_account(&liquidation_account_id);
+                        liquidation_account.is_locked = true;
+                        account.is_locked = true;
+                        self.internal_set_account(&liquidation_account_id, liquidation_account);
+                    }
                 }
                 Action::ForceClose {
                     account_id: liquidation_account_id,
+                    position
                 } => {
                     assert_ne!(
                         account_id, &liquidation_account_id,
                         "Can't liquidate yourself"
                     );
-                    self.internal_force_close(&prices, &liquidation_account_id);
+                    let position = position.unwrap_or(NEP_POSITION.to_string());
+                    if position == NEP_POSITION {
+                        self.internal_force_close(&prices, &liquidation_account_id);
+                    } else {
+                        self.internal_shadow_force_close(&position, &prices, &liquidation_account_id);
+                        let mut liquidation_account = self.internal_unwrap_account(&liquidation_account_id);
+                        liquidation_account.is_locked = true;
+                        self.internal_set_account(&liquidation_account_id, liquidation_account);
+                    }
                 }
             }
         }
         if need_number_check {
             assert!(
-                account.collateral.len() + account.borrowed.len()
+                account.collateral.len() + account.borrowed.iter().fold(0, |sum, (_, v)| sum + v.len())
                     <= self.internal_config().max_num_assets as _
             );
         }
-        if need_risk_check {
-            assert!(self.compute_max_discount(account, &prices) == BigDecimal::zero());
+        for position in risk_check_positions {
+            assert!(self.compute_max_discount(&position, account, &prices) == BigDecimal::zero());
         }
 
         self.internal_account_apply_affected_farms(account);
@@ -225,6 +285,7 @@ impl Contract {
 
     pub fn internal_borrow(
         &mut self,
+        position: &String,
         account: &mut Account,
         asset_amount: &AssetAmount,
     ) -> Balance {
@@ -252,7 +313,7 @@ impl Contract {
         asset.supplied.deposit(supplied_shares, amount);
         self.internal_set_asset(&asset_amount.token_id, asset);
 
-        account.increase_borrowed(&asset_amount.token_id, borrowed_shares);
+        account.increase_borrowed(position, &asset_amount.token_id, borrowed_shares);
 
         account_asset.deposit_shares(supplied_shares);
         account.internal_set_asset(&asset_amount.token_id, account_asset);
@@ -262,12 +323,13 @@ impl Contract {
 
     pub fn internal_repay(
         &mut self,
+        position: &String,
         account_asset: &mut AccountAsset,
         account: &mut Account,
         asset_amount: &AssetAmount,
     ) -> Balance {
         let mut asset = self.internal_unwrap_asset(&asset_amount.token_id);
-        let available_borrowed_shares = account.internal_unwrap_borrowed(&asset_amount.token_id);
+        let available_borrowed_shares = account.internal_unwrap_borrowed(position, &asset_amount.token_id);
 
         let (mut borrowed_shares, mut amount) = asset_amount_to_shares(
             &asset.borrowed,
@@ -294,7 +356,7 @@ impl Contract {
         asset.borrowed.withdraw(borrowed_shares, amount);
         self.internal_set_asset(&asset_amount.token_id, asset);
 
-        account.decrease_borrowed(&asset_amount.token_id, borrowed_shares);
+        account.decrease_borrowed(position, &asset_amount.token_id, borrowed_shares);
 
         account_asset.withdraw_shares(supplied_shares);
 
@@ -312,7 +374,7 @@ impl Contract {
     ) {
         let mut liquidation_account = self.internal_unwrap_account(liquidation_account_id);
 
-        let max_discount = self.compute_max_discount(&liquidation_account, &prices);
+        let max_discount = self.compute_max_discount(&NEP_POSITION.to_string(), &liquidation_account, &prices);
         assert!(
             max_discount > BigDecimal::zero(),
             "The liquidation account is not at risk"
@@ -325,7 +387,7 @@ impl Contract {
             liquidation_account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
             let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
             let amount =
-                self.internal_repay(&mut account_asset, &mut liquidation_account, &asset_amount);
+                self.internal_repay(&NEP_POSITION.to_string(), &mut account_asset, &mut liquidation_account, &asset_amount);
             account.internal_set_asset(&asset_amount.token_id, account_asset);
             let asset = self.internal_unwrap_asset(&asset_amount.token_id);
 
@@ -364,7 +426,7 @@ impl Contract {
             borrowed_repaid_sum
         );
 
-        let new_max_discount = self.compute_max_discount(&liquidation_account, &prices);
+        let new_max_discount = self.compute_max_discount(&NEP_POSITION.to_string(), &liquidation_account, &prices);
         assert!(
             new_max_discount > BigDecimal::zero(),
             "The liquidation amount is too large. The liquidation account should stay in risk"
@@ -400,23 +462,29 @@ impl Contract {
 
         let mut affected_farms = vec![];
 
-        for (token_id, shares) in liquidation_account.collateral.drain() {
-            let mut asset = self.internal_unwrap_asset(&token_id);
-            let amount = asset.supplied.shares_to_amount(shares, false);
-            asset.reserved += amount;
-            asset.supplied.withdraw(shares, amount);
+        liquidation_account.collateral.retain(|token_id, shares| {
+            if parse_position(token_id) == NEP_POSITION.to_string() {
+                let mut asset = self.internal_unwrap_asset(&token_id);
+                let amount = asset.supplied.shares_to_amount(*shares, false);
+                asset.reserved += amount;
+                asset.supplied.withdraw(*shares, amount);
 
-            collateral_sum = collateral_sum
-                + BigDecimal::from_balance_price(
-                    amount,
-                    prices.get_unwrap(&token_id),
-                    asset.config.extra_decimals,
-                );
-            self.internal_set_asset(&token_id, asset);
-            affected_farms.push(FarmId::Supplied(token_id));
-        }
+                collateral_sum = collateral_sum
+                    + BigDecimal::from_balance_price(
+                        amount,
+                        prices.get_unwrap(&token_id),
+                        asset.config.extra_decimals,
+                    );
+                self.internal_set_asset(&token_id, asset);
+                affected_farms.push(FarmId::Supplied(token_id.clone()));
+                false
+            } else {
+                true
+            }
+        });
 
-        for (token_id, shares) in liquidation_account.borrowed.drain() {
+        let mut borrowed_info = liquidation_account.borrowed.remove(&NEP_POSITION.to_string()).expect("Borrowed position not found");
+        for (token_id, shares) in borrowed_info.drain() {
             let mut asset = self.internal_unwrap_asset(&token_id);
             let amount = asset.borrowed.shares_to_amount(shares, true);
             assert!(
@@ -451,30 +519,53 @@ impl Contract {
         events::emit::force_close(&liquidation_account_id, &collateral_sum, &borrowed_sum);
     }
 
-    pub fn compute_max_discount(&self, account: &Account, prices: &Prices) -> BigDecimal {
+    pub fn compute_max_discount(&self, position: &String, account: &Account, prices: &Prices) -> BigDecimal {
         if account.borrowed.is_empty() {
             return BigDecimal::zero();
         }
 
-        let collateral_sum =
-            account
-                .collateral
-                .iter()
-                .fold(BigDecimal::zero(), |sum, (token_id, shares)| {
-                    let asset = self.internal_unwrap_asset(&token_id);
-                    let balance = asset.supplied.shares_to_amount(*shares, false);
-                    sum + BigDecimal::from_balance_price(
-                        balance,
-                        prices.get_unwrap(&token_id),
-                        asset.config.extra_decimals,
-                    )
-                    .mul_ratio(asset.config.volatility_ratio)
-                });
+        let collateral_sum = {
+            if position == NEP_POSITION {
+                account
+                    .collateral
+                    .iter()
+                    .filter(|(token_id, _)| parse_position(token_id) == NEP_POSITION.to_string())
+                    .fold(BigDecimal::zero(), |sum, (token_id, shares)| {
+                        let asset = self.internal_unwrap_asset(&token_id);
+                        let balance = asset.supplied.shares_to_amount(*shares, false);
+                        sum + BigDecimal::from_balance_price(
+                            balance,
+                            prices.get_unwrap(&token_id),
+                            asset.config.extra_decimals,
+                        )
+                        .mul_ratio(asset.config.volatility_ratio)
+                    })
+            } else {
+                let collateral_asset = self.internal_unwrap_asset(&AccountId::new_unchecked(position.clone()));
+                let collateral_shares = account.collateral.get(&AccountId::new_unchecked(position.clone())).expect("Collateral position not found");
+                let collateral_balance = collateral_asset.supplied.shares_to_amount(*collateral_shares, false);
+                let unit_share_tokens = self.last_lp_token_infos.get(position).expect("lp_token_infos not found");
+                let config = self.internal_config();
+                assert!(env::block_timestamp() - unit_share_tokens.timestamp <= to_nano(config.lp_tokens_info_valid_duration_sec), "LP token info timestamp is too stale");
+                let unit_share = 10u128.pow(unit_share_tokens.decimals as u32);
+                unit_share_tokens.tokens
+                    .iter()
+                    .fold(BigDecimal::zero(), |sum, unit_share_token_value|{
+                        let token_asset = self.internal_unwrap_asset(&unit_share_token_value.token_id);
+                        let token_stdd_amount = unit_share_token_value.amount.0 * 10u128.pow(token_asset.config.extra_decimals as u32);
+                        let token_balance = u128_ratio(token_stdd_amount, collateral_balance, 10u128.pow(collateral_asset.config.extra_decimals as u32) * unit_share);
+                        sum + BigDecimal::from_balance_price(
+                            token_balance,
+                            prices.get_unwrap(&unit_share_token_value.token_id),
+                            token_asset.config.extra_decimals,
+                        )
+                        .mul_ratio(token_asset.config.volatility_ratio)
+                    }).mul_ratio(collateral_asset.config.volatility_ratio)
+            }
+        };
 
-        let borrowed_sum =
-            account
-                .borrowed
-                .iter()
+        let borrowed_sum = if let Some(borrow_innfo) = account.borrowed.get(position) {
+            borrow_innfo.iter()
                 .fold(BigDecimal::zero(), |sum, (token_id, shares)| {
                     let asset = self.internal_unwrap_asset(&token_id);
                     let balance = asset.borrowed.shares_to_amount(*shares, true);
@@ -484,8 +575,11 @@ impl Contract {
                         asset.config.extra_decimals,
                     )
                     .div_ratio(asset.config.volatility_ratio)
-                });
-
+                })
+        } else {
+            BigDecimal::zero()
+        };
+        
         if borrowed_sum <= collateral_sum {
             BigDecimal::zero()
         } else {

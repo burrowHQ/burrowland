@@ -71,7 +71,7 @@ impl StorageManagement for Contract {
                 E103_STILL_HAS_REWARD
             );
             require!(
-                farmer.seeds.is_empty(),
+                farmer.seeds.is_empty() && farmer.vseeds.is_empty(),
                 E104_STILL_HAS_SEED
             );
 

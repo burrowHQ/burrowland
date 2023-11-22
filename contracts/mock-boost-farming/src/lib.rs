@@ -17,6 +17,7 @@ mod management;
 mod owner;
 mod seed;
 mod seed_farm;
+mod shadow_actions;
 mod storage_impl;
 mod token_receiver;
 mod utils;
@@ -32,6 +33,7 @@ pub use crate::legacy::*;
 pub use crate::owner::{ImportFarmerInfo, ImportSeedInfo};
 pub use crate::seed::*;
 pub use crate::seed_farm::*;
+pub use crate::shadow_actions::*;
 pub use crate::utils::*;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
@@ -58,6 +60,7 @@ pub(crate) enum StorageKeys {
     OutdatedFarm,
     SeedSlashed,
     SeedLostfound,
+    VFarmerSeed { account_id: AccountId },
 }
 
 /// Contract config
@@ -130,6 +133,7 @@ pub struct ContractData {
     pub owner_id: AccountId,
     pub next_owner_id: Option<AccountId>,
     pub next_owner_accept_deadline: Option<u64>,
+    pub ref_exchange_id: AccountId,
     pub state: RunningState,
     pub operators: UnorderedSet<AccountId>,
     pub config: LazyOption<Config>,
@@ -151,7 +155,8 @@ pub struct ContractData {
 pub enum VersionedContractData {
     V0100(ContractDataV0100),
     V0101(ContractDataV0101),
-    V0102(ContractData),
+    V0102(ContractDataV0102),
+    V0103(ContractData),
 }
 
 #[near_bindgen]
@@ -163,13 +168,14 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(owner_id: AccountId) -> Self {
+    pub fn new(owner_id: AccountId, ref_exchange_id: AccountId) -> Self {
         require!(!env::state_exists(), E000_ALREADY_INIT);
         Self {
-            data: VersionedContractData::V0102(ContractData {
+            data: VersionedContractData::V0103(ContractData {
                 owner_id: owner_id.into(),
                 next_owner_id: None,
                 next_owner_accept_deadline: None,
+                ref_exchange_id,
                 state: RunningState::Running,
                 operators: UnorderedSet::new(StorageKeys::Operator),
                 config: LazyOption::new(StorageKeys::Config, Some(&Config::default())),
@@ -192,14 +198,14 @@ impl Contract {
 
     fn data(&self) -> &ContractData {
         match &self.data {
-            VersionedContractData::V0102(data) => data,
+            VersionedContractData::V0103(data) => data,
             _ => unimplemented!(),
         }
     }
 
     fn data_mut(&mut self) -> &mut ContractData {
         match &mut self.data {
-            VersionedContractData::V0102(data) => data,
+            VersionedContractData::V0103(data) => data,
             _ => unimplemented!(),
         }
     }

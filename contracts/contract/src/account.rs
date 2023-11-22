@@ -1,7 +1,7 @@
 use crate::*;
 use std::collections::HashSet;
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Account {
     /// A copy of an account ID. Saves one storage_read when iterating on accounts.
@@ -12,7 +12,7 @@ pub struct Account {
     /// A list of collateral assets.
     pub collateral: HashMap<TokenId, Shares>,
     /// A list of borrowed assets.
-    pub borrowed: HashMap<TokenId, Shares>,
+    pub borrowed: HashMap<String, HashMap<TokenId, Shares>>,
     /// Keeping track of data required for farms for this account.
     #[serde(skip_serializing)]
     pub farms: HashMap<FarmId, AccountFarm>,
@@ -27,12 +27,14 @@ pub struct Account {
 
     /// Staking of booster token.
     pub booster_staking: Option<BoosterStaking>,
+    pub is_locked: bool
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub enum VAccount {
     V0(AccountV0),
     V1(AccountV1),
+    V2(AccountV2),
     Current(Account),
 }
 
@@ -41,6 +43,7 @@ impl VAccount {
         match self {
             VAccount::V0(c) => c.into_account(is_view),
             VAccount::V1(c) => c.into_account(is_view),
+            VAccount::V2(c) => c.into_account(),
             VAccount::Current(c) => c,
         }
     }
@@ -63,6 +66,7 @@ impl Account {
             affected_farms: HashSet::new(),
             storage_tracker: Default::default(),
             booster_staking: None,
+            is_locked: false
         }
     }
 
@@ -87,21 +91,26 @@ impl Account {
         }
     }
 
-    pub fn increase_borrowed(&mut self, token_id: &TokenId, shares: Shares) {
-        self.borrowed
-            .entry(token_id.clone())
-            .or_insert_with(|| 0.into())
-            .0 += shares.0;
+    pub fn increase_borrowed(&mut self, position: &String, token_id: &TokenId, shares: Shares) {
+        if let Some(borrowed_info) = self.borrowed.get_mut(position) {
+            borrowed_info
+                .entry(token_id.clone())
+                .or_insert_with(|| 0.into())
+                .0 += shares.0;
+        } else {
+            self.borrowed.insert(position.clone(), HashMap::from([(token_id.clone(), shares)]));
+        }
     }
 
-    pub fn decrease_borrowed(&mut self, token_id: &TokenId, shares: Shares) {
-        let current_borrowed = self.internal_unwrap_borrowed(token_id);
+    pub fn decrease_borrowed(&mut self, position: &String, token_id: &TokenId, shares: Shares) {
+        let current_borrowed = self.internal_unwrap_borrowed(position, token_id);
         if let Some(new_balance) = current_borrowed.0.checked_sub(shares.0) {
+            let borrowed_info = self.borrowed.get_mut(position).unwrap();
             if new_balance > 0 {
-                self.borrowed
+                borrowed_info
                     .insert(token_id.clone(), Shares::from(new_balance));
             } else {
-                self.borrowed.remove(token_id);
+                borrowed_info.remove(token_id);
             }
         } else {
             env::panic_str("Not enough borrowed balance");
@@ -115,10 +124,12 @@ impl Account {
             .expect("Collateral asset not found")
     }
 
-    pub fn internal_unwrap_borrowed(&mut self, token_id: &TokenId) -> Shares {
+    pub fn internal_unwrap_borrowed(&mut self, position: &String, token_id: &TokenId) -> Shares {
         *self
             .borrowed
-            .get(&token_id)
+            .get(position)
+            .expect("Borrowed position not found")
+            .get(token_id)
             .expect("Borrowed asset not found")
     }
 
@@ -132,7 +143,9 @@ impl Account {
         potential_farms.insert(FarmId::NetTvl);
         potential_farms.extend(self.supplied.keys().cloned().map(FarmId::Supplied));
         potential_farms.extend(self.collateral.keys().cloned().map(FarmId::Supplied));
-        potential_farms.extend(self.borrowed.keys().cloned().map(FarmId::Borrowed));
+        self.borrowed.values().for_each(|v|{
+            potential_farms.extend(v.keys().cloned().map(FarmId::Borrowed));
+        });
         potential_farms
     }
 
@@ -146,10 +159,13 @@ impl Account {
     }
 
     pub fn get_borrowed_shares(&self, token_id: &TokenId) -> Shares {
-        self.borrowed
-            .get(&token_id)
-            .cloned()
-            .unwrap_or_else(|| 0.into())
+        self.borrowed.iter().fold(0u128, |acc, (_, borrowed_info)| {
+            if let Some(borrowed_share) = borrowed_info.get(&token_id) {
+                acc + borrowed_share.0
+            } else {
+                acc
+            }
+        }).into()
     }
 }
 

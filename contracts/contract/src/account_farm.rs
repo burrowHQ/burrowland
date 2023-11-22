@@ -67,6 +67,31 @@ impl Contract {
     pub fn get_account_tvl_shares(&self, account: &Account) -> u128 {
         let mut total_supplied: BigDecimal = BigDecimal::zero();
         let mut total_borrowed: BigDecimal = BigDecimal::zero();
+
+        for (token_id, unit_share_tokens) in self.last_lp_token_infos.iter() {
+            let token_id = AccountId::new_unchecked(token_id.clone());
+            let supplied_shares = account.get_supplied_shares(&token_id);
+            if supplied_shares.0 > 0 && 
+                unit_share_tokens.tokens.iter().all(|v| self.last_prices.contains_key(&v.token_id)) {
+                let asset = self.internal_unwrap_asset(&token_id);
+                let unit_share = 10u128.pow(unit_share_tokens.decimals as u32);
+                let price = unit_share_tokens.tokens
+                    .iter()
+                    .fold(BigDecimal::zero(), |sum, unit_share_token_value|{
+                        let token_asset = self.internal_unwrap_asset(&unit_share_token_value.token_id);
+                        let token_stdd_amount = unit_share_token_value.amount.0 * 10u128.pow(token_asset.config.extra_decimals as u32);
+                        let token_balance = u128_ratio(token_stdd_amount, supplied_shares.0, 10u128.pow(asset.config.extra_decimals as u32) * unit_share);
+                        sum + BigDecimal::from_balance_price(
+                            token_balance,
+                            self.last_prices.get(&unit_share_token_value.token_id).unwrap(),
+                            token_asset.config.extra_decimals,
+                        )
+                        .mul_ratio(token_asset.config.net_tvl_multiplier)
+                    });
+                total_supplied = total_supplied + price.mul_ratio(asset.config.net_tvl_multiplier)
+            }
+        }
+
         for (token_id, price) in self.last_prices.iter() {
             let supplied_shares = account.get_supplied_shares(token_id);
             let borrowed_shares = account.get_borrowed_shares(token_id);

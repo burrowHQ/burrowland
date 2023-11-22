@@ -10,13 +10,16 @@ pub struct Farmer {
     /// Amounts of various reward tokens the farmer claimed.
     pub rewards: HashMap<AccountId, Balance>,
     /// Various seed tokens the farmer staked.
-    #[serde(skip_serializing)]
-    pub seeds: UnorderedMap<SeedId, FarmerSeed>,
+    #[serde(skip)]
+    pub seeds: UnorderedMap<SeedId, FarmerSeedOld>,
+    #[serde(skip)]
+    pub vseeds: UnorderedMap<SeedId, VFarmerSeed>,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub enum VFarmer {
     V0(FarmerV0),
+    V1(FarmerV1),
     Current(Farmer),
 }
 
@@ -24,6 +27,7 @@ impl From<VFarmer> for Farmer {
     fn from(v: VFarmer) -> Self {
         match v {
             VFarmer::V0(c) => c.into(),
+            VFarmer::V1(c) => c.into(),
             VFarmer::Current(c) => c,
         }
     }
@@ -42,6 +46,9 @@ impl Farmer {
             sponsor_id: sponsor_id.clone(),
             rewards: HashMap::new(),
             seeds: UnorderedMap::new(StorageKeys::FarmerSeed {
+                account_id: farmer_id.clone(),
+            }),
+            vseeds: UnorderedMap::new(StorageKeys::VFarmerSeed {
                 account_id: farmer_id.clone(),
             }),
         }
@@ -64,6 +71,22 @@ impl Farmer {
             }
         }
     }
+
+    pub fn migrate_seed(&mut self, seed_id: &SeedId) {
+        if let Some(seed) = self.seeds.remove(seed_id) {
+            let current_version_seed: FarmerSeed = seed.into();
+            self.vseeds.insert(&seed_id, &current_version_seed.into());
+        }
+    }
+
+    pub fn get_seed_unwrap(&mut self, seed_id: &SeedId) -> FarmerSeed {
+        self.migrate_seed(&seed_id);
+        self.vseeds.get(&seed_id).unwrap().into()
+    }
+
+    pub fn set_seed(&mut self, seed_id: &SeedId, seed: FarmerSeed) {
+        self.vseeds.insert(&seed_id, &seed.into());
+    }
 }
 
 impl Contract {
@@ -82,11 +105,12 @@ impl Contract {
         let mut claimed = HashMap::new();
 
         let mut farmer_seed: FarmerSeed = farmer
-            .seeds
+            .vseeds
             .get(&seed.seed_id)
             .map(|v| v.into())
             .unwrap_or_else(|| FarmerSeed {
                 free_amount: 0,
+                shadow_amount: 0,
                 locked_amount: 0,
                 x_locked_amount: 0,
                 unlock_timestamp: 0,
@@ -132,6 +156,7 @@ impl Contract {
     }
 
     pub fn internal_do_farmer_claim(&self, farmer: &mut Farmer, seed: &mut Seed) {
+        farmer.migrate_seed(&seed.seed_id);
         let (mut farmer_seed, rewards, claimed) = self.internal_calc_farmer_claim(&farmer, &seed);
         farmer.add_rewards(&rewards);
         
@@ -140,7 +165,7 @@ impl Contract {
         farmer_seed.boost_ratios = self.gen_booster_ratios(&seed.seed_id, farmer);
         seed.total_seed_power = seed.total_seed_power + farmer_seed.get_seed_power() - prev;
 
-        farmer.seeds.insert(&seed.seed_id, &farmer_seed);
+        farmer.set_seed(&seed.seed_id, farmer_seed);
         seed.update_claimed(&claimed);
 
     }

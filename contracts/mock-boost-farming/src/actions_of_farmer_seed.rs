@@ -21,7 +21,7 @@ impl Contract {
 
         self.internal_do_farmer_claim(&mut farmer, &mut seed);
 
-        let mut farmer_seed = farmer.seeds.get(&seed_id).unwrap();
+        let mut farmer_seed = farmer.get_seed_unwrap(&seed_id);
         let amount = if let Some(request) = amount {
             request.0
         } else {
@@ -30,7 +30,7 @@ impl Contract {
 
         let increased_seed_power =
             farmer_seed.free_to_lock(amount, duration_sec, &config);
-        farmer.seeds.insert(&seed_id, &farmer_seed);
+        farmer.set_seed(&seed_id, farmer_seed);
 
         seed.total_seed_power += increased_seed_power;
 
@@ -69,7 +69,7 @@ impl Contract {
 
         self.internal_do_farmer_claim(&mut farmer, &mut seed);
 
-        let mut farmer_seed = farmer.seeds.get(&seed_id).unwrap();
+        let mut farmer_seed = farmer.get_seed_unwrap(&seed_id);
 
         let prev = farmer_seed.get_seed_power();
 
@@ -90,9 +90,9 @@ impl Contract {
         seed.total_seed_power = seed.total_seed_power - prev + farmer_seed.get_seed_power();
 
         if farmer_seed.is_empty() {
-            farmer.seeds.remove(&seed_id);
+            farmer.vseeds.remove(&seed_id);
         } else {
-            farmer.seeds.insert(&seed_id, &farmer_seed);
+            farmer.set_seed(&seed_id, farmer_seed);
         }
 
         self.update_impacted_seeds(&mut farmer, &seed_id);
@@ -131,7 +131,7 @@ impl Contract {
 
         self.internal_do_farmer_claim(&mut farmer, &mut seed);
 
-        let mut farmer_seed = farmer.seeds.get(&seed_id).unwrap();
+        let mut farmer_seed = farmer.get_seed_unwrap(&seed_id);
 
         let (reduced_seed_power, seed_slashed) = farmer_seed.unlock_to_free_with_slashed(unlock_amount, seed.slash_rate);
 
@@ -143,7 +143,7 @@ impl Contract {
             .seeds_slashed
             .insert(&seed_id, &(slashed_amount + seed_slashed));
 
-        farmer.seeds.insert(&seed_id, &farmer_seed);
+        farmer.set_seed(&seed_id, farmer_seed);
 
         self.update_impacted_seeds(&mut farmer, &seed_id);
 

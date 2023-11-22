@@ -10,11 +10,11 @@ use near_sdk::collections::{LookupMap, UnorderedSet, Vector, UnorderedMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
     assert_one_yocto, env, log, near_bindgen, AccountId, Balance, PanicOnDefault, Promise,
-    PromiseResult, StorageUsage, BorshStorageKey, PromiseOrValue, ext_contract
+    PromiseResult, StorageUsage, BorshStorageKey, PromiseOrValue, ext_contract, Gas
 };
 use utils::GAS_FOR_BASIC_OP;
 
-use crate::account_deposit::{VAccount, Account};
+use crate::account_deposit::*;
 pub use crate::action::{SwapAction, Action, ActionResult, get_tokens_in_actions};
 use crate::errors::*;
 use crate::admin_fee::AdminFees;
@@ -24,8 +24,9 @@ use crate::stable_swap::StableSwapPool;
 use crate::rated_swap::{RatedSwapPool, rate::{RateTrait, global_get_rate, global_set_rate}};
 use crate::utils::{check_token_duplicates, TokenCache};
 pub use crate::custom_keys::*;
-pub use crate::views::{PoolInfo, RatedPoolInfo, ContractMetadata, RatedTokenInfo, AddLiquidityPrediction};
+pub use crate::views::{PoolInfo, ShadowRecordInfo, RatedPoolInfo, StablePoolInfo, ContractMetadata, RatedTokenInfo, AddLiquidityPrediction, RefStorageState};
 pub use crate::token_receiver::AddLiquidityInfo;
+pub use crate::shadow_actions::*;
 
 mod account_deposit;
 mod action;
@@ -43,6 +44,7 @@ mod token_receiver;
 mod utils;
 mod views;
 mod custom_keys;
+mod shadow_actions;
 
 #[derive(BorshStorageKey, BorshSerialize)]
 pub(crate) enum StorageKey {
@@ -54,6 +56,7 @@ pub(crate) enum StorageKey {
     AccountTokens {account_id: AccountId},
     Frozenlist,
     Referral,
+    ShadowRecord {account_id: AccountId},
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Eq, PartialEq, Clone)]
@@ -82,6 +85,10 @@ pub trait SelfCallbacks {
 pub struct Contract {
     /// Account of the owner.
     owner_id: AccountId,
+    /// Account of the boost_farm contract.
+    boost_farm_id: AccountId,
+    /// Account of the burrowland contract.
+    burrowland_id: AccountId,
     /// Admin fee rate in total fee.
     admin_fee_bps: u32,
     /// List of all the pools.
@@ -103,9 +110,11 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(owner_id: AccountId, exchange_fee: u32, referral_fee: u32) -> Self {
+    pub fn new(owner_id: AccountId, boost_farm_id: AccountId, burrowland_id: AccountId, exchange_fee: u32, referral_fee: u32) -> Self {
         Self {
-            owner_id: owner_id.clone(),
+            owner_id,
+            boost_farm_id,
+            burrowland_id,
             admin_fee_bps: exchange_fee + referral_fee,
             pools: Vector::new(StorageKey::Pools),
             accounts: LookupMap::new(StorageKey::Accounts),
@@ -341,6 +350,10 @@ impl Contract {
         let prev_storage = env::storage_usage();
         let sender_id = env::predecessor_account_id();
         let mut pool = self.pools.get(pool_id).expect(ERR85_NO_POOL);
+        let mut deposits = self.internal_unwrap_account(&sender_id);
+        if let Some(record) = deposits.get_shadow_record(pool_id) {
+            assert!(shares.0 <= record.free_shares(pool.share_balances(&sender_id)), "Not enough free shares");
+        }
         // feature frozenlist
         self.assert_no_frozen_tokens(pool.tokens());
         let amounts = pool.remove_liquidity(
@@ -354,8 +367,6 @@ impl Contract {
         );
         self.pools.replace(pool_id, &pool);
         let tokens = pool.tokens();
-        // [AUDITION_AMENDMENT] 2.3.7 Code Optimization (I)
-        let mut deposits = self.internal_unwrap_account(&sender_id);
         for i in 0..tokens.len() {
             deposits.deposit(&tokens[i], amounts[i]);
         }
@@ -404,6 +415,9 @@ impl Contract {
         let tokens = pool.tokens();
         // [AUDITION_AMENDMENT] 2.3.7 Code Optimization (I)
         let mut deposits = self.internal_unwrap_account(&sender_id);
+        if let Some(record) = deposits.get_shadow_record(pool_id) {
+            assert!(burn_shares <= record.free_shares(pool.share_balances(&sender_id)), "Not enough free shares");
+        }
         for i in 0..tokens.len() {
             deposits.deposit(&tokens[i], amounts[i].into());
         }
@@ -476,7 +490,7 @@ impl Contract {
     }
 
     /// Check how much storage taken costs and refund the left over back.
-    fn internal_check_storage(&self, prev_storage: StorageUsage) {
+    fn internal_check_storage(&self, prev_storage: StorageUsage) -> u128 {
         let storage_cost = env::storage_usage()
             .checked_sub(prev_storage)
             .unwrap_or_default() as Balance
@@ -493,6 +507,7 @@ impl Contract {
         if refund > 0 {
             Promise::new(env::predecessor_account_id()).transfer(refund);
         }
+        storage_cost
     }
 
     /// Adds given pool to the list and returns it's id.

@@ -88,10 +88,13 @@ impl AccountV1 {
             .into_iter()
             .map(|c| (c.token_id, c.shares))
             .collect();
-        let borrowed = borrowed_vec
+        let borrowed = {
+            let borrowed_info = borrowed_vec
             .into_iter()
             .map(|b| (b.token_id, b.shares))
             .collect();
+            HashMap::from([(NEP_POSITION.to_string(),  borrowed_info)])
+        };
         let farms = farms_unordered_map
             .iter()
             .map(|(key, value)| (key, value.into()))
@@ -112,6 +115,55 @@ impl AccountV1 {
             affected_farms,
             storage_tracker,
             booster_staking,
+            is_locked: false
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AccountV2 {
+    /// A copy of an account ID. Saves one storage_read when iterating on accounts.
+    pub account_id: AccountId,
+    /// A list of assets that are supplied by the account (but not used a collateral).
+    /// It's not returned for account pagination.
+    pub supplied: HashMap<TokenId, Shares>,
+    /// A list of collateral assets.
+    pub collateral: HashMap<TokenId, Shares>,
+    /// A list of borrowed assets.
+    pub borrowed: HashMap<TokenId, Shares>,
+    /// Keeping track of data required for farms for this account.
+    pub farms: HashMap<FarmId, AccountFarm>,
+    #[borsh_skip]
+    pub affected_farms: std::collections::HashSet<FarmId>,
+    /// Tracks changes in storage usage by persistent collections in this account.
+    #[borsh_skip]
+    pub storage_tracker: StorageTracker,
+    /// Staking of booster token.
+    pub booster_staking: Option<BoosterStaking>,
+}
+
+impl AccountV2 {
+    pub fn into_account(self) -> Account {
+        let AccountV2 {
+            account_id,
+            supplied,
+            collateral,
+            borrowed,
+            farms,
+            affected_farms,
+            storage_tracker,
+            booster_staking,
+        } = self;
+        Account {
+            account_id,
+            supplied,
+            collateral,
+            borrowed: HashMap::from([(NEP_POSITION.to_string(), borrowed)]),
+            farms,
+            affected_farms,
+            storage_tracker,
+            booster_staking,
+            is_locked: false
         }
     }
 }
@@ -328,4 +380,93 @@ impl From<AssetV1> for Asset {
             config: config.into(),
         }
     }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+#[serde(crate = "near_sdk::serde")]
+pub struct ConfigV0 {
+    /// The account ID of the oracle contract
+    pub oracle_account_id: AccountId,
+
+    /// The account ID of the contract owner that allows to modify config, assets and use reserves.
+    pub owner_id: AccountId,
+
+    /// The account ID of the booster token contract.
+    pub booster_token_id: TokenId,
+
+    /// The number of decimals of the booster fungible token.
+    pub booster_decimals: u8,
+
+    /// The total number of different assets
+    pub max_num_assets: u32,
+
+    /// The maximum number of seconds expected from the oracle price call.
+    pub maximum_recency_duration_sec: DurationSec,
+
+    /// Maximum staleness duration of the price data timestamp.
+    /// Because NEAR protocol doesn't implement the gas auction right now, the only reason to
+    /// delay the price updates are due to the shard congestion.
+    /// This parameter can be updated in the future by the owner.
+    pub maximum_staleness_duration_sec: DurationSec,
+
+    /// The minimum duration to stake booster token in seconds.
+    pub minimum_staking_duration_sec: DurationSec,
+
+    /// The maximum duration to stake booster token in seconds.
+    pub maximum_staking_duration_sec: DurationSec,
+
+    /// The rate of xBooster for the amount of Booster given for the maximum staking duration.
+    /// Assuming the 100% multiplier at the minimum staking duration. Should be no less than 100%.
+    /// E.g. 20000 means 200% multiplier (or 2X).
+    pub x_booster_multiplier_at_maximum_staking_duration: u32,
+
+    /// Whether an account with bad debt can be liquidated using reserves.
+    /// The account should have borrowed sum larger than the collateral sum.
+    pub force_closing_enabled: bool,
+}
+
+impl From<ConfigV0> for Config {
+    fn from(a: ConfigV0) -> Self {
+        let ConfigV0 { 
+            oracle_account_id, 
+            owner_id, 
+            booster_token_id, 
+            booster_decimals, 
+            max_num_assets, 
+            maximum_recency_duration_sec, 
+            maximum_staleness_duration_sec, 
+            minimum_staking_duration_sec, 
+            maximum_staking_duration_sec, 
+            x_booster_multiplier_at_maximum_staking_duration, 
+            force_closing_enabled 
+        } = a;
+        Self {
+            oracle_account_id, 
+            ref_exchange_id: "v2.ref-finance.near".parse().unwrap(),
+            owner_id, 
+            booster_token_id, 
+            booster_decimals, 
+            max_num_assets, 
+            maximum_recency_duration_sec, 
+            maximum_staleness_duration_sec, 
+            lp_tokens_info_valid_duration_sec: 600,
+            minimum_staking_duration_sec, 
+            maximum_staking_duration_sec, 
+            x_booster_multiplier_at_maximum_staking_duration, 
+            force_closing_enabled 
+        }
+    }
+}
+
+#[derive(BorshDeserialize, BorshSerialize)]
+pub struct ContractV080 {
+    pub accounts: UnorderedMap<AccountId, VAccount>,
+    pub storage: LookupMap<AccountId, VStorage>,
+    pub assets: LookupMap<TokenId, VAsset>,
+    pub asset_farms: LookupMap<FarmId, VAssetFarm>,
+    pub asset_ids: UnorderedSet<TokenId>,
+    pub config: LazyOption<ConfigV0>,
+    /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
+    pub last_prices: HashMap<TokenId, Price>,
 }

@@ -192,27 +192,27 @@ impl Burrowland {
             .await
     }
 
-    // pub async fn position_borrow_and_withdraw(
-    //     &self,
-    //     caller: &Account,
-    //     oracle: &Oralce,
-    //     receiver_id: &AccountId,
-    //     price_data: PriceData,
-    //     position: Option<String>,
-    //     token_id: &AccountId,
-    //     borrow_amount: u128,
-    //     withdraw_amount: u128
-    // ) -> Result<ExecutionFinalResult> {
-    //     oracle.oracle_call(caller, receiver_id, price_data, PriceReceiverMsg::Execute {
-    //         actions: vec![
-    //             Action::PositionBorrow{
-    //                 position,
-    //                 asset_amount: asset_amount(token_id, borrow_amount)
-    //             },
-    //             Action::Withdraw(asset_amount(token_id, withdraw_amount)),
-    //         ],
-    //     }).await
-    // }
+    pub async fn position_borrow_and_withdraw(
+        &self,
+        caller: &Account,
+        oracle: &Oralce,
+        receiver_id: &AccountId,
+        price_data: PriceData,
+        position: Option<String>,
+        token_id: &AccountId,
+        borrow_amount: u128,
+        withdraw_amount: u128
+    ) -> Result<ExecutionFinalResult> {
+        oracle.oracle_call(caller, receiver_id, price_data, PriceReceiverMsg::Execute {
+            actions: vec![
+                Action::PositionBorrow{
+                    position,
+                    asset_amount: asset_amount(token_id, borrow_amount)
+                },
+                Action::Withdraw(asset_amount(token_id, withdraw_amount)),
+            ],
+        }).await
+    }
 
     pub async fn liquidate(
         &self,
@@ -223,12 +223,14 @@ impl Burrowland {
         price_data: PriceData,
         in_assets: Vec<AssetAmount>,
         out_assets: Vec<AssetAmount>,
+        position: Option<String>,
     ) -> Result<ExecutionFinalResult> {
         oracle.oracle_call(caller, receiver_id, price_data, PriceReceiverMsg::Execute {
             actions: vec![
                 Action::Liquidate { 
                     account_id: near_sdk::AccountId::new_unchecked(liquidation_account_id.to_string()), 
-                    in_assets, out_assets },
+                    in_assets, out_assets, position
+                },
             ],
         }).await
     }
@@ -237,14 +239,15 @@ impl Burrowland {
         &self,
         caller: &Account,
         oracle: &Oralce,
-        receiver_id: &AccountId,
         force_close_account_id: &AccountId,
         price_data: PriceData,
+        position: Option<String>
     ) -> Result<ExecutionFinalResult> {
-        oracle.oracle_call(caller, receiver_id, price_data, PriceReceiverMsg::Execute {
+        oracle.oracle_call(caller, self.0.id(), price_data, PriceReceiverMsg::Execute {
             actions: vec![
                 Action::ForceClose { 
-                    account_id: near_sdk::AccountId::new_unchecked(force_close_account_id.to_string()), 
+                    account_id: near_sdk::AccountId::new_unchecked(force_close_account_id.to_string()),
+                    position
                 },
             ],
         }).await
@@ -285,17 +288,163 @@ impl Burrowland {
             .transact()
             .await
     }
+
+    pub async fn sync_ref_exchange_lp_token_infos(
+        &self,
+        caller: &Account,
+        token_ids: Option<Vec<String>>
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "sync_ref_exchange_lp_token_infos")
+            .args_json(json!({
+                "token_ids": token_ids
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn add_asset_farm_reward(
+        &self,
+        caller: &Account,
+        farm_id: FarmId,
+        reward_token_id: &AccountId,
+        new_reward_per_day: U128,
+        new_booster_log_base: U128,
+        reward_amount: U128,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "add_asset_farm_reward")
+            .args_json(json!({
+                "farm_id": farm_id,
+                "reward_token_id": reward_token_id,
+                "new_reward_per_day": new_reward_per_day,
+                "new_booster_log_base": new_booster_log_base,
+                "reward_amount": reward_amount,
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
+
+    pub async fn account_farm_claim_all(
+        &self,
+        caller: &Account,
+        account_id: Option<AccountId>
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "account_farm_claim_all")
+            .args_json(json!({
+                "account_id": account_id,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn extend_guardians(
+        &self,
+        caller: &Account,
+        guardians: Vec<&AccountId>
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "extend_guardians")
+            .args_json(json!({
+                "guardians": guardians,
+            }))
+            .deposit(1)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn remove_guardians(
+        &self,
+        caller: &Account,
+        guardians: Vec<&AccountId>
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "remove_guardians")
+            .args_json(json!({
+                "guardians": guardians,
+            }))
+            .deposit(1)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn update_asset_prot_ratio(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        prot_ratio: u32
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "update_asset_prot_ratio")
+            .args_json(json!({
+                "token_id": token_id,
+                "prot_ratio": prot_ratio
+            }))
+            .deposit(1)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn update_asset_net_tvl_multiplier(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        net_tvl_multiplier: u32
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "update_asset_net_tvl_multiplier")
+            .args_json(json!({
+                "token_id": token_id,
+                "net_tvl_multiplier": net_tvl_multiplier
+            }))
+            .deposit(1)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn update_asset_capacity(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        can_deposit: Option<bool>, 
+        can_withdraw: Option<bool>, 
+        can_use_as_collateral: Option<bool>, 
+        can_borrow: Option<bool>
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "update_asset_capacity")
+            .args_json(json!({
+                "token_id": token_id,
+                "can_deposit": can_deposit, 
+                "can_withdraw": can_withdraw, 
+                "can_use_as_collateral": can_use_as_collateral, 
+                "can_borrow": can_borrow
+            }))
+            .deposit(1)
+            .max_gas()
+            .transact()
+            .await
+    }
 }
 
 impl Burrowland {
     pub async fn get_asset(
         &self,
-        token: &FtContract
+        token_id: &AccountId
     ) -> Result<AssetDetailedView> {
         self.0
             .call("get_asset")
             .args_json(json!({
-                "token_id": token.0.id()
+                "token_id": token_id
             }))
             .view()
             .await?
@@ -326,6 +475,16 @@ impl Burrowland {
             .json::<Config>()
     }
 
+    pub async fn get_config_v0(
+        &self,
+    ) -> Result<ConfigV0> {
+        self.0
+            .call("get_config")
+            .view()
+            .await?
+            .json::<ConfigV0>()
+    }
+
     pub async fn get_version(
         &self,
     ) -> Result<String> {
@@ -334,6 +493,16 @@ impl Burrowland {
             .view()
             .await?
             .json::<String>()
+    }
+
+    pub async fn get_last_lp_token_infos(
+        &self,
+    ) -> Result<HashMap<String, UnitShareTokens>> {
+        self.0
+            .call("get_last_lp_token_infos")
+            .view()
+            .await?
+            .json::<HashMap<String, UnitShareTokens>>()
     }
 }
 

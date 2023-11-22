@@ -537,11 +537,13 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 
 [[package]]
 name = "contract"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "approx",
  "common",
+ "mock-boost-farming",
  "mock-ft",
+ "mock-ref-exchange",
  "near-contract-standards",
  "near-sdk",
  "near-sys",

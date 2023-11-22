@@ -104,9 +104,9 @@ impl Contract {
 
         self.internal_do_farmer_claim(&mut farmer, &mut seed);
 
-        let mut farmer_seed = farmer.seeds.get(&seed_id).unwrap();
+        let mut farmer_seed = farmer.get_seed_unwrap(&seed_id);
         let increased_seed_power = farmer_seed.add_free(amount);
-        farmer.seeds.insert(&seed_id, &farmer_seed);
+        farmer.set_seed(&seed_id, farmer_seed);
 
         seed.total_seed_amount += amount;
         seed.total_seed_power += increased_seed_power;
@@ -144,9 +144,9 @@ impl Contract {
 
         self.internal_do_farmer_claim(&mut farmer, &mut seed);
 
-        let mut farmer_seed = farmer.seeds.get(&seed_id).unwrap();
+        let mut farmer_seed = farmer.get_seed_unwrap(&seed_id);
         let increased_seed_power = farmer_seed.add_lock(amount, duration_sec, &config);
-        farmer.seeds.insert(&seed_id, &farmer_seed);
+        farmer.set_seed(&seed_id, farmer_seed);
 
         seed.total_seed_amount += amount;
         seed.total_seed_power += increased_seed_power;

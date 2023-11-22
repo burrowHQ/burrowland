@@ -2,7 +2,7 @@ use crate::*;
 use near_sdk::StorageUsage;
 
 /// A helper object that tracks changes in state storage.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct StorageTracker {
     pub bytes_added: StorageUsage,
     pub bytes_released: StorageUsage,

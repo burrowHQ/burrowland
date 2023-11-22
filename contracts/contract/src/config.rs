@@ -4,10 +4,13 @@ pub const MIN_BOOSTER_MULTIPLIER: u32 = 10000;
 
 /// Contract config
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Config {
     /// The account ID of the oracle contract
     pub oracle_account_id: AccountId,
+
+    pub ref_exchange_id: AccountId,
 
     /// The account ID of the contract owner that allows to modify config, assets and use reserves.
     pub owner_id: AccountId,
@@ -29,6 +32,8 @@ pub struct Config {
     /// delay the price updates are due to the shard congestion.
     /// This parameter can be updated in the future by the owner.
     pub maximum_staleness_duration_sec: DurationSec,
+
+    pub lp_tokens_info_valid_duration_sec: DurationSec,
 
     /// The minimum duration to stake booster token in seconds.
     pub minimum_staking_duration_sec: DurationSec,
@@ -74,6 +79,11 @@ impl Contract {
             &self.internal_config().owner_id,
             "Not an owner"
         );
+    }
+
+    pub fn assert_owner_or_guardians(&self) {
+        assert!(env::predecessor_account_id() == self.internal_config().owner_id 
+            || self.guardians.contains(&env::predecessor_account_id()), "Not allowed");
     }
 }
 
@@ -132,6 +142,63 @@ impl Contract {
             );
         }
         asset.config = asset_config;
+        self.internal_set_asset(&token_id, asset);
+    }
+
+    /// Updates the prot_ratio for the asset with the a given token_id.
+    /// - Panics if the prot_ratio is invalid.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    pub fn update_asset_prot_ratio(&mut self, token_id: AccountId, prot_ratio: u32) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        assert!(prot_ratio <= MAX_RATIO);
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        asset.config.prot_ratio = prot_ratio;
+        self.internal_set_asset(&token_id, asset);
+    }
+
+    /// Updates the capacity for the asset with the a given token_id.
+    /// - Panics if the capacity is invalid.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - The can_withdraw requires to be called by the contract owner.
+    /// - The can_deposit、can_use_as_collateral and can_borrow requires to be called by the contract owner or guardians.
+    #[payable]
+    pub fn update_asset_capacity(&mut self, token_id: AccountId, can_deposit: Option<bool>, can_withdraw: Option<bool>, can_use_as_collateral: Option<bool>, can_borrow: Option<bool>) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        if let Some(can_deposit) = can_deposit {
+            asset.config.can_deposit = can_deposit;
+        }
+        if let Some(can_withdraw) = can_withdraw {
+            self.assert_owner();
+            asset.config.can_withdraw = can_withdraw;
+        }
+        if let Some(can_use_as_collateral) = can_use_as_collateral {
+            asset.config.can_use_as_collateral = can_use_as_collateral;
+        }
+        if let Some(can_borrow) = can_borrow {
+            asset.config.can_borrow = can_borrow;
+        }
+        self.internal_set_asset(&token_id, asset);
+    }
+
+    /// Updates the net_tvl_multiplier for the asset with the a given token_id.
+    /// - Panics if the net_tvl_multiplier is invalid.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    pub fn update_asset_net_tvl_multiplier(&mut self, token_id: AccountId, net_tvl_multiplier: u32) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        assert!(net_tvl_multiplier <= MAX_RATIO);
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        asset.config.net_tvl_multiplier = net_tvl_multiplier;
         self.internal_set_asset(&token_id, asset);
     }
 
@@ -223,7 +290,7 @@ impl Contract {
     #[payable]
     pub fn decrease_reserved(&mut self, token_id: AccountId, stdd_amount: Option<U128>) {
         assert_one_yocto();
-        self.assert_owner();
+        self.assert_owner_or_guardians();
         let mut asset = self.internal_unwrap_asset(&token_id);
         let stdd_amount: u128 = stdd_amount.map(|v| v.into()).unwrap_or(asset.reserved);
         
@@ -233,6 +300,12 @@ impl Contract {
 
             self.deposit_to_owner(&token_id, stdd_amount);
 
+            if self.guardians.contains(&env::predecessor_account_id()) {
+                let asset = self.internal_unwrap_asset(&token_id);
+                let reserve_ratio = BigDecimal::from(asset.reserved).div_u128(asset.supplied.balance + asset.reserved);
+                let config_reserve_ratio = BigDecimal::from_ratio(asset.config.reserve_ratio);
+                assert!(reserve_ratio >= config_reserve_ratio);
+            }
             events::emit::decrease_reserved(&self.internal_config().owner_id, stdd_amount, &token_id);
         }
     }

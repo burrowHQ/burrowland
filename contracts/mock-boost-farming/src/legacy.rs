@@ -36,6 +36,7 @@ impl From<ContractDataV0100> for ContractData {
             owner_id,
             next_owner_id: None,
             next_owner_accept_deadline: None,
+            ref_exchange_id: "v2.ref-finance.near".parse().unwrap(),
             operators,
             config,
             seeds,
@@ -57,7 +58,7 @@ pub struct FarmerV0 {
     /// Amounts of various reward tokens the farmer claimed.
     pub rewards: HashMap<AccountId, Balance>,
     /// Various seed tokens the farmer staked.
-    pub seeds: UnorderedMap<SeedId, FarmerSeed>,
+    pub seeds: UnorderedMap<SeedId, FarmerSeedOld>,
 }
 
 impl From<FarmerV0> for Farmer {
@@ -67,11 +68,15 @@ impl From<FarmerV0> for Farmer {
             rewards,
             seeds,
         } = a;
+
         Self {
             farmer_id: farmer_id.clone(),
             sponsor_id: farmer_id.clone(),
             rewards,
             seeds,
+            vseeds: UnorderedMap::new(StorageKeys::VFarmerSeed {
+                account_id: farmer_id.clone(),
+            }),
         }
     }
 }
@@ -114,6 +119,7 @@ impl From<ContractDataV0101> for ContractData {
             owner_id,
             next_owner_id: None,
             next_owner_accept_deadline: None,
+            ref_exchange_id: "v2.ref-finance.near".parse().unwrap(),
             state,
             operators,
             config,
@@ -268,3 +274,140 @@ impl From<SeedFarmV0> for SeedFarm {
     }
 }
 
+#[derive(BorshDeserialize, BorshSerialize)]
+pub struct ContractDataV0102 {
+    pub owner_id: AccountId,
+    pub next_owner_id: Option<AccountId>,
+    pub next_owner_accept_deadline: Option<u64>,
+    pub state: RunningState,
+    pub operators: UnorderedSet<AccountId>,
+    pub config: LazyOption<Config>,
+    pub seeds: UnorderedMap<SeedId, VSeed>,
+    pub farmers: LookupMap<AccountId, VFarmer>,
+    pub outdated_farms: UnorderedMap<FarmId, VSeedFarm>,
+    // all slashed seed would recorded in here
+    pub seeds_slashed: UnorderedMap<SeedId, Balance>,
+    // if unstake seed encounter error, the seed would go to here
+    pub seeds_lostfound: UnorderedMap<SeedId, Balance>,
+
+    // for statistic
+    farmer_count: u64,
+    farm_count: u64,
+}
+
+impl From<ContractDataV0102> for ContractData {
+    fn from(a: ContractDataV0102) -> Self {
+        let ContractDataV0102 {
+            owner_id,
+            next_owner_id,
+            next_owner_accept_deadline,
+            state,
+            operators,
+            config,
+            seeds,
+            farmers,
+            outdated_farms,
+            seeds_slashed,
+            seeds_lostfound,
+            farmer_count,
+            farm_count,
+        } = a;
+        Self {
+            owner_id,
+            next_owner_id,
+            next_owner_accept_deadline,
+            ref_exchange_id: "v2.ref-finance.near".parse().unwrap(),
+            state,
+            operators,
+            config,
+            seeds,
+            farmers,
+            outdated_farms,
+            seeds_slashed,
+            seeds_lostfound,
+            farmer_count,
+            farm_count,
+            
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+#[serde(crate = "near_sdk::serde")]
+pub struct FarmerSeedOld {
+    #[serde(with = "u128_dec_format")]
+    pub free_amount: Balance,
+    /// The amount of locked token.
+    #[serde(with = "u128_dec_format")]
+    pub locked_amount: Balance,
+    /// The amount of power for those locked amount.
+    #[serde(with = "u128_dec_format")]
+    pub x_locked_amount: Balance,
+    /// When the locking token can be unlocked without slash in nanoseconds.
+    #[serde(with = "u64_dec_format")]
+    pub unlock_timestamp: u64,
+    /// The duration of current locking in seconds.
+    pub duration_sec: u32,
+    /// <booster_id, booster-ratio>
+    pub boost_ratios: HashMap<SeedId, f64>,
+    #[serde(skip)]
+    pub user_rps: HashMap<FarmId, BigDecimal>,
+}
+
+impl From<FarmerSeedOld> for FarmerSeed {
+    fn from(a: FarmerSeedOld) -> Self {
+        let FarmerSeedOld {
+            free_amount,
+            locked_amount,
+            x_locked_amount,
+            unlock_timestamp,
+            duration_sec,
+            boost_ratios,
+            user_rps
+        } = a;
+        Self {
+            free_amount,
+            shadow_amount: 0,
+            locked_amount,
+            x_locked_amount,
+            unlock_timestamp,
+            duration_sec,
+            boost_ratios,
+            user_rps
+        }
+    }
+}
+
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct FarmerV1 {
+    /// A copy of an farmer ID. Saves one storage_read when iterating on farmers.
+    pub farmer_id: AccountId,
+    pub sponsor_id: AccountId,
+    /// Amounts of various reward tokens the farmer claimed.
+    pub rewards: HashMap<AccountId, Balance>,
+    /// Various seed tokens the farmer staked.
+    pub seeds: UnorderedMap<SeedId, FarmerSeedOld>,
+}
+
+impl From<FarmerV1> for Farmer {
+    fn from(a: FarmerV1) -> Self {
+        let FarmerV1 {
+            farmer_id,
+            sponsor_id,
+            rewards,
+            seeds
+        } = a;
+
+        Self {
+            farmer_id: farmer_id.clone(),
+            sponsor_id,
+            rewards,
+            seeds,
+            vseeds: UnorderedMap::new(StorageKeys::VFarmerSeed {
+                account_id: farmer_id.clone(),
+            }),
+        }
+    }
+}

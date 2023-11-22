@@ -120,6 +120,25 @@ pub fn assert_balances(actual: &[AssetView], expected: &[AssetView]) {
     }
 }
 
+pub async fn tool_create_account(
+    master: &Account,
+    account_id: &str,
+    balance: Option<u128>,
+) -> Account {
+    let balance = if let Some(balance) = balance {
+        balance
+    } else {
+        parse_near!("50 N")
+    };
+    master
+        .create_subaccount(account_id)
+        .initial_balance(balance)
+        .transact()
+        .await
+        .unwrap()
+        .unwrap()
+}
+
 #[macro_export]
 macro_rules! check{
     ($exec_func: expr)=>{
@@ -141,7 +160,7 @@ macro_rules! check{
         if err_msg.is_empty() {
             println!("{} success", $prefix);
         } else {
-            println!("{} {}", $prefix, tool_err_msg(outcome));
+            println!("{} {}", $prefix, err_msg);
         }
     };
     (view $exec_func: expr)=>{
@@ -151,6 +170,11 @@ macro_rules! check{
     (view $prefix: literal $exec_func: expr)=>{
         let query_result = $exec_func.await?;
         println!("{} {:?}", $prefix, query_result);
+    };
+    (logs $exec_func: expr)=>{
+        let outcome = $exec_func.await?;
+        assert!(outcome.is_success() && outcome.receipt_failures().is_empty());
+        println!("{:#?}", outcome.logs());
     };
     ($exec_func: expr, $err_info: expr)=>{
         assert!(tool_err_msg($exec_func.await).contains($err_info));

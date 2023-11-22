@@ -3,13 +3,14 @@ use crate::*;
 static SEEDS: Lazy<Mutex<HashMap<SeedId, Option<Seed>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Seed {
     /// The Farming Token this FarmSeed represented for
     pub seed_id: SeedId,
     pub seed_decimal: u32,
     /// FarmId = {seed_id}#{next_index}
-    #[serde(skip_serializing)]
+    #[serde(skip)]
     pub farms: HashMap<FarmId, VSeedFarm>,
     pub next_index: u32,
     /// total (staked) balance of this seed (Farming Token)

@@ -50,7 +50,7 @@ async fn test_booster_stake_all() -> Result<()> {
 
     check!(burrowland_contract.account_stake_booster(&alice, None, MAX_DURATION_SEC));
     
-    let asset = burrowland_contract.get_asset(&booster_token_contract).await?;
+    let asset = burrowland_contract.get_asset(&booster_token_contract.0.id()).await?;
     assert_eq!(asset.supplied.balance, 0);
 
     let account = burrowland_contract.get_account(&alice).await?.unwrap();

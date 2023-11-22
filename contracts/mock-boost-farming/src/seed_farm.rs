@@ -13,6 +13,7 @@ pub struct FarmTerms {
 
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
 #[serde(crate = "near_sdk::serde")]
 pub enum VSeedFarm {
     V0(SeedFarmV0),

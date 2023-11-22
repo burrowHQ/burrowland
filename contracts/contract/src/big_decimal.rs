@@ -5,7 +5,6 @@ use near_sdk::serde::Serializer;
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Div, Mul, Sub};
-#[cfg(not(target_arch = "wasm32"))]
 use std::str::FromStr;
 
 uint::construct_uint!(
@@ -52,10 +51,8 @@ impl std::fmt::Debug for BigDecimal {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 const PARSE_INT_ERROR: &'static str = "Parse int error";
 
-#[cfg(not(target_arch = "wasm32"))]
 impl FromStr for BigDecimal {
     type Err = String;
 
@@ -71,7 +68,7 @@ impl FromStr for BigDecimal {
         } else {
             (s, 0u128)
         };
-        let int = U384::from_str(&int).map_err(|_| PARSE_INT_ERROR)?;
+        let int = U384::from_dec_str(&int).map_err(|_| PARSE_INT_ERROR)?;
         if dec >= BIG_DIVISOR {
             return Err(String::from("The decimal part is too large"));
         }
@@ -88,7 +85,6 @@ impl Serialize for BigDecimal {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl<'de> Deserialize<'de> for BigDecimal {
     fn deserialize<D>(
         deserializer: D,

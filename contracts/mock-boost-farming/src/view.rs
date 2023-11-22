@@ -9,6 +9,7 @@ pub struct Metadata {
     pub owner_id: AccountId,
     pub next_owner_id: Option<AccountId>,
     pub next_owner_accept_deadline: Option<u64>,
+    pub ref_exchange_id: AccountId,
     pub state: RunningState,
     pub operators: Vec<AccountId>,
     pub farmer_count: U64,
@@ -34,6 +35,7 @@ impl Contract {
             owner_id: self.data().owner_id.clone(),
             next_owner_id: self.data().next_owner_id.clone(),
             next_owner_accept_deadline: self.data().next_owner_accept_deadline.clone(),
+            ref_exchange_id: self.data().ref_exchange_id.clone(),
             state: self.data().state.clone(),
             operators: self.data().operators.to_vec(),
             farmer_count: self.data().farmer_count.into(),
@@ -186,27 +188,77 @@ impl Contract {
         from_index: Option<u64>,
         limit: Option<u64>,
     ) -> HashMap<SeedId, FarmerSeed> {
-        if let Some(farmer) = self.internal_get_farmer(&farmer_id) {
-            let keys = farmer.seeds.keys_as_vector();
-            let from_index = from_index.unwrap_or(0);
-            let limit = limit.unwrap_or(keys.len() as u64);
-            (from_index..std::cmp::min(keys.len() as u64, from_index + limit))
-                .map(|idx| {
-                    let key = keys.get(idx).unwrap();
-                    (key.clone(), farmer.seeds.get(&key).unwrap())
-                })
-                .collect()
-        } else {
-            HashMap::new()
+        if let Some(farmer) = self.data().farmers.get(&farmer_id) {
+            match farmer {
+                VFarmer::V0(f) => {
+                    let keys = f.seeds.keys_as_vector();
+                    let from_index = from_index.unwrap_or(0);
+                    let limit = limit.unwrap_or(keys.len() as u64);
+                    return (from_index..std::cmp::min(keys.len() as u64, from_index + limit))
+                        .map(|idx| {
+                            let key = keys.get(idx).unwrap();
+                            (key.clone(), f.seeds.get(&key).unwrap().into())
+                        })
+                        .collect::<HashMap<SeedId, FarmerSeed>>()
+                }
+                VFarmer::V1(f) => {
+                    let keys = f.seeds.keys_as_vector();
+                    let from_index = from_index.unwrap_or(0);
+                    let limit = limit.unwrap_or(keys.len() as u64);
+                    return (from_index..std::cmp::min(keys.len() as u64, from_index + limit))
+                        .map(|idx| {
+                            let key = keys.get(idx).unwrap();
+                            (key.clone(), f.seeds.get(&key).unwrap().into())
+                        })
+                        .collect::<HashMap<SeedId, FarmerSeed>>()
+                }
+                VFarmer::Current(f) => {
+                    let seeds_keys = f.seeds.keys_as_vector();
+                    let vseeds_keys = f.vseeds.keys_as_vector();
+                    let keys_len = seeds_keys.len() + vseeds_keys.len();
+                    let from_index = from_index.unwrap_or(0);
+                    let limit = limit.unwrap_or(keys_len);
+                    return (from_index..std::cmp::min(keys_len, from_index + limit))
+                        .map(|idx| {
+                            if idx < seeds_keys.len() {
+                                let key = seeds_keys.get(idx).unwrap();
+                                (key.clone(), f.seeds.get(&key).unwrap().into())
+                            } else {
+                                let key = vseeds_keys.get(idx).unwrap();
+                                (key.clone(), f.vseeds.get(&key).unwrap().into())
+                            }
+                        })
+                        .collect::<HashMap<SeedId, FarmerSeed>>()
+                }
+            }
         }
+        HashMap::new()
     }
 
     pub fn get_farmer_seed(&self, farmer_id: AccountId, seed_id: SeedId) -> Option<FarmerSeed> {
-        if let Some(farmer) = self.internal_get_farmer(&farmer_id) {
-            farmer.seeds.get(&seed_id)
-        } else {
-            None
+        if let Some(farmer) = self.data().farmers.get(&farmer_id) {
+            match farmer {
+                VFarmer::V0(f) => {
+                    if let Some(seed) = f.seeds.get(&seed_id) {
+                        return Some(seed.into())
+                    }
+                }
+                VFarmer::V1(f) => {
+                    if let Some(seed) = f.seeds.get(&seed_id) {
+                        return Some(seed.into())
+                    }
+                }
+                VFarmer::Current(f) => {
+                    if let Some(seed) = f.seeds.get(&seed_id) {
+                        return Some(seed.into())
+                    }
+                    if let Some(seed) = f.vseeds.get(&seed_id) {
+                        return Some(seed.into())
+                    }
+                }
+            }
         }
+        None
     }
 
     /// Returns reward token claimed for given user outside of any farms.

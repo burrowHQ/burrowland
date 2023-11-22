@@ -1,6 +1,6 @@
 use crate::*;
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Default)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Default, Clone)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
 #[serde(crate = "near_sdk::serde")]
 pub struct BoosterStaking {

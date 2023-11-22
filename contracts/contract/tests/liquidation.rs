@@ -47,8 +47,9 @@ async fn test_liquidation_decrease_health_factor() -> Result<()> {
 
     let account = burrowland_contract.get_account(&alice).await?.unwrap();
     assert!(account.supplied.is_empty());
-    assert!(find_asset(&account.borrowed, wrap_token_contract.0.id()).apr > BigDecimal::zero());
-    assert!(find_asset(&account.borrowed, nusdt_token_contract.0.id()).apr > BigDecimal::zero());
+    let nep_postion = account.borrowed.get(&NEP_POSITION.to_string()).unwrap();
+    assert!(find_asset(nep_postion, wrap_token_contract.0.id()).apr > BigDecimal::zero());
+    assert!(find_asset(nep_postion, nusdt_token_contract.0.id()).apr > BigDecimal::zero());
 
     let wnear_bobs_amount = d(100, 24);
     let usdt_bobs_amount = d(100, 18);
@@ -69,7 +70,7 @@ async fn test_liquidation_decrease_health_factor() -> Result<()> {
     let usdc_amount_out = d(50, 18);
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(burrowland_contract.liquidate(&bob, &oracle_contract, burrowland_contract.0.id(), alice.id(), price_data(current_timestamp, Some(120000)), 
-    vec![asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)]), "The health factor of liquidation account can't decrease");
+    vec![asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)], None), "The health factor of liquidation account can't decrease");
 
     // Assuming ~2% discount for 5 NEAR at 12$. 50 USDT -> ~51 USDC, 4.9 NEAR -> 60 USDC.
     let wnear_amount_in = d(49, 23);
@@ -77,7 +78,7 @@ async fn test_liquidation_decrease_health_factor() -> Result<()> {
     let usdc_amount_out = d(111, 18);
     let current_timestamp = worker.view_block().await?.timestamp();
     let outcome = burrowland_contract.liquidate(&bob, &oracle_contract, burrowland_contract.0.id(), alice.id(), price_data(current_timestamp, Some(120000)), 
-    vec![asset_amount(wrap_token_contract.0.id(), wnear_amount_in), asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)]).await?;
+    vec![asset_amount(wrap_token_contract.0.id(), wnear_amount_in), asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)], None).await?;
 
     let logs = outcome.logs();
     let event = &logs[0];
@@ -103,7 +104,8 @@ async fn test_liquidation_decrease_health_factor() -> Result<()> {
 
     let account = burrowland_contract.get_account(&alice).await?.unwrap();
     assert!(account.supplied.is_empty());
-    assert!(find_asset(&account.borrowed, wrap_token_contract.0.id()).apr > BigDecimal::zero());
+    let nep_postion = account.borrowed.get(&NEP_POSITION.to_string()).unwrap();
+    assert!(find_asset(nep_postion, wrap_token_contract.0.id()).apr > BigDecimal::zero());
 
     let account = burrowland_contract.get_account(&bob).await?.unwrap();
     assert!(find_asset(&account.supplied, &wrap_token_contract.0.id()).apr > BigDecimal::zero());
@@ -155,11 +157,11 @@ async fn test_force_close() -> Result<()> {
    let bob = create_account(&root, "bob", None).await;
    check!(burrowland_contract.storage_deposit(&bob));
    let current_timestamp = worker.view_block().await?.timestamp();
-   check!(burrowland_contract.force_close(&bob, &oracle_contract, burrowland_contract.0.id(), alice.id(), price_data(current_timestamp, Some(120000))), "is not greater than total collateral");
+   check!(burrowland_contract.force_close(&bob, &oracle_contract, alice.id(), price_data(current_timestamp, Some(120000)), None), "is not greater than total collateral");
 
     // Force closing account with NEAR at 25$.
    let current_timestamp = worker.view_block().await?.timestamp();
-   let outcome = burrowland_contract.force_close(&bob, &oracle_contract, burrowland_contract.0.id(), alice.id(), price_data(current_timestamp, Some(250000))).await?;
+   let outcome = burrowland_contract.force_close(&bob, &oracle_contract, alice.id(), price_data(current_timestamp, Some(250000)), None).await?;
 
     let logs = outcome.logs();
     let event = &logs[0];
