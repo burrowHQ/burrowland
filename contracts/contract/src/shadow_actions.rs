@@ -411,7 +411,19 @@ impl Contract {
             liquidation_account.collateral.remove(&collateral_tokenn_id);
             liquidation_account.add_affected_farm(FarmId::Supplied(collateral_tokenn_id));
             let borrows = liquidation_account.borrowed.remove(&position).unwrap();
-            for (token_id, _) in borrows {
+            for (token_id, shares) in borrows {
+                let mut asset = self.internal_unwrap_asset(&token_id);
+                let amount = asset.borrowed.shares_to_amount(shares, true);
+                assert!(
+                    asset.reserved >= amount,
+                    "Not enough {} in reserve",
+                    token_id
+                );
+                asset.reserved -= amount;
+                asset.borrowed.withdraw(shares, amount);
+
+                self.internal_set_asset(&token_id, asset);
+                
                 liquidation_account.add_affected_farm(FarmId::Borrowed(token_id));
             }
             self.internal_account_apply_affected_farms(&mut liquidation_account);
