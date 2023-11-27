@@ -40,7 +40,7 @@ pub struct UnitShareTokens {
 }
 
 pub fn pool_id_to_burrowland_token_id(pool_id: u64) -> String {
-    format!("s_v1-{}", pool_id)
+    format!("shadow_ref_v1-{}", pool_id)
 }
 
 #[near_bindgen]

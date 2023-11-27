@@ -46,7 +46,10 @@ impl Contract {
     pub fn sync_ref_exchange_lp_token_infos(&mut self, token_ids: Option<Vec<String>>) {
         let token_ids = token_ids.unwrap_or_else(|| self.last_lp_token_infos.keys().map(|v| v.clone()).collect());
         assert!(token_ids.len() > 0, "Invalid token_ids");
-        let pool_ids: Vec<u64> = token_ids.iter().map(|v| parse_pool_id(v)).collect();
+        let pool_ids: Vec<u64> = token_ids.iter().map(|v| {
+            self.internal_unwrap_asset(&AccountId::new_unchecked(v.clone()));
+            parse_pool_id(v)
+        }).collect();
         ext_ref_exchange::ext(self.internal_config().ref_exchange_id)
             .with_static_gas(shadow_actions::GAS_FOR_SYNC_REF_EXCHANGE_LP_INFOS)
             .sync_lp_infos(pool_ids)

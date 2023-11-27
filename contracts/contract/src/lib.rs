@@ -127,6 +127,10 @@ impl Contract {
             assert!(is_success, "Invalid guardian");
         }
     }
+
+    pub fn get_guardians(&self) -> Vec<AccountId> {
+        self.guardians.to_vec()
+    }
 }
 
 

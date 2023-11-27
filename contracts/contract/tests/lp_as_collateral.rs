@@ -88,7 +88,7 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
     let worker = workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
-    let token_id = "s_v1-0".parse::<AccountId>().unwrap();
+    let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
     let usdt_token_contract = deploy_mock_ft(&root, "nusdt", 6).await?;
     let usdc_token_contract = deploy_mock_ft(&root, "nusdc", 6).await?;
     let dai_token_contract = deploy_mock_ft(&root, "ndai", 18).await?;
@@ -221,7 +221,7 @@ async fn test_position_liquidate() -> Result<()> {
     let worker = workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
-    let token_id = "s_v1-0".parse::<AccountId>().unwrap();
+    let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
     let usdt_token_contract = deploy_mock_ft(&root, "nusdt", 6).await?;
     let usdc_token_contract = deploy_mock_ft(&root, "nusdc", 6).await?;
     let dai_token_contract = deploy_mock_ft(&root, "ndai", 18).await?;
@@ -379,7 +379,7 @@ async fn test_position_force_close() -> Result<()> {
     let worker = workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
-    let token_id = "s_v1-0".parse::<AccountId>().unwrap();
+    let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
     let usdt_token_contract = deploy_mock_ft(&root, "nusdt", 6).await?;
     let usdc_token_contract = deploy_mock_ft(&root, "nusdc", 6).await?;
     let dai_token_contract = deploy_mock_ft(&root, "ndai", 18).await?;
@@ -526,7 +526,7 @@ async fn test_position_farming_with_force_close() -> Result<()> {
     let worker = workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
-    let token_id = "s_v1-0".parse::<AccountId>().unwrap();
+    let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
     let usdt_token_contract = deploy_mock_ft(&root, "nusdt", 6).await?;
     let usdc_token_contract = deploy_mock_ft(&root, "nusdc", 6).await?;
     let dai_token_contract = deploy_mock_ft(&root, "ndai", 18).await?;
@@ -636,7 +636,7 @@ async fn test_position_farming_liquidate() -> Result<()> {
     let worker = workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
-    let token_id = "s_v1-0".parse::<AccountId>().unwrap();
+    let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
     let usdt_token_contract = deploy_mock_ft(&root, "nusdt", 6).await?;
     let usdc_token_contract = deploy_mock_ft(&root, "nusdc", 6).await?;
     let dai_token_contract = deploy_mock_ft(&root, "ndai", 18).await?;
