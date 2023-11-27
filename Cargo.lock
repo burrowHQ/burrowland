@@ -1431,7 +1431,7 @@ dependencies = [
 
 [[package]]
 name = "mock-boost-farming"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "near-contract-standards",
  "near-sdk",
@@ -1451,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "mock-ref-exchange"
-version = "1.7.2"
+version = "1.8.0"
 dependencies = [
  "near-contract-standards",
  "near-sdk",

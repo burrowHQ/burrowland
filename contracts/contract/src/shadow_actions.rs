@@ -12,8 +12,8 @@ pub const GAS_FOR_CALLBACK_PROCESS_FORCE_CLOSE_RESULT: Gas = Gas(50 * Gas::ONE_T
 
 #[ext_contract(ext_ref_exchange)]
 pub trait ExtRefExchange {
-    fn process_burrowlnad_liquidate_result(&mut self, sender_id: AccountId, liquidation_account_id: AccountId, pool_id: u64, liquidate_share_amount: U128, min_token_amounts: Vec<U128>);
-    fn process_burrowlnad_force_close_result(&mut self, liquidation_account_id: AccountId, pool_id: u64, liquidate_share_amount: U128, min_token_amounts: Vec<U128>);
+    fn process_burrowland_liquidate_result(&mut self, sender_id: AccountId, liquidation_account_id: AccountId, pool_id: u64, liquidate_share_amount: U128, min_token_amounts: Vec<U128>);
+    fn process_burrowland_force_close_result(&mut self, liquidation_account_id: AccountId, pool_id: u64, liquidate_share_amount: U128, min_token_amounts: Vec<U128>);
     fn sync_lp_infos(&self, pool_ids: Vec<u64>) -> HashMap<String, UnitShareTokens>;
 }
 
@@ -234,14 +234,14 @@ impl Contract {
 
         ext_ref_exchange::ext(self.internal_config().ref_exchange_id)
             .with_static_gas(GAS_FOR_PROCESS_LIQUIDATE_RESULT)
-            .process_burrowlnad_liquidate_result(
+            .process_burrowland_liquidate_result(
                 account_id.clone(), liquidation_account_id.clone(), 
                 parse_pool_id(&position), U128(amount),
                 min_token_amounts
             ).then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_CALLBACK_PROCESS_LIQUIDATE_RESULT)
-                    .callback_process_burrowlnad_liquidate_result(
+                    .callback_process_burrowland_liquidate_result(
                         account_id.clone(),
                         liquidation_account_id.clone(),
                         position.clone(),
@@ -317,11 +317,11 @@ impl Contract {
 
         ext_ref_exchange::ext(self.internal_config().ref_exchange_id)
             .with_static_gas(shadow_actions::GAS_FOR_PROCESS_FORCE_CLOSE_RESULT)
-            .process_burrowlnad_force_close_result(liquidation_account_id.clone(), parse_pool_id(&position), U128(collateral_balance), min_token_amounts)
+            .process_burrowland_force_close_result(liquidation_account_id.clone(), parse_pool_id(&position), U128(collateral_balance), min_token_amounts)
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(shadow_actions::GAS_FOR_CALLBACK_PROCESS_FORCE_CLOSE_RESULT)
-                    .callback_process_burrowlnad_force_close_result(
+                    .callback_process_burrowland_force_close_result(
                         liquidation_account_id.clone(),
                         position.clone(),
                         collateral_sum,
@@ -349,7 +349,7 @@ impl Contract {
     }
 
     #[private]
-    pub fn callback_process_burrowlnad_liquidate_result(
+    pub fn callback_process_burrowland_liquidate_result(
         &mut self,
         sender_id: AccountId,
         liquidation_account_id: AccountId,
@@ -396,7 +396,7 @@ impl Contract {
     }
 
     #[private]
-    pub fn callback_process_burrowlnad_force_close_result (
+    pub fn callback_process_burrowland_force_close_result (
         &mut self,
         liquidation_account_id: AccountId,
         position: String, 
