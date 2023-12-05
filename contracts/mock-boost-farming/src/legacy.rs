@@ -33,10 +33,10 @@ impl From<ContractDataV0100> for ContractData {
             farm_count,
         } = a;
         Self {
-            owner_id,
+            owner_id: owner_id.clone(),
             next_owner_id: None,
             next_owner_accept_deadline: None,
-            ref_exchange_id: "v2.ref-finance.near".parse().unwrap(),
+            ref_exchange_id: owner_id,
             operators,
             config,
             seeds,
@@ -116,10 +116,10 @@ impl From<ContractDataV0101> for ContractData {
             farm_count,
         } = a;
         Self {
-            owner_id,
+            owner_id: owner_id.clone(),
             next_owner_id: None,
             next_owner_accept_deadline: None,
-            ref_exchange_id: "v2.ref-finance.near".parse().unwrap(),
+            ref_exchange_id: owner_id,
             state,
             operators,
             config,
@@ -313,10 +313,10 @@ impl From<ContractDataV0102> for ContractData {
             farm_count,
         } = a;
         Self {
-            owner_id,
+            owner_id: owner_id.clone(),
             next_owner_id,
             next_owner_accept_deadline,
-            ref_exchange_id: "v2.ref-finance.near".parse().unwrap(),
+            ref_exchange_id: owner_id,
             state,
             operators,
             config,

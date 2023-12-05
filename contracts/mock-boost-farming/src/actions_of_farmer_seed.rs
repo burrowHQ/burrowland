@@ -90,7 +90,7 @@ impl Contract {
         seed.total_seed_power = seed.total_seed_power - prev + farmer_seed.get_seed_power();
 
         if farmer_seed.is_empty() {
-            farmer.vseeds.remove(&seed_id);
+            farmer.remove_seed(&seed_id);
         } else {
             farmer.set_seed(&seed_id, farmer_seed);
         }

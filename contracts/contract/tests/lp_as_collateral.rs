@@ -58,8 +58,8 @@ async fn test_exchange_boost_farm() -> Result<()> {
     assert_eq!(boost_farming_contract.get_farmer_seed(&alice, &seed_id).await?.unwrap().shadow_amount, d(30000, 18));
     let shadow_record_infos = ref_exchange_contract.get_shadow_records(&alice).await?;
     let shadow_record_info = shadow_record_infos.get(&0).unwrap();
-    assert_eq!(shadow_record_info.to_farming_amount.0, d(30000, 18));
-    assert_eq!(shadow_record_info.to_burrowland_amount.0, 0);
+    assert_eq!(shadow_record_info.shadow_in_farm.0, d(30000, 18));
+    assert_eq!(shadow_record_info.shadow_in_burrow.0, 0);
 
     check!(logs ref_exchange_contract.shadow_cancel_farming(&alice, 0, Some(d(10000, 18).into())));
     let seed = boost_farming_contract.get_seed(&seed_id).await?.unwrap();
@@ -68,8 +68,8 @@ async fn test_exchange_boost_farm() -> Result<()> {
     assert_eq!(boost_farming_contract.get_farmer_seed(&alice, &seed_id).await?.unwrap().shadow_amount, d(20000, 18));
     let shadow_record_infos = ref_exchange_contract.get_shadow_records(&alice).await?;
     let shadow_record_info = shadow_record_infos.get(&0).unwrap();
-    assert_eq!(shadow_record_info.to_farming_amount.0, d(20000, 18));
-    assert_eq!(shadow_record_info.to_burrowland_amount.0, 0);
+    assert_eq!(shadow_record_info.shadow_in_farm.0, d(20000, 18));
+    assert_eq!(shadow_record_info.shadow_in_burrow.0, 0);
     
     check!(view ref_exchange_contract.get_user_storage_state(&alice));
     check!(logs ref_exchange_contract.shadow_cancel_farming(&alice, 0, None));
@@ -79,9 +79,83 @@ async fn test_exchange_boost_farm() -> Result<()> {
     assert!(boost_farming_contract.get_farmer_seed(&alice, &seed_id).await?.is_none());
     assert!(ref_exchange_contract.get_shadow_records(&alice).await?.is_empty());
     check!(view ref_exchange_contract.get_user_storage_state(&alice));
-    
+    check!(view ref_exchange_contract.get_account_basic_info(&alice));
     Ok(())
 }
+
+// #[tokio::test]
+// async fn test_boost_farm_upgrade() -> Result<()> {
+//     let worker = workspaces::sandbox().await?;
+//     let root = worker.root_account()?;
+
+//     let usdt_token_contract = deploy_mock_ft(&root, "nusdt", 6).await?;
+//     let usdc_token_contract = deploy_mock_ft(&root, "nusdc", 6).await?;
+//     let dai_token_contract = deploy_mock_ft(&root, "ndai", 18).await?;
+    
+//     let ref_exchange_contract = deploy_ref_exchange(&root).await?;
+//     {
+//         check!(usdt_token_contract.ft_storage_deposit(ref_exchange_contract.0.id()));
+//         check!(usdc_token_contract.ft_storage_deposit(ref_exchange_contract.0.id()));
+//         check!(dai_token_contract.ft_storage_deposit(ref_exchange_contract.0.id()));
+//         check!(ref_exchange_contract.storage_deposit(&root));
+//         check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()]));
+//     }
+//     let boost_farming_contract = deploy_previous_version_boost_farming(&root).await?;
+
+//     let alice = tool_create_account(&root, "alice", None).await;
+//     check!(ref_exchange_contract.storage_deposit(&alice));
+//     check!(boost_farming_contract.storage_deposit(&alice));
+//     let bob = tool_create_account(&root, "bob", None).await;
+//     check!(ref_exchange_contract.storage_deposit(&bob));
+//     check!(boost_farming_contract.storage_deposit(&bob));
+    
+//     assert!(usdt_token_contract.ft_mint(&root, &alice, 20000 * 10u128.pow(6)).await?.is_success());
+//     assert!(usdc_token_contract.ft_mint(&root, &alice, 20000 * 10u128.pow(6)).await?.is_success());
+//     assert!(dai_token_contract.ft_mint(&root, &alice, 20000 * 10u128.pow(18)).await?.is_success());
+
+
+//     check!(ref_exchange_contract.deposit(&usdt_token_contract, &alice, 20000 * 10u128.pow(6)));
+//     check!(ref_exchange_contract.deposit(&usdc_token_contract, &alice, 20000 * 10u128.pow(6)));
+//     check!(ref_exchange_contract.deposit(&dai_token_contract, &alice, 20000 * 10u128.pow(18)));
+    
+//     check!(ref_exchange_contract.add_stable_swap_pool(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()], vec![6, 6, 18], 5, 240));
+//     check!(ref_exchange_contract.add_stable_swap_pool(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()], vec![6, 6, 18], 5, 240));
+//     check!(ref_exchange_contract.add_stable_liquidity(&alice, 0, vec![U128(d(10000, 6)), U128(d(10000, 6)), U128(d(10000, 18))], U128(1)));
+//     check!(ref_exchange_contract.add_stable_liquidity(&alice, 1, vec![U128(d(10000, 6)), U128(d(10000, 6)), U128(d(10000, 18))], U128(1)));
+    
+//     let seed_id = "ref_exchange.test.near@0".to_string();
+//     let seed_id1 = "ref_exchange.test.near@1".to_string();
+//     check!(boost_farming_contract.create_seed(&root, &seed_id, 18, None, None));
+//     check!(boost_farming_contract.create_seed(&root, &seed_id1, 18, None, None));
+
+//     check!(ref_exchange_contract.mft_register(&alice, ":0".to_string(), boost_farming_contract.0.id()));
+//     check!(boost_farming_contract.stake_free_seed(&alice, &ref_exchange_contract, ":0".to_string(), d(30000, 18)));
+
+//     let seed = boost_farming_contract.get_seed(&seed_id).await?.unwrap();
+//     assert_eq!(seed.total_seed_amount, d(30000, 18));
+//     assert_eq!(seed.total_seed_power, d(30000, 18));
+//     assert_eq!(boost_farming_contract.get_farmer_seed_v0(&alice, &seed_id).await?.unwrap().free_amount, d(30000, 18));
+    
+//     assert!(root
+//         .call(boost_farming_contract.0.id(), "upgrade")
+//         .args(std::fs::read(BOOST_FARMING_WASM).unwrap())
+//         .max_gas()
+//         .transact()
+//         .await?.is_success());
+//     // check!(print root
+//     //     .call(boost_farming_contract.0.id(), "upgrade")
+//     //     .args(std::fs::read(BOOST_FARMING_WASM).unwrap())
+//     //     .max_gas()
+//     //     .transact());
+//     assert_eq!(boost_farming_contract.get_farmer_seed(&alice, &seed_id).await?.unwrap().free_amount, d(30000, 18));
+//     check!(ref_exchange_contract.mft_register(&alice, ":1".to_string(), boost_farming_contract.0.id()));
+//     check!(boost_farming_contract.stake_free_seed(&alice, &ref_exchange_contract, ":1".to_string(), d(30000, 18)));
+//     check!(view boost_farming_contract.list_farmer_seeds(&alice, None, None));
+//     check!(view boost_farming_contract.list_farmer_seeds(&alice, Some(0), Some(1)));
+//     check!(view boost_farming_contract.list_farmer_seeds(&alice, Some(1), Some(2)));
+
+//     Ok(())
+// }
 
 #[tokio::test]
 async fn test_exchange_burrowland_boost_farm() -> Result<()> {
@@ -164,8 +238,8 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
     assert_eq!(boost_farming_contract.get_farmer_seed(&alice, &seed_id).await?.unwrap().shadow_amount, d(30000, 18));
     let shadow_record_infos = ref_exchange_contract.get_shadow_records(&alice).await?;
     let shadow_record_info = shadow_record_infos.get(&0).unwrap();
-    assert_eq!(shadow_record_info.to_farming_amount.0, d(30000, 18));
-    assert_eq!(shadow_record_info.to_burrowland_amount.0, d(30000, 18));
+    assert_eq!(shadow_record_info.shadow_in_farm.0, d(30000, 18));
+    assert_eq!(shadow_record_info.shadow_in_burrow.0, d(30000, 18));
     let token_asset = burrowland_contract.get_asset(&token_id).await?;
     assert_eq!(token_asset.supplied.balance, d(30000, 18));
     let alice_burrowland_account = burrowland_contract.get_account(&alice).await?.unwrap();
@@ -178,8 +252,8 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
 
     let shadow_record_infos = ref_exchange_contract.get_shadow_records(&alice).await?;
     let shadow_record_info = shadow_record_infos.get(&0).unwrap();
-    assert_eq!(shadow_record_info.to_farming_amount.0, d(20000, 18));
-    assert_eq!(shadow_record_info.to_burrowland_amount.0, d(20000, 18));
+    assert_eq!(shadow_record_info.shadow_in_farm.0, d(20000, 18));
+    assert_eq!(shadow_record_info.shadow_in_burrow.0, d(20000, 18));
     let token_asset = burrowland_contract.get_asset(&token_id).await?;
     assert_eq!(token_asset.supplied.balance, d(20000, 18));
     let alice_burrowland_account = burrowland_contract.get_account(&alice).await?.unwrap();
@@ -201,14 +275,14 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
     
     let shadow_record_infos = ref_exchange_contract.get_shadow_records(&alice).await?;
     let shadow_record_info = shadow_record_infos.get(&0).unwrap();
-    assert_eq!(shadow_record_info.to_farming_amount.0, d(20000, 18));
-    assert_eq!(shadow_record_info.to_burrowland_amount.0, d(30000, 18));
+    assert_eq!(shadow_record_info.shadow_in_farm.0, d(20000, 18));
+    assert_eq!(shadow_record_info.shadow_in_burrow.0, d(30000, 18));
     check!(ref_exchange_contract.shadow_burrowland_withdraw(&alice, 0, Some(d(30000, 18).into()), None), "Not enough asset balance");
 
     let shadow_record_infos = ref_exchange_contract.get_shadow_records(&alice).await?;
     let shadow_record_info = shadow_record_infos.get(&0).unwrap();
-    assert_eq!(shadow_record_info.to_farming_amount.0, d(20000, 18));
-    assert_eq!(shadow_record_info.to_burrowland_amount.0, d(30000, 18));
+    assert_eq!(shadow_record_info.shadow_in_farm.0, d(20000, 18));
+    assert_eq!(shadow_record_info.shadow_in_burrow.0, d(30000, 18));
 
     check!(burrowland_contract.sync_ref_exchange_lp_token_infos(&alice, Some(vec![token_id.to_string()])));
 
@@ -292,6 +366,9 @@ async fn test_position_liquidate() -> Result<()> {
     check!(ref_exchange_contract.shadow_farming(&alice, 0, Some((30000 * 10u128.pow(18)).into())));
 
     check!(ref_exchange_contract.shadow_burrowland_deposit(&alice, 0, None, None));
+    let alice_burrowland_account = burrowland_contract.get_account(&alice).await?.unwrap();
+    assert_eq!(alice_burrowland_account.supplied[0].balance, d(30000, 18));
+    assert_eq!(alice_burrowland_account.supplied[0].token_id.to_string(), token_id.to_string());
 
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(logs burrowland_contract.sync_ref_exchange_lp_token_infos(&root, Some(vec![token_id.to_string().clone()])));

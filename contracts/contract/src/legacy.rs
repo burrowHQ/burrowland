@@ -443,7 +443,7 @@ impl From<ConfigV0> for Config {
         } = a;
         Self {
             oracle_account_id, 
-            ref_exchange_id: "v2.ref-finance.near".parse().unwrap(),
+            ref_exchange_id: owner_id.clone(),
             owner_id, 
             booster_token_id, 
             booster_decimals, 

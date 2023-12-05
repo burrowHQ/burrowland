@@ -72,16 +72,26 @@ impl Farmer {
         }
     }
 
-    pub fn migrate_seed(&mut self, seed_id: &SeedId) {
-        if let Some(seed) = self.seeds.remove(seed_id) {
-            let current_version_seed: FarmerSeed = seed.into();
-            self.vseeds.insert(&seed_id, &current_version_seed.into());
+    pub fn get_seed_unwrap(&self, seed_id: &SeedId) -> FarmerSeed {
+        if let Some(seed) = self.seeds.get(seed_id) {
+            seed.into()
+        } else {
+            self.vseeds.get(seed_id).unwrap().into()
         }
     }
 
-    pub fn get_seed_unwrap(&mut self, seed_id: &SeedId) -> FarmerSeed {
-        self.migrate_seed(&seed_id);
-        self.vseeds.get(&seed_id).unwrap().into()
+    pub fn get_seed(&self, seed_id: &SeedId) -> Option<FarmerSeed> {
+        if let Some(seed) = self.seeds.get(seed_id) {
+            Some(seed.into())
+        } else {
+            self.vseeds.get(seed_id).map(|v| v.into())
+        }
+    }
+
+    pub fn remove_seed(&mut self, seed_id: &SeedId) {
+        if self.seeds.remove(seed_id).is_none() {
+            self.vseeds.remove(seed_id);
+        }
     }
 
     pub fn set_seed(&mut self, seed_id: &SeedId, seed: FarmerSeed) {
@@ -105,9 +115,7 @@ impl Contract {
         let mut claimed = HashMap::new();
 
         let mut farmer_seed: FarmerSeed = farmer
-            .vseeds
-            .get(&seed.seed_id)
-            .map(|v| v.into())
+            .get_seed(&seed.seed_id)
             .unwrap_or_else(|| FarmerSeed {
                 free_amount: 0,
                 shadow_amount: 0,
@@ -156,7 +164,6 @@ impl Contract {
     }
 
     pub fn internal_do_farmer_claim(&self, farmer: &mut Farmer, seed: &mut Seed) {
-        farmer.migrate_seed(&seed.seed_id);
         let (mut farmer_seed, rewards, claimed) = self.internal_calc_farmer_claim(&farmer, &seed);
         farmer.add_rewards(&rewards);
         

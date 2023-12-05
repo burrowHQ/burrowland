@@ -1,22 +1,32 @@
 use crate::*;
 
-use near_sdk::{Gas, ext_contract};
+use near_sdk::Gas;
 
 pub const GAS_FOR_SHADOW_SEED_TRANSFER: Gas = Gas(20 * TGAS);
 pub const GAS_FOR_SHADOW_SEED_CALLBACK: Gas = Gas(10 * TGAS);
 
-#[ext_contract(ref_exchange_receiver)]
-pub trait RefExchangeActions {
-    fn shadow_unfarming(&mut self, pool_id: u64, amount: U128);
+pub const SHADOW_V1_TOKEN_PREFIX: &str = "shadow_ref_v1-";
+
+impl Contract {
+    pub fn shadow_id_to_seed_id(&self, shadow_id: &String) -> SeedId {
+        if shadow_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX) {
+            let pool_id = shadow_id.split("-").collect::<Vec<&str>>()[1].parse::<u64>().expect("Invalid shadow_id");
+            format!("{}@{}", self.data().ref_exchange_id, pool_id)
+        } else {
+            unimplemented!()
+        }
+    }
 }
 
 #[near_bindgen]
 impl Contract {
-    pub fn deposit_free_shadow_seed(&mut self, farmer_id: AccountId, seed_id: String, amount: U128) {
+    pub fn on_cast_shadow(&mut self, account_id: AccountId, shadow_id: String, amount: U128, msg: String) {
         require!(self.data().ref_exchange_id == env::predecessor_account_id(), E002_NOT_ALLOWED);
         require!(self.data().state == RunningState::Running, E004_CONTRACT_PAUSED);
+        require!(msg.is_empty());
 
-        let mut farmer = self.internal_unwrap_farmer(&farmer_id);
+        let mut farmer = self.internal_unwrap_farmer(&account_id);
+        let seed_id = self.shadow_id_to_seed_id(&shadow_id);
         let mut seed = self.internal_unwrap_seed(&seed_id);
         require!(amount.0 >= seed.min_deposit, E307_BELOW_MIN_DEPOSIT);
 
@@ -31,11 +41,11 @@ impl Contract {
 
         self.update_impacted_seeds(&mut farmer, &seed_id);
 
-        self.internal_set_farmer(&farmer_id, farmer);
+        self.internal_set_farmer(&account_id, farmer);
         self.internal_set_seed(&seed_id, seed);
 
         Event::ShadowSeedDeposit {
-            farmer_id: &farmer_id,
+            farmer_id: &account_id,
             seed_id: &seed_id,
             deposit_amount: &U128(amount.0),
             increased_power: &U128(increased_seed_power),
@@ -44,14 +54,16 @@ impl Contract {
         .emit();
     }
 
-    pub fn withdraw_free_shadow_seed(&mut self, farmer_id: AccountId, seed_id: String, amount: U128) {
+    pub fn on_remove_shadow(&mut self, account_id: AccountId, shadow_id: String, amount: U128, msg: String) {
         require!(self.data().ref_exchange_id == env::predecessor_account_id(), E002_NOT_ALLOWED);
         require!(self.data().state == RunningState::Running, E004_CONTRACT_PAUSED);
+        require!(msg.is_empty());
 
         let withdraw_amount: Balance = amount.into();
         require!(withdraw_amount > 0, "amount must greater than 0!");
 
-        let mut farmer = self.internal_unwrap_farmer(&farmer_id);
+        let mut farmer = self.internal_unwrap_farmer(&account_id);
+        let seed_id = self.shadow_id_to_seed_id(&shadow_id);
         let mut seed = self.internal_unwrap_seed(&seed_id);
 
         self.internal_do_farmer_claim(&mut farmer, &mut seed);
@@ -66,18 +78,18 @@ impl Contract {
         seed.total_seed_power = seed.total_seed_power - prev + farmer_seed.get_seed_power();
 
         if farmer_seed.is_empty() {
-            farmer.vseeds.remove(&seed_id);
+            farmer.remove_seed(&seed_id);
         } else {
             farmer.set_seed(&seed_id, farmer_seed);
         }
 
         self.update_impacted_seeds(&mut farmer, &seed_id);
 
-        self.internal_set_farmer(&farmer_id, farmer);
+        self.internal_set_farmer(&account_id, farmer);
         self.internal_set_seed(&seed_id, seed);
 
         Event::ShadowSeedWithdraw {
-            farmer_id: &farmer_id,
+            farmer_id: &account_id,
             seed_id: &seed_id,
             withdraw_amount: &U128(withdraw_amount),
         }

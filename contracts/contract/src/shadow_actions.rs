@@ -12,9 +12,8 @@ pub const GAS_FOR_CALLBACK_PROCESS_FORCE_CLOSE_RESULT: Gas = Gas(50 * Gas::ONE_T
 
 #[ext_contract(ext_ref_exchange)]
 pub trait ExtRefExchange {
-    fn process_burrowland_liquidate_result(&mut self, sender_id: AccountId, liquidation_account_id: AccountId, pool_id: u64, liquidate_share_amount: U128, min_token_amounts: Vec<U128>);
-    fn process_burrowland_force_close_result(&mut self, liquidation_account_id: AccountId, pool_id: u64, liquidate_share_amount: U128, min_token_amounts: Vec<U128>);
-    fn sync_lp_infos(&self, pool_ids: Vec<u64>) -> HashMap<String, UnitShareTokens>;
+    fn on_burrow_liquidation(&mut self, liquidator_account_id: AccountId, liquidation_account_id: AccountId, shadow_id: String, liquidate_share_amount: U128, min_token_amounts: Vec<U128>);
+    fn get_unit_lpt_assets(&self, pool_ids: Vec<u64>) -> HashMap<String, UnitShareTokens>;
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone)]
@@ -52,7 +51,7 @@ impl Contract {
         }).collect();
         ext_ref_exchange::ext(self.internal_config().ref_exchange_id)
             .with_static_gas(shadow_actions::GAS_FOR_SYNC_REF_EXCHANGE_LP_INFOS)
-            .sync_lp_infos(pool_ids)
+            .get_unit_lpt_assets(pool_ids)
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(shadow_actions::GAS_FOR_SYNC_REF_EXCHANGE_LP_INFOS_CALLBACK)
@@ -64,11 +63,11 @@ impl Contract {
         self.last_lp_token_infos.clone()
     }
 
-    pub fn deposit_shadow_asset(&mut self, sender_id: AccountId, token_id: AccountId, amount: U128, after_deposit_actions_msg: Option<String>) {
+    pub fn on_cast_shadow(&mut self, account_id: AccountId, shadow_id: String, amount: U128, msg: String) {
         let config = self.internal_config();
         assert!(env::predecessor_account_id() == config.ref_exchange_id);
 
-        let actions = if let Some(msg) = after_deposit_actions_msg {
+        let actions = if !msg.is_empty() {
             match near_sdk::serde_json::from_str(&msg).expect("Can't parse ShadowReceiverMsg") {
                 ShadowReceiverMsg::Execute { actions } => actions,
             }
@@ -76,29 +75,31 @@ impl Contract {
             vec![]
         };
 
+        let token_id = AccountId::new_unchecked(shadow_id);
         let asset = self.internal_unwrap_asset(&token_id);
         let amount = amount.0 * 10u128.pow(asset.config.extra_decimals as u32);
         
-        let mut account = self.internal_unwrap_account(&sender_id);
+        let mut account = self.internal_unwrap_account(&account_id);
         self.internal_deposit(&mut account, &token_id, amount);
-        events::emit::deposit(&sender_id, amount, &token_id);
-        self.internal_execute(&sender_id, &mut account, actions, Prices::new());
-        self.internal_set_account(&sender_id, account);
+        events::emit::deposit(&account_id, amount, &token_id);
+        self.internal_execute(&account_id, &mut account, actions, Prices::new());
+        self.internal_set_account(&account_id, account);
     }
 
-    pub fn withdraw_shadow_asset(&mut self, sender_id: AccountId, token_id: AccountId, amount: U128, before_withdraw_actions_msg: Option<String>) {
+    pub fn on_remove_shadow(&mut self, account_id: AccountId, shadow_id: String, amount: U128, msg: String) {
         let config = self.internal_config();
         assert!(env::predecessor_account_id() == config.ref_exchange_id);
 
-        let mut account = self.internal_unwrap_account(&sender_id);
+        let mut account = self.internal_unwrap_account(&account_id);
 
-        if let Some(msg) = before_withdraw_actions_msg {
+        if !msg.is_empty() {
             let actions = match near_sdk::serde_json::from_str(&msg).expect("Can't parse ShadowReceiverMsg") {
                 ShadowReceiverMsg::Execute { actions } => actions,
             };
-            self.internal_execute(&sender_id, &mut account, actions, Prices::new());
+            self.internal_execute(&account_id, &mut account, actions, Prices::new());
         } 
 
+        let token_id = AccountId::new_unchecked(shadow_id);
         let withdraw_asset_amount = AssetAmount {
             token_id,
             amount: Some(amount),
@@ -123,8 +124,8 @@ impl Contract {
         asset.supplied.withdraw(shares, amount);
 
         self.internal_set_asset(&withdraw_asset_amount.token_id, asset);
-        self.internal_set_account(&sender_id, account);
-        events::emit::withdraw_succeeded(&sender_id, amount, &withdraw_asset_amount.token_id);
+        self.internal_set_account(&account_id, account);
+        events::emit::withdraw_succeeded(&account_id, amount, &withdraw_asset_amount.token_id);
     }
 }
 
@@ -234,9 +235,11 @@ impl Contract {
 
         ext_ref_exchange::ext(self.internal_config().ref_exchange_id)
             .with_static_gas(GAS_FOR_PROCESS_LIQUIDATE_RESULT)
-            .process_burrowland_liquidate_result(
-                account_id.clone(), liquidation_account_id.clone(), 
-                parse_pool_id(&position), U128(amount),
+            .on_burrow_liquidation(
+                account_id.clone(), 
+                liquidation_account_id.clone(), 
+                position.clone(), 
+                U128(amount),
                 min_token_amounts
             ).then(
                 Self::ext(env::current_account_id())
@@ -272,7 +275,6 @@ impl Contract {
 
         let mut min_token_amounts = vec![];
         let unit_share_tokens = self.last_lp_token_infos.get(position).expect("lp_token_infos not found");
-        let config = self.internal_config();
         assert!(env::block_timestamp() - unit_share_tokens.timestamp <= to_nano(config.lp_tokens_info_valid_duration_sec), "LP token info timestamp is too stale");
         let unit_share = 10u128.pow(unit_share_tokens.decimals as u32);
         let collateral_sum = unit_share_tokens.tokens
@@ -317,7 +319,12 @@ impl Contract {
 
         ext_ref_exchange::ext(self.internal_config().ref_exchange_id)
             .with_static_gas(shadow_actions::GAS_FOR_PROCESS_FORCE_CLOSE_RESULT)
-            .process_burrowland_force_close_result(liquidation_account_id.clone(), parse_pool_id(&position), U128(collateral_balance), min_token_amounts)
+            .on_burrow_liquidation(
+                config.owner_id.clone(),
+                liquidation_account_id.clone(),
+                position.clone(), 
+                U128(collateral_balance), 
+                min_token_amounts)
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(shadow_actions::GAS_FOR_CALLBACK_PROCESS_FORCE_CLOSE_RESULT)
@@ -414,11 +421,7 @@ impl Contract {
             for (token_id, shares) in borrows {
                 let mut asset = self.internal_unwrap_asset(&token_id);
                 let amount = asset.borrowed.shares_to_amount(shares, true);
-                assert!(
-                    asset.reserved >= amount,
-                    "Not enough {} in reserve",
-                    token_id
-                );
+
                 asset.reserved -= amount;
                 asset.borrowed.withdraw(shares, amount);
 

@@ -4,6 +4,14 @@ use crate::*;
 impl Contract {
 
     #[payable]
+    pub fn modify_ref_exchange_id(&mut self, ref_exchange_id: AccountId) {
+        assert_one_yocto();
+        require!(self.is_owner_or_operators(), E002_NOT_ALLOWED);
+        log!("Modify ref_exchange_id from {} to {}", self.data().ref_exchange_id, ref_exchange_id);  
+        self.data_mut().ref_exchange_id = ref_exchange_id;
+    }
+
+    #[payable]
     pub fn modify_daily_reward(&mut self, farm_id: FarmId, daily_reward: U128) {
         assert_one_yocto();
         require!(self.is_owner_or_operators(), E002_NOT_ALLOWED);

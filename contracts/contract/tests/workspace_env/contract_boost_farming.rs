@@ -122,6 +122,42 @@ impl BoostFarmingContract {
             .json::<Option<FarmerSeed>>()
     }
 
+    pub async fn list_farmer_seeds(
+        &self,
+        farmer_id: &Account, 
+        from_index: Option<u64>,
+        limit: Option<u64>,
+    ) -> Result<HashMap<String, FarmerSeed>> {
+        self.0
+            .call("list_farmer_seeds")
+            .args_json(json!({
+                "farmer_id": farmer_id.id(), 
+                "from_index": from_index, 
+                "limit": limit, 
+            }))
+            .view()
+            .await?
+            .json::<HashMap<String, FarmerSeed>>()
+    }
+
+    pub async fn list_farmer_seeds1(
+        &self,
+        farmer_id: &Account, 
+        from_index: Option<u64>,
+        limit: Option<u64>,
+    ) -> Result<serde_json::Value> {
+        self.0
+            .call("list_farmer_seeds")
+            .args_json(json!({
+                "farmer_id": farmer_id.id(), 
+                "from_index": from_index, 
+                "limit": limit, 
+            }))
+            .view()
+            .await?
+            .json::<serde_json::Value>()
+    }
+
     pub async fn get_farmer_seed_v0(
         &self,
         farmer_id: &Account, 

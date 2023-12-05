@@ -1,5 +1,5 @@
 
-use mock_ref_exchange::{ContractMetadata, StablePoolInfo, ShadowRecordInfo, RefStorageState};
+use mock_ref_exchange::{ContractMetadata, StablePoolInfo, ShadowRecordInfo, RefStorageState, ShadowActions, AccountBaseInfo};
 
 use crate::*;
 
@@ -129,22 +129,36 @@ impl RefExchange {
             .await
     }
 
+    pub async fn shadow_action(
+        &self,
+        caller: &Account,
+        action: ShadowActions, 
+        pool_id: u64, 
+        amount: Option<U128>, 
+        msg: String,
+        deposit: u128
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "shadow_action")
+            .args_json(json!({
+                "action": action,
+                "pool_id": pool_id,
+                "amount": amount,
+                "msg": msg,
+            }))
+            .deposit(deposit)
+            .max_gas()
+            .transact()
+            .await
+    }
+
     pub async fn shadow_farming(
         &self,
         caller: &Account,
         pool_id: u64, 
         amount: Option<U128>,
     ) -> Result<ExecutionFinalResult> {
-        caller
-            .call(self.0.id(), "shadow_farming")
-            .args_json(json!({
-                "pool_id": pool_id,
-                "amount": amount,
-            }))
-            .deposit(d(1, 23))
-            .max_gas()
-            .transact()
-            .await
+        self.shadow_action(caller, ShadowActions::ToFarming, pool_id, amount, "".to_string(), d(1, 23)).await
     }
 
     pub async fn shadow_cancel_farming(
@@ -153,15 +167,7 @@ impl RefExchange {
         pool_id: u64, 
         amount: Option<U128>
     ) -> Result<ExecutionFinalResult> {
-        caller
-            .call(self.0.id(), "shadow_cancel_farming")
-            .args_json(json!({
-                "pool_id": pool_id,
-                "amount": amount,
-            }))
-            .max_gas()
-            .transact()
-            .await
+        self.shadow_action(caller, ShadowActions::FromFarming, pool_id, amount, "".to_string(), 0).await
     }
 
     pub async fn shadow_burrowland_deposit(
@@ -171,16 +177,7 @@ impl RefExchange {
         amount: Option<U128>,
         after_deposit_actions_msg: Option<String>
     ) -> Result<ExecutionFinalResult> {
-        caller
-            .call(self.0.id(), "shadow_burrowland_deposit")
-            .args_json(json!({
-                "pool_id": pool_id,
-                "amount": amount,
-                "after_deposit_actions_msg": after_deposit_actions_msg
-            }))
-            .max_gas()
-            .transact()
-            .await
+        self.shadow_action(caller, ShadowActions::ToBurrowland, pool_id, amount, after_deposit_actions_msg.unwrap_or("".to_string()), d(1, 23)).await
     }
 
     pub async fn shadow_burrowland_withdraw(
@@ -190,16 +187,7 @@ impl RefExchange {
         amount: Option<U128>,
         after_deposit_actions_msg: Option<String>
     ) -> Result<ExecutionFinalResult> {
-        caller
-            .call(self.0.id(), "shadow_burrowland_withdraw")
-            .args_json(json!({
-                "pool_id": pool_id,
-                "amount": amount,
-                "before_withdraw_actions_msg": after_deposit_actions_msg
-            }))
-            .max_gas()
-            .transact()
-            .await
+        self.shadow_action(caller, ShadowActions::FromBurrowland, pool_id, amount, after_deposit_actions_msg.unwrap_or("".to_string()), 0).await
     }
     
 }
@@ -287,17 +275,17 @@ impl RefExchange {
             .json::<Option<RefStorageState>>()
     }
 
-    // pub async fn sync_lp_infos(
-    //     &self,
-    //     pool_ids: Vec<u64>,
-    // ) -> Result<HashMap<String, UnitShareTokens>> {
-    //     self.0
-    //         .call("sync_lp_infos")
-    //         .args_json(json!({
-    //             "pool_ids": pool_ids
-    //         }))
-    //         .view()
-    //         .await?
-    //         .json::<HashMap<String, UnitShareTokens>>()
-    // }
+    pub async fn get_account_basic_info(
+        &self,
+        account: &Account,
+    ) -> Result<Option<AccountBaseInfo>> {
+        self.0
+            .call("get_account_basic_info")
+            .args_json(json!({
+                "account_id": account.id()
+            }))
+            .view()
+            .await?
+            .json::<Option<AccountBaseInfo>>()
+    }
 }
