@@ -47,9 +47,8 @@ async fn test_liquidation_decrease_health_factor() -> Result<()> {
 
     let account = burrowland_contract.get_account(&alice).await?.unwrap();
     assert!(account.supplied.is_empty());
-    let nep_postion = account.borrowed.get(&NEP_POSITION.to_string()).unwrap();
-    assert!(find_asset(nep_postion, wrap_token_contract.0.id()).apr > BigDecimal::zero());
-    assert!(find_asset(nep_postion, nusdt_token_contract.0.id()).apr > BigDecimal::zero());
+    assert!(find_asset(&account.borrowed, wrap_token_contract.0.id()).apr > BigDecimal::zero());
+    assert!(find_asset(&account.borrowed, nusdt_token_contract.0.id()).apr > BigDecimal::zero());
 
     let wnear_bobs_amount = d(100, 24);
     let usdt_bobs_amount = d(100, 18);
@@ -104,8 +103,7 @@ async fn test_liquidation_decrease_health_factor() -> Result<()> {
 
     let account = burrowland_contract.get_account(&alice).await?.unwrap();
     assert!(account.supplied.is_empty());
-    let nep_postion = account.borrowed.get(&NEP_POSITION.to_string()).unwrap();
-    assert!(find_asset(nep_postion, wrap_token_contract.0.id()).apr > BigDecimal::zero());
+    assert!(find_asset(&account.borrowed, wrap_token_contract.0.id()).apr > BigDecimal::zero());
 
     let account = burrowland_contract.get_account(&bob).await?.unwrap();
     assert!(find_asset(&account.supplied, &wrap_token_contract.0.id()).apr > BigDecimal::zero());

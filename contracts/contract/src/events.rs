@@ -13,6 +13,16 @@ pub mod emit {
         pub token_id: &'a TokenId,
     }
 
+    #[derive(Serialize)]
+    #[serde(crate = "near_sdk::serde")]
+    struct AccountAmountTokenPosition<'a> {
+        pub account_id: &'a AccountId,
+        #[serde(with = "u128_dec_format")]
+        pub amount: Balance,
+        pub token_id: &'a TokenId,
+        pub position: &'a String,
+    }
+
     fn log_event<T: Serialize>(event: &str, data: T) {
         let event = json!({
             "standard": "burrow",
@@ -79,47 +89,51 @@ pub mod emit {
         );
     }
 
-    pub fn increase_collateral(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+    pub fn increase_collateral(account_id: &AccountId, amount: Balance, token_id: &TokenId, position: &String) {
         log_event(
             "increase_collateral",
-            AccountAmountToken {
-                account_id: &account_id,
+            AccountAmountTokenPosition {
+                account_id,
                 amount,
-                token_id: &token_id,
-            },
+                token_id,
+                position
+            }
         );
     }
 
-    pub fn decrease_collateral(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+    pub fn decrease_collateral(account_id: &AccountId, amount: Balance, token_id: &TokenId, position: &String) {
         log_event(
             "decrease_collateral",
-            AccountAmountToken {
-                account_id: &account_id,
+            AccountAmountTokenPosition {
+                account_id,
                 amount,
-                token_id: &token_id,
-            },
+                token_id,
+                position
+            }
         );
     }
 
-    pub fn borrow(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+    pub fn borrow(account_id: &AccountId, amount: Balance, token_id: &TokenId, position: &String) {
         log_event(
             "borrow",
-            AccountAmountToken {
-                account_id: &account_id,
+            AccountAmountTokenPosition {
+                account_id,
                 amount,
-                token_id: &token_id,
-            },
+                token_id,
+                position
+            }
         );
     }
 
-    pub fn repay(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+    pub fn repay(account_id: &AccountId, amount: Balance, token_id: &TokenId, position: &String) {
         log_event(
             "repay",
-            AccountAmountToken {
-                account_id: &account_id,
+            AccountAmountTokenPosition {
+                account_id,
                 amount,
-                token_id: &token_id,
-            },
+                token_id,
+                position
+            }
         );
     }
 

@@ -192,13 +192,35 @@ impl Burrowland {
             .await
     }
 
+    pub async fn position_increase_collateral(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        amount: u128
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "execute")
+            .args_json(json!({
+                "actions": vec![
+                    Action::PositionIncreaseCollateral{
+                        position: token_id.to_string(),
+                        asset_amount: asset_amount(token_id, amount)
+                    },
+                ],
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
+
     pub async fn position_borrow_and_withdraw(
         &self,
         caller: &Account,
         oracle: &Oralce,
         receiver_id: &AccountId,
         price_data: PriceData,
-        position: Option<String>,
+        position: String,
         token_id: &AccountId,
         borrow_amount: u128,
         withdraw_amount: u128
@@ -463,6 +485,20 @@ impl Burrowland {
             .view()
             .await?
             .json::<Option<AccountDetailedView>>()
+    }
+
+    pub async fn get_account_all_positions(
+        &self,
+        account: &Account
+    ) -> Result<Option<AccountAllPositionsDetailedView>> {
+        self.0
+            .call("get_account_all_positions")
+            .args_json(json!({
+                "account_id": account.id()
+            }))
+            .view()
+            .await?
+            .json::<Option<AccountAllPositionsDetailedView>>()
     }
 
     pub async fn get_config(

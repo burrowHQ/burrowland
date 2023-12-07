@@ -9,10 +9,7 @@ pub struct Account {
     /// A list of assets that are supplied by the account (but not used a collateral).
     /// It's not returned for account pagination.
     pub supplied: HashMap<TokenId, Shares>,
-    /// A list of collateral assets.
-    pub collateral: HashMap<TokenId, Shares>,
-    /// A list of borrowed assets.
-    pub borrowed: HashMap<String, HashMap<TokenId, Shares>>,
+    pub positions: HashMap<String, Position>,
     /// Keeping track of data required for farms for this account.
     #[serde(skip_serializing)]
     pub farms: HashMap<FarmId, AccountFarm>,
@@ -60,8 +57,7 @@ impl Account {
         Self {
             account_id: account_id.clone(),
             supplied: HashMap::new(),
-            collateral: HashMap::new(),
-            borrowed: HashMap::new(),
+            positions: HashMap::new(),
             farms: HashMap::new(),
             affected_farms: HashSet::new(),
             storage_tracker: Default::default(),
@@ -70,67 +66,41 @@ impl Account {
         }
     }
 
-    pub fn increase_collateral(&mut self, token_id: &TokenId, shares: Shares) {
-        self.collateral
-            .entry(token_id.clone())
-            .or_insert_with(|| 0.into())
-            .0 += shares.0;
+    pub fn increase_collateral(&mut self, position: &String, token_id: &TokenId, shares: Shares) {
+        let position_info = self.positions.entry(position.clone())
+            .or_insert(Position::new(position));
+        position_info.increase_collateral(token_id, shares);
     }
 
-    pub fn decrease_collateral(&mut self, token_id: &TokenId, shares: Shares) {
-        let current_collateral = self.internal_unwrap_collateral(token_id);
-        if let Some(new_balance) = current_collateral.0.checked_sub(shares.0) {
-            if new_balance > 0 {
-                self.collateral
-                    .insert(token_id.clone(), Shares::from(new_balance));
-            } else {
-                self.collateral.remove(token_id);
-            }
-        } else {
-            env::panic_str("Not enough collateral balance");
+    pub fn decrease_collateral(&mut self, position: &String, token_id: &TokenId, shares: Shares) {
+        let position_info = self.positions.get_mut(position).unwrap();
+        position_info.decrease_collateral(token_id, shares);
+        if position_info.is_empty() {
+            self.positions.remove(position);
         }
     }
 
     pub fn increase_borrowed(&mut self, position: &String, token_id: &TokenId, shares: Shares) {
-        if let Some(borrowed_info) = self.borrowed.get_mut(position) {
-            borrowed_info
-                .entry(token_id.clone())
-                .or_insert_with(|| 0.into())
-                .0 += shares.0;
-        } else {
-            self.borrowed.insert(position.clone(), HashMap::from([(token_id.clone(), shares)]));
-        }
+        let position_info = self.positions.get_mut(position).unwrap();
+        position_info.increase_borrowed(token_id, shares);
     }
 
     pub fn decrease_borrowed(&mut self, position: &String, token_id: &TokenId, shares: Shares) {
-        let current_borrowed = self.internal_unwrap_borrowed(position, token_id);
-        if let Some(new_balance) = current_borrowed.0.checked_sub(shares.0) {
-            let borrowed_info = self.borrowed.get_mut(position).unwrap();
-            if new_balance > 0 {
-                borrowed_info
-                    .insert(token_id.clone(), Shares::from(new_balance));
-            } else {
-                borrowed_info.remove(token_id);
-            }
-        } else {
-            env::panic_str("Not enough borrowed balance");
-        }
+        let position_info = self.positions.get_mut(position).unwrap();
+        position_info.decrease_borrowed(token_id, shares);
     }
 
-    pub fn internal_unwrap_collateral(&mut self, token_id: &TokenId) -> Shares {
-        *self
-            .collateral
-            .get(&token_id)
-            .expect("Collateral asset not found")
+    pub fn internal_unwrap_collateral(&mut self, position: &String, token_id: &TokenId) -> Shares {
+        self.positions.get(position)
+            .expect("Position not found")
+            .internal_unwrap_collateral(token_id)
+            
     }
 
     pub fn internal_unwrap_borrowed(&mut self, position: &String, token_id: &TokenId) -> Shares {
-        *self
-            .borrowed
-            .get(position)
-            .expect("Borrowed position not found")
-            .get(token_id)
-            .expect("Borrowed asset not found")
+        self.positions.get(position)
+            .expect("Position not found")
+            .internal_unwrap_borrowed(token_id)
     }
 
     pub fn add_affected_farm(&mut self, farm_id: FarmId) -> bool {
@@ -142,15 +112,36 @@ impl Account {
         let mut potential_farms = HashSet::new();
         potential_farms.insert(FarmId::NetTvl);
         potential_farms.extend(self.supplied.keys().cloned().map(FarmId::Supplied));
-        potential_farms.extend(self.collateral.keys().cloned().map(FarmId::Supplied));
-        self.borrowed.values().for_each(|v|{
-            potential_farms.extend(v.keys().cloned().map(FarmId::Borrowed));
+        self.positions.iter().for_each(|(position, position_info)| {
+            match position_info {
+                Position::RegularPosition(regular_position) => {
+                    potential_farms.extend(regular_position.collateral.keys().cloned().map(FarmId::Supplied));
+                    potential_farms.extend(regular_position.borrowed.keys().cloned().map(FarmId::Borrowed));
+                }
+                Position::LPTokenPosition(lp_token_position) => {
+                    potential_farms.insert(FarmId::Supplied(AccountId::new_unchecked(position.clone())));
+                    potential_farms.extend(lp_token_position.borrowed.keys().cloned().map(FarmId::Borrowed));
+                }
+            }
         });
         potential_farms
     }
 
     pub fn get_supplied_shares(&self, token_id: &TokenId) -> Shares {
-        let collateral_shares = self.collateral.get(&token_id).map(|s| s.0).unwrap_or(0);
+        let collateral_shares = self.positions.iter().fold(0u128, |acc, (position, position_info)|{
+            match position_info {
+                Position::RegularPosition(regular_position) => {
+                    acc + regular_position.collateral.get(&token_id).map(|s| s.0).unwrap_or(0)
+                }
+                Position::LPTokenPosition(lp_token_position) => {
+                    if token_id.to_string().eq(position) {
+                        acc + lp_token_position.collateral.0
+                    } else {
+                        acc
+                    }
+                }
+            }
+        });
         let supplied_shares = self
             .internal_get_asset(token_id)
             .map(|asset| asset.shares.0)
@@ -159,13 +150,29 @@ impl Account {
     }
 
     pub fn get_borrowed_shares(&self, token_id: &TokenId) -> Shares {
-        self.borrowed.iter().fold(0u128, |acc, (_, borrowed_info)| {
-            if let Some(borrowed_share) = borrowed_info.get(&token_id) {
-                acc + borrowed_share.0
-            } else {
-                acc
+        self.positions.iter().fold(0u128, |acc, (_, position_info)|{
+            match position_info {
+                Position::RegularPosition(regular_position) => {
+                    acc + regular_position.borrowed.get(&token_id).map(|s| s.0).unwrap_or(0)
+                }
+                Position::LPTokenPosition(lp_token_position) => {
+                    acc + lp_token_position.borrowed.get(&token_id).map(|s| s.0).unwrap_or(0)
+                }
             }
         }).into()
+    }
+
+    pub fn get_assets_num(&self) -> u32 {
+        self.positions.iter().fold(0usize, |acc, (_, position_info)| {
+            match position_info {
+                Position::RegularPosition(regular_position) => {
+                    acc + regular_position.collateral.len() + regular_position.borrowed.len()
+                }
+                Position::LPTokenPosition(lp_token_position) => {
+                    acc + 1 + lp_token_position.borrowed.len()
+                }
+            }
+        }) as u32
     }
 }
 
@@ -210,11 +217,19 @@ impl Contract {
 #[near_bindgen]
 impl Contract {
     /// Returns detailed information about an account for a given account_id.
-    /// The information includes all supplied assets, collateral and borrowed.
+    /// The information includes regular position supplied assets, collateral and borrowed.
     /// Each asset includes the current balance and the number of shares.
     pub fn get_account(&self, account_id: AccountId) -> Option<AccountDetailedView> {
         self.internal_get_account(&account_id, true)
-            .map(|account| self.account_into_detailed_view(account))
+            .map(|account| self.account_into_regular_position_detailed_view(account))
+    }
+
+    /// Returns detailed information about an account for a given account_id.
+    /// The information includes all positions supplied assets, collateral and borrowed.
+    /// Each asset includes the current balance and the number of shares.
+    pub fn get_account_all_positions(&self, account_id: AccountId) -> Option<AccountAllPositionsDetailedView> {
+        self.internal_get_account(&account_id, true)
+            .map(|account| self.account_into_all_positions_detailed_view(account))
     }
 
     /// Returns limited account information for accounts from a given index up to a given limit.

@@ -21,6 +21,7 @@ mod storage_tracker;
 mod upgrade;
 mod utils;
 mod shadow_actions;
+mod position;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -43,6 +44,7 @@ pub use crate::storage::*;
 use crate::storage_tracker::*;
 pub use crate::utils::*;
 pub use crate::shadow_actions::*;
+pub use crate::position::*;
 
 use common::*;
 
@@ -598,10 +600,9 @@ mod basic {
         assert_eq!(account.supplied[0].balance, borrow_amount);
         assert_eq!(account.supplied[0].token_id, ndai_token_id());
         assert!(account.supplied[0].apr > BigDecimal::zero());
-        let nep_position = account.borrowed.get(&NEP_POSITION.to_string()).unwrap();
-        assert_eq!(nep_position[0].balance, borrow_amount);
-        assert_eq!(nep_position[0].token_id, ndai_token_id());
-        assert!(nep_position[0].apr > BigDecimal::zero());
+        assert_eq!(account.borrowed[0].balance, borrow_amount);
+        assert_eq!(account.borrowed[0].token_id, ndai_token_id());
+        assert!(account.borrowed[0].apr > BigDecimal::zero());
     }
 
     #[test]
@@ -619,10 +620,9 @@ mod basic {
         assert_eq!(asset.supply_apr, BigDecimal::zero());
         let account = test_env.contract.get_account(alice()).unwrap();
         assert!(account.supplied.is_empty());
-        let nep_position = account.borrowed.get(&NEP_POSITION.to_string()).unwrap();
-        assert_eq!(nep_position[0].balance, borrow_amount);
-        assert_eq!(nep_position[0].token_id, ndai_token_id());
-        assert!(nep_position[0].apr > BigDecimal::zero());
+        assert_eq!(account.borrowed[0].balance, borrow_amount);
+        assert_eq!(account.borrowed[0].token_id, ndai_token_id());
+        assert!(account.borrowed[0].apr > BigDecimal::zero());
     }
 
     #[test]
@@ -641,12 +641,11 @@ mod basic {
         let asset = test_env.get_asset(ndai_token_id());
         approx::assert_relative_eq!(asset.borrowed.balance as f64, expected_borrow_amount as f64);
         let account = test_env.contract.get_account(alice()).unwrap();
-        let nep_position = account.borrowed.get(&NEP_POSITION.to_string()).unwrap();
         approx::assert_relative_eq!(
-            nep_position[0].balance as f64,
+            account.borrowed[0].balance as f64,
             expected_borrow_amount as f64
         );
-        assert_eq!(nep_position[0].token_id, ndai_token_id());
+        assert_eq!(account.borrowed[0].token_id, ndai_token_id());
     }
 
     #[test]
@@ -2062,10 +2061,10 @@ mod liquidation {
             &[av(nusdc_token_id(), supply_amount)],
         );
         assert_balances(
-            account.borrowed.get(&NEP_POSITION.to_string()).unwrap(),
+            &account.borrowed,
             &[av(wnear_token_id(), borrow_amount)],
         );
-        assert!(find_asset(account.borrowed.get(&NEP_POSITION.to_string()).unwrap(), &wnear_token_id()).apr > BigDecimal::zero());
+        assert!(find_asset(&account.borrowed, &wnear_token_id()).apr > BigDecimal::zero());
 
         let bobs_amount = d(100, 24);
         test_env.deposit(wnear_token_id(), bob(), bobs_amount);
@@ -2094,15 +2093,14 @@ mod liquidation {
                 supply_amount - usdc_amount_out,
             )],
         );
-        let nep_position = account.borrowed.get(&NEP_POSITION.to_string()).unwrap();
         assert_balances(
-            nep_position,
+            &account.borrowed,
             &[av(
                 wnear_token_id(),
                 borrow_amount - wnear_amount_in,
             )],
         );
-        assert!(find_asset(nep_position, &wnear_token_id()).apr > BigDecimal::zero());
+        assert!(find_asset(&account.borrowed, &wnear_token_id()).apr > BigDecimal::zero());
 
         let account = test_env.contract.get_account(bob()).unwrap();
         assert_balances(
@@ -2142,16 +2140,15 @@ mod liquidation {
             &account.collateral,
             &[av(nusdc_token_id(), supply_amount)],
         );
-        let nep_position = account.borrowed.get(&NEP_POSITION.to_string()).unwrap();
         assert_balances(
-            nep_position,
+            &account.borrowed,
             &[
                 av(wnear_token_id(), wnear_borrow_amount),
                 av(nusdt_token_id(), usdt_borrow_amount),
             ],
         );
-        assert!(find_asset(nep_position, &wnear_token_id()).apr > BigDecimal::zero());
-        assert!(find_asset(nep_position, &nusdt_token_id()).apr > BigDecimal::zero());
+        assert!(find_asset(&account.borrowed, &wnear_token_id()).apr > BigDecimal::zero());
+        assert!(find_asset(&account.borrowed, &nusdt_token_id()).apr > BigDecimal::zero());
 
         let wnear_bobs_amount = d(100, 24);
         test_env.deposit(wnear_token_id(), bob(), wnear_bobs_amount);
@@ -2188,15 +2185,14 @@ mod liquidation {
                 supply_amount - usdc_amount_out,
             )],
         );
-        let nep_position = account.borrowed.get(&NEP_POSITION.to_string()).unwrap();
         assert_balances(
-            nep_position,
+            &account.borrowed,
             &[av(
                 wnear_token_id(),
                 wnear_borrow_amount - wnear_amount_in,
             )],
         );
-        assert!(find_asset(nep_position, &wnear_token_id()).apr > BigDecimal::zero());
+        assert!(find_asset(&account.borrowed, &wnear_token_id()).apr > BigDecimal::zero());
 
         let account = test_env.contract.get_account(bob()).unwrap();
         assert_balances(

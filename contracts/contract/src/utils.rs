@@ -23,17 +23,9 @@ pub(crate) fn ratio(balance: Balance, r: u32) -> Balance {
     u128_ratio(balance, u128::from(r), u128::from(MAX_RATIO))
 }
 
-pub const NEP_POSITION: &str = "NEP";
+pub const REGULAR_POSITION: &str = "REGULAR";
 pub const SHADOW_V1_TOKEN_PREFIX: &str = "shadow_ref_v1-";
 
 pub(crate) fn parse_pool_id(position: &String) -> u64 {
     position.split("-").collect::<Vec<&str>>()[1].parse().expect("Invalid position")
-}
-
-pub(crate) fn parse_position(token_id: &TokenId) -> String {
-    if token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX) {
-        token_id.to_string()
-    } else {
-        NEP_POSITION.to_string()
-    }
 }

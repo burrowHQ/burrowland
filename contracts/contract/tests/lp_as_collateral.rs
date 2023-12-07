@@ -242,10 +242,9 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
     assert_eq!(shadow_record_info.shadow_in_burrow.0, d(30000, 18));
     let token_asset = burrowland_contract.get_asset(&token_id).await?;
     assert_eq!(token_asset.supplied.balance, d(30000, 18));
-    let alice_burrowland_account = burrowland_contract.get_account(&alice).await?.unwrap();
+    let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
     assert_eq!(alice_burrowland_account.supplied[0].balance, d(30000, 18));
-    assert!(alice_burrowland_account.collateral.is_empty());
-    // check!(view "get_user_storage_state" ref_exchange_contract.get_user_storage_state(&alice));
+    assert!(alice_burrowland_account.positions.is_empty());
     
     check!(ref_exchange_contract.shadow_cancel_farming(&alice, 0, Some(d(10000, 18).into())));
     check!(ref_exchange_contract.shadow_burrowland_withdraw(&alice, 0, Some(d(10000, 18).into()), None));
@@ -256,22 +255,27 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
     assert_eq!(shadow_record_info.shadow_in_burrow.0, d(20000, 18));
     let token_asset = burrowland_contract.get_asset(&token_id).await?;
     assert_eq!(token_asset.supplied.balance, d(20000, 18));
-    let alice_burrowland_account = burrowland_contract.get_account(&alice).await?.unwrap();
+    let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
     assert_eq!(alice_burrowland_account.supplied[0].balance, d(20000, 18));
-    assert!(alice_burrowland_account.collateral.is_empty());
+    assert!(alice_burrowland_account.positions.is_empty());
 
     let msg = serde_json::to_string(&ShadowReceiverMsg::Execute {
         actions: vec![
-            Action::IncreaseCollateral(asset_amount(&token_id, d(5000, 18)))
+            Action::PositionIncreaseCollateral{
+                position: token_id.to_string(),
+                asset_amount: asset_amount(&token_id, d(5000, 18))
+            }
         ]
     }).unwrap();
 
     check!(ref_exchange_contract.shadow_burrowland_deposit(&alice, 0, Some(d(10000, 18).into()), Some(msg)));
     let token_asset = burrowland_contract.get_asset(&token_id).await?;
     assert_eq!(token_asset.supplied.balance, d(30000, 18));
-    let alice_burrowland_account = burrowland_contract.get_account(&alice).await?.unwrap();
+    let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
+    let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
     assert_eq!(alice_burrowland_account.supplied[0].balance, d(25000, 18));
-    assert_eq!(alice_burrowland_account.collateral[0].balance, d(5000, 18));
+    assert_eq!(position_info.collateral[0].balance, d(5000, 18));
+    assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
     
     let shadow_record_infos = ref_exchange_contract.get_shadow_records(&alice).await?;
     let shadow_record_info = shadow_record_infos.get(&0).unwrap();
@@ -372,24 +376,24 @@ async fn test_position_liquidate() -> Result<()> {
 
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(logs burrowland_contract.sync_ref_exchange_lp_token_infos(&root, Some(vec![token_id.to_string().clone()])));
-    check!(burrowland_contract.increase_collateral(&alice, &token_id, 0));
+    check!(burrowland_contract.position_increase_collateral(&alice, &token_id, 0));
     check!(burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
-    price_data(current_timestamp, Some(100000)), Some(token_id.to_string()), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
+    price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
     
     check!(wrap_token_contract.ft_mint(&root, &bob, parse_near!("10000 N")));
     check!(burrowland_contract.deposit(&wrap_token_contract, &bob, parse_near!("10000 N")));
     check!(ref_exchange_contract.mft_register( &bob, ":0".to_string(), bob.id()));
 
-    let alice_burrowland_account = burrowland_contract.get_account(&alice).await?.unwrap();
-    assert_eq!(alice_burrowland_account.collateral[0].balance, d(30000, 18));
-    assert_eq!(alice_burrowland_account.collateral[0].token_id.to_string(), token_id.to_string());
-    let postion = alice_burrowland_account.borrowed.get(&token_id.to_string()).unwrap();
+    let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
+    let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
+    assert_eq!(position_info.collateral[0].balance, d(30000, 18));
+    assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
     assert_eq!(
-        (postion[0].balance / d(1, 18)) as f64,
+        (position_info.borrowed[0].balance / d(1, 18)) as f64,
         d(100, 24 - 18) as f64
     );
 
-    let bob_burrowland_account = burrowland_contract.get_account(&bob).await?.unwrap();
+    let bob_burrowland_account = burrowland_contract.get_account_all_positions(&bob).await?.unwrap();
     assert_eq!(bob_burrowland_account.supplied[0].token_id.to_string(), wrap_token_contract.0.id().to_string());
     assert_eq!(
         (bob_burrowland_account.supplied[0].balance / d(1, 18)) as f64,
@@ -412,17 +416,17 @@ async fn test_position_liquidate() -> Result<()> {
     check!(logs burrowland_contract.liquidate(&bob, &oralce_contract, burrowland_contract.0.id(), alice.id(),
     price_data(current_timestamp, Some(2000000)), vec![asset_amount(wrap_token_contract.0.id(), parse_near!("1 N"))], vec![asset_amount(&token_id, d(13, 18))], Some(token_id.to_string())));
 
-    let alice_burrowland_account = burrowland_contract.get_account(&alice).await?.unwrap();
+    let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
     assert!(!alice_burrowland_account.is_locked);
-    assert_eq!(alice_burrowland_account.collateral[0].balance, d(30000 - 13, 18));
-    assert_eq!(alice_burrowland_account.collateral[0].token_id.to_string(), token_id.to_string());
-    let postion = alice_burrowland_account.borrowed.get(&token_id.to_string()).unwrap();
+    let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
+    assert_eq!(position_info.collateral[0].balance, d(30000 - 13, 18));
+    assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
     assert_eq!(
-        (postion[0].balance / d(1, 18)) as f64,
+        (position_info.borrowed[0].balance / d(1, 18)) as f64,
         d(100 - 1, 24 - 18) as f64
     );
 
-    let bob_burrowland_account = burrowland_contract.get_account(&bob).await?.unwrap();
+    let bob_burrowland_account = burrowland_contract.get_account_all_positions(&bob).await?.unwrap();
     assert!(!bob_burrowland_account.is_locked);
     assert_eq!(bob_burrowland_account.supplied[0].token_id.to_string(), wrap_token_contract.0.id().to_string());
     assert_eq!(
@@ -537,24 +541,24 @@ async fn test_position_force_close() -> Result<()> {
 
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(burrowland_contract.sync_ref_exchange_lp_token_infos(&root, Some(vec![token_id.to_string().clone()])));
-    check!(burrowland_contract.increase_collateral(&alice, &token_id, 0));
+    check!(burrowland_contract.position_increase_collateral(&alice, &token_id, 0));
     check!(logs burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
-    price_data(current_timestamp, Some(100000)), Some(token_id.to_string()), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
+    price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
     
     check!(wrap_token_contract.ft_mint(&root, &bob, parse_near!("10000 N")));
     check!(burrowland_contract.deposit(&wrap_token_contract, &bob, parse_near!("10000 N")));
     check!(ref_exchange_contract.mft_register( &bob, ":0".to_string(), bob.id()));
 
-    let alice_burrowland_account = burrowland_contract.get_account(&alice).await?.unwrap();
-    assert_eq!(alice_burrowland_account.collateral[0].balance, d(30000, 18));
-    assert_eq!(alice_burrowland_account.collateral[0].token_id.to_string(), token_id.to_string());
-    let postion = alice_burrowland_account.borrowed.get(&token_id.to_string()).unwrap();
+    let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
+    let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
+    assert_eq!(position_info.collateral[0].balance, d(30000, 18));
+    assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
     assert_eq!(
-        (postion[0].balance / d(1, 18)) as f64,
+        (position_info.borrowed[0].balance / d(1, 18)) as f64,
         d(100, 24 - 18) as f64
     );
 
-    let bob_burrowland_account = burrowland_contract.get_account(&bob).await?.unwrap();
+    let bob_burrowland_account = burrowland_contract.get_account_all_positions(&bob).await?.unwrap();
     assert_eq!(bob_burrowland_account.supplied[0].token_id.to_string(), wrap_token_contract.0.id().to_string());
     assert_eq!(
         (bob_burrowland_account.supplied[0].balance / d(1, 18)) as f64,
@@ -571,12 +575,12 @@ async fn test_position_force_close() -> Result<()> {
     assert_eq!(boost_farming_contract.get_farmer_seed(&alice, &seed_id).await?.unwrap().shadow_amount, d(30000, 18));
 
     let current_timestamp = worker.view_block().await?.timestamp();
+    check!(view burrowland_contract.get_account_all_positions(&alice));
     check!(logs burrowland_contract.force_close(&bob, &oralce_contract, alice.id(), price_data(current_timestamp, Some(25000000)), Some(token_id.to_string())));
 
-    let alice_burrowland_account = burrowland_contract.get_account(&alice).await?.unwrap();
+    let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
     assert!(!alice_burrowland_account.is_locked);
-    assert!(alice_burrowland_account.collateral.is_empty());
-    assert!(alice_burrowland_account.borrowed.is_empty());
+    assert!(alice_burrowland_account.positions.is_empty());
 
     let alice_exchange_account_deposit = ref_exchange_contract.get_deposits(&alice).await?;
     assert_eq!(alice_exchange_account_deposit.get(usdc_token_contract.0.id()).unwrap().0, 0);
@@ -684,10 +688,10 @@ async fn test_position_farming_with_force_close() -> Result<()> {
     check!(ref_exchange_contract.shadow_burrowland_deposit(&alice, 0, Some(d(20000,18).into()), None));
 
     check!(burrowland_contract.sync_ref_exchange_lp_token_infos(&root, Some(vec![token_id.to_string().clone()])));
-    check!(burrowland_contract.increase_collateral(&alice, &token_id, 0));
+    check!(burrowland_contract.position_increase_collateral(&alice, &token_id, 0));
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
-    price_data(current_timestamp, Some(100000)), Some(token_id.to_string()), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
+    price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
     
     check!(boost_farming_contract.stake_free_seed(&alice, &ref_exchange_contract, ":0".to_string(), d(20000, 18)), "Not enough free shares");
     check!(boost_farming_contract.stake_free_seed(&alice, &ref_exchange_contract, ":0".to_string(), d(10000, 18)));
@@ -698,12 +702,12 @@ async fn test_position_farming_with_force_close() -> Result<()> {
 
     check!(logs burrowland_contract.account_farm_claim_all(&alice, None));
 
-    check!(view burrowland_contract.get_account(&alice));
+    check!(view burrowland_contract.get_account_all_positions(&alice));
 
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(print burrowland_contract.force_close(&bob, &oralce_contract, alice.id(), price_data(current_timestamp, Some(25000000)), Some(token_id.to_string())));
 
-    check!(view burrowland_contract.get_account(&alice));
+    check!(view burrowland_contract.get_account_all_positions(&alice));
 
     Ok(())
 }
@@ -794,10 +798,10 @@ async fn test_position_farming_liquidate() -> Result<()> {
     check!(ref_exchange_contract.shadow_burrowland_deposit(&alice, 0, Some(d(20000,18).into()), None));
 
     check!(burrowland_contract.sync_ref_exchange_lp_token_infos(&root, Some(vec![token_id.to_string().clone()])));
-    check!(burrowland_contract.increase_collateral(&alice, &token_id, 0));
+    check!(burrowland_contract.position_increase_collateral(&alice, &token_id, 0));
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
-    price_data(current_timestamp, Some(100000)), Some(token_id.to_string()), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
+    price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
     
     check!(boost_farming_contract.stake_free_seed(&alice, &ref_exchange_contract, ":0".to_string(), d(20000, 18)), "Not enough free shares");
     check!(boost_farming_contract.stake_free_seed(&alice, &ref_exchange_contract, ":0".to_string(), d(10000, 18)));
@@ -808,7 +812,7 @@ async fn test_position_farming_liquidate() -> Result<()> {
 
     check!(logs burrowland_contract.account_farm_claim_all(&alice, None));
 
-    check!(view burrowland_contract.get_account(&alice));
+    check!(view burrowland_contract.get_account_all_positions(&alice));
 
     check!(wrap_token_contract.ft_mint(&root, &bob, parse_near!("10 N")));
     check!(burrowland_contract.deposit(&wrap_token_contract, &bob, parse_near!("10 N")));
@@ -816,7 +820,7 @@ async fn test_position_farming_liquidate() -> Result<()> {
     check!(print burrowland_contract.liquidate(&bob, &oralce_contract, burrowland_contract.0.id(), alice.id(),
     price_data(current_timestamp, Some(2000000)), vec![asset_amount(wrap_token_contract.0.id(), parse_near!("1 N"))], vec![asset_amount(&token_id, d(13, 18))], Some(token_id.to_string())));
 
-    check!(view burrowland_contract.get_account(&alice));
+    check!(view burrowland_contract.get_account_all_positions(&alice));
 
     Ok(())
 }

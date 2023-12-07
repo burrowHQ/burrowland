@@ -88,13 +88,10 @@ impl AccountV1 {
             .into_iter()
             .map(|c| (c.token_id, c.shares))
             .collect();
-        let borrowed = {
-            let borrowed_info = borrowed_vec
+        let borrowed = borrowed_vec
             .into_iter()
             .map(|b| (b.token_id, b.shares))
             .collect();
-            HashMap::from([(NEP_POSITION.to_string(),  borrowed_info)])
-        };
         let farms = farms_unordered_map
             .iter()
             .map(|(key, value)| (key, value.into()))
@@ -109,8 +106,7 @@ impl AccountV1 {
         Account {
             account_id,
             supplied,
-            collateral,
-            borrowed,
+            positions: HashMap::from([(REGULAR_POSITION.to_string(), Position::RegularPosition(RegularPosition { collateral, borrowed }))]),
             farms,
             affected_farms,
             storage_tracker,
@@ -157,8 +153,7 @@ impl AccountV2 {
         Account {
             account_id,
             supplied,
-            collateral,
-            borrowed: HashMap::from([(NEP_POSITION.to_string(), borrowed)]),
+            positions: HashMap::from([(REGULAR_POSITION.to_string(), Position::RegularPosition(RegularPosition { collateral, borrowed }))]),
             farms,
             affected_farms,
             storage_tracker,

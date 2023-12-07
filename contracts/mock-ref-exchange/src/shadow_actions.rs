@@ -4,6 +4,7 @@ use near_sdk::{is_promise_success, Timestamp};
 
 pub const GAS_FOR_ON_CAST_SHADOW: Gas = Gas(Gas::ONE_TERA.0 * 50);
 pub const GAS_FOR_ON_CAST_SHADOW_CALLBACK: Gas = Gas(Gas::ONE_TERA.0 * 20);
+pub const GAS_FOR_ON_BURROW_LIQUIDATION_CALLBACK: Gas = Gas(Gas::ONE_TERA.0 * 20);
 
 #[ext_contract(ext_shadow_receiver)]
 pub trait ShadowReceiver {
@@ -195,11 +196,10 @@ impl Contract {
         if withdraw_seed_amount > 0 {
             liquidation_account.update_shadow_record(pool_id, &ShadowActions::FromFarming, withdraw_seed_amount);
         }
-        let storage_refund = if prev_storage > env::storage_usage() {
-            (prev_storage - env::storage_usage()) as Balance * env::storage_byte_cost()
-        } else {
-            0
-        };
+        if prev_storage > env::storage_usage() {
+            liquidation_account.near_amount +=
+                (prev_storage - env::storage_usage()) as Balance * env::storage_byte_cost()
+        }
         self.internal_save_account(&liquidation_account_id, liquidation_account);
         
         let mut liquidator_account = self.internal_unwrap_account(&liquidator_account_id);
@@ -235,13 +235,11 @@ impl Contract {
                 )
                 .then(
                     Self::ext(env::current_account_id())
-                        .with_static_gas(GAS_FOR_ON_CAST_SHADOW_CALLBACK)
-                        .callback_on_shadow(
-                            ShadowActions::FromFarming,
-                            liquidation_account_id.clone(),
+                        .with_static_gas(GAS_FOR_ON_BURROW_LIQUIDATION_CALLBACK)
+                        .callback_on_burrow_liquidation(
+                            liquidation_account_id,
                             pool_id,
                             U128(withdraw_seed_amount),
-                            U128(storage_refund)
                         )
                 );
         }
@@ -298,6 +296,17 @@ impl Contract {
             }
             true
         }
+    }
+
+    #[private]
+    pub fn callback_on_burrow_liquidation(
+        &mut self,
+        sender_id: AccountId,
+        pool_id: u64,
+        amount: U128,
+    ) {
+        log!("pool_id {}, {} remove {} farming seed {}", pool_id, sender_id, amount.0, 
+            if is_promise_success() { "successful" } else { "failed" });
     }
 }
 

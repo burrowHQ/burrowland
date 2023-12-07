@@ -142,7 +142,7 @@ impl Contract {
         out_assets: Vec<AssetAmount>,
     ) {
         let mut liquidation_account = self.internal_unwrap_account(liquidation_account_id);
-        let max_discount = self.compute_max_discount(&position, &liquidation_account, &prices);
+        let max_discount = self.compute_max_discount(position, &liquidation_account, &prices);
         assert!(
             max_discount > BigDecimal::zero(),
             "The shadow liquidation account is not at risk"
@@ -153,7 +153,7 @@ impl Contract {
         for asset_amount in in_assets.iter() {
             let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
             let asset = self.internal_unwrap_asset(&asset_amount.token_id);
-            let available_borrowed_shares = liquidation_account.internal_unwrap_borrowed(&position, &asset_amount.token_id);
+            let available_borrowed_shares = liquidation_account.internal_unwrap_borrowed(position, &asset_amount.token_id);
 
             let (mut borrowed_shares, mut amount) = asset_amount_to_shares(
                 &asset.borrowed,
@@ -175,7 +175,7 @@ impl Contract {
                 assert!(borrowed_shares.0 > 0, "Shares can't be 0");
                 assert!(borrowed_shares.0 <= available_borrowed_shares.0);
             }
-            liquidation_account.decrease_borrowed(&position, &asset_amount.token_id, borrowed_shares);
+            liquidation_account.decrease_borrowed(position, &asset_amount.token_id, borrowed_shares);
             account_asset.withdraw_shares(supplied_shares);
             
             account.internal_set_asset(&asset_amount.token_id, account_asset);
@@ -189,10 +189,10 @@ impl Contract {
         }
 
         let collateral_asset = self.internal_unwrap_asset(&out_assets[0].token_id);
-        let collateral_shares = liquidation_account.internal_unwrap_collateral(&out_assets[0].token_id);
+        let collateral_shares = liquidation_account.internal_unwrap_collateral(position, &out_assets[0].token_id);
         let (shares, amount) =
             asset_amount_to_shares(&collateral_asset.supplied, collateral_shares, &out_assets[0], false);
-        liquidation_account.decrease_collateral(&out_assets[0].token_id, shares);
+        liquidation_account.decrease_collateral(position, &out_assets[0].token_id, shares);
 
 
         let mut min_token_amounts = vec![];
@@ -244,7 +244,7 @@ impl Contract {
             ).then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_CALLBACK_PROCESS_LIQUIDATE_RESULT)
-                    .callback_process_burrowland_liquidate_result(
+                    .callback_process_shadow_liquidate_result(
                         account_id.clone(),
                         liquidation_account_id.clone(),
                         position.clone(),
@@ -265,76 +265,78 @@ impl Contract {
             "The force closing is not enabled"
         );
 
-        let liquidation_account = self.internal_unwrap_account(liquidation_account_id);
-        
         let mut borrowed_sum = BigDecimal::zero();
 
-        let collateral_asset = self.internal_unwrap_asset(&AccountId::new_unchecked(position.clone()));
-        let collateral_shares = liquidation_account.collateral.get(&AccountId::new_unchecked(position.clone())).expect("Collateral asset not found");
-        let collateral_balance = collateral_asset.supplied.shares_to_amount(*collateral_shares, false);
+        let liquidation_account = self.internal_unwrap_account(liquidation_account_id);
+        if let Position::LPTokenPosition(position_info) = liquidation_account.positions.get(position).expect("Position not found") {
+            let collateral_asset = self.internal_unwrap_asset(&AccountId::new_unchecked(position_info.lpt_id.clone()));
+            let collateral_shares = position_info.collateral;
+            let collateral_balance = collateral_asset.supplied.shares_to_amount(collateral_shares, false);
 
-        let mut min_token_amounts = vec![];
-        let unit_share_tokens = self.last_lp_token_infos.get(position).expect("lp_token_infos not found");
-        assert!(env::block_timestamp() - unit_share_tokens.timestamp <= to_nano(config.lp_tokens_info_valid_duration_sec), "LP token info timestamp is too stale");
-        let unit_share = 10u128.pow(unit_share_tokens.decimals as u32);
-        let collateral_sum = unit_share_tokens.tokens
-            .iter()
-            .fold(BigDecimal::zero(), |sum, unit_share_token_value|{
-                let token_asset = self.internal_unwrap_asset(&unit_share_token_value.token_id);
-                let token_stdd_amount = unit_share_token_value.amount.0 * 10u128.pow(token_asset.config.extra_decimals as u32);
-                let token_balance = u128_ratio(token_stdd_amount, collateral_balance, 10u128.pow(collateral_asset.config.extra_decimals as u32) * unit_share);
-                min_token_amounts.push(U128(token_balance / 10u128.pow(token_asset.config.extra_decimals as u32)));
-                
-                sum + BigDecimal::from_balance_price(
-                    token_balance,
-                    prices.get_unwrap(&unit_share_token_value.token_id),
-                    token_asset.config.extra_decimals,
-                )
-            });
-
-        let borrowed_info = liquidation_account.borrowed.get(position).expect("Borrowed position not found");
-        for (token_id, shares) in borrowed_info.iter() {
-            let asset = self.internal_unwrap_asset(&token_id);
-            let amount = asset.borrowed.shares_to_amount(*shares, true);
-            assert!(
-                asset.reserved >= amount,
-                "Not enough {} in reserve",
-                token_id
-            );
-
-            borrowed_sum = borrowed_sum
-                + BigDecimal::from_balance_price(
-                    amount,
-                    prices.get_unwrap(&token_id),
-                    asset.config.extra_decimals,
-                );
-        }
-
-        assert!(
-            borrowed_sum > collateral_sum,
-            "Total borrowed sum {} is not greater than total collateral sum {}",
-            borrowed_sum,
-            collateral_sum
-        );
-
-        ext_ref_exchange::ext(self.internal_config().ref_exchange_id)
-            .with_static_gas(shadow_actions::GAS_FOR_PROCESS_FORCE_CLOSE_RESULT)
-            .on_burrow_liquidation(
-                config.owner_id.clone(),
-                liquidation_account_id.clone(),
-                position.clone(), 
-                U128(collateral_balance), 
-                min_token_amounts)
-            .then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(shadow_actions::GAS_FOR_CALLBACK_PROCESS_FORCE_CLOSE_RESULT)
-                    .callback_process_burrowland_force_close_result(
-                        liquidation_account_id.clone(),
-                        position.clone(),
-                        collateral_sum,
-                        borrowed_sum
+            let mut min_token_amounts = vec![];
+            let unit_share_tokens = self.last_lp_token_infos.get(position).expect("lp_token_infos not found");
+            assert!(env::block_timestamp() - unit_share_tokens.timestamp <= to_nano(config.lp_tokens_info_valid_duration_sec), "LP token info timestamp is too stale");
+            let unit_share = 10u128.pow(unit_share_tokens.decimals as u32);
+            let collateral_sum = unit_share_tokens.tokens
+                .iter()
+                .fold(BigDecimal::zero(), |sum, unit_share_token_value|{
+                    let token_asset = self.internal_unwrap_asset(&unit_share_token_value.token_id);
+                    let token_stdd_amount = unit_share_token_value.amount.0 * 10u128.pow(token_asset.config.extra_decimals as u32);
+                    let token_balance = u128_ratio(token_stdd_amount, collateral_balance, 10u128.pow(collateral_asset.config.extra_decimals as u32) * unit_share);
+                    min_token_amounts.push(U128(token_balance / 10u128.pow(token_asset.config.extra_decimals as u32)));
+                    
+                    sum + BigDecimal::from_balance_price(
+                        token_balance,
+                        prices.get_unwrap(&unit_share_token_value.token_id),
+                        token_asset.config.extra_decimals,
                     )
+                });
+
+            for (token_id, shares) in position_info.borrowed.iter() {
+                let asset = self.internal_unwrap_asset(&token_id);
+                let amount = asset.borrowed.shares_to_amount(*shares, true);
+                assert!(
+                    asset.reserved >= amount,
+                    "Not enough {} in reserve",
+                    token_id
+                );
+
+                borrowed_sum = borrowed_sum
+                    + BigDecimal::from_balance_price(
+                        amount,
+                        prices.get_unwrap(&token_id),
+                        asset.config.extra_decimals,
+                    );
+            }
+
+            assert!(
+                borrowed_sum > collateral_sum,
+                "Total borrowed sum {} is not greater than total collateral sum {}",
+                borrowed_sum,
+                collateral_sum
             );
+    
+            ext_ref_exchange::ext(self.internal_config().ref_exchange_id)
+                .with_static_gas(shadow_actions::GAS_FOR_PROCESS_FORCE_CLOSE_RESULT)
+                .on_burrow_liquidation(
+                    config.owner_id.clone(),
+                    liquidation_account_id.clone(),
+                    position.clone(), 
+                    U128(collateral_balance), 
+                    min_token_amounts)
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(shadow_actions::GAS_FOR_CALLBACK_PROCESS_FORCE_CLOSE_RESULT)
+                        .callback_process_shadow_force_close_result(
+                            liquidation_account_id.clone(),
+                            position.clone(),
+                            collateral_sum,
+                            borrowed_sum
+                        )
+                );
+        } else {
+            env::panic_str("Internal error");
+        }
     }
 }
 
@@ -356,7 +358,7 @@ impl Contract {
     }
 
     #[private]
-    pub fn callback_process_burrowland_liquidate_result(
+    pub fn callback_process_shadow_liquidate_result(
         &mut self,
         sender_id: AccountId,
         liquidation_account_id: AccountId,
@@ -381,10 +383,10 @@ impl Contract {
 
             let mut collateral_asset = self.internal_unwrap_asset(&out_assets[0].token_id);
             liquidation_account.add_affected_farm(FarmId::Supplied(out_assets[0].token_id.clone()));
-            let collateral_shares = liquidation_account.internal_unwrap_collateral(&out_assets[0].token_id);
+            let collateral_shares = liquidation_account.internal_unwrap_collateral(&position, &out_assets[0].token_id);
             let (shares, amount) =
                 asset_amount_to_shares(&collateral_asset.supplied, collateral_shares, &out_assets[0], false);
-            liquidation_account.decrease_collateral(&out_assets[0].token_id, shares);
+            liquidation_account.decrease_collateral(&position, &out_assets[0].token_id, shares);
             collateral_asset.supplied.withdraw(shares, amount);
             self.internal_set_asset(&out_assets[0].token_id, collateral_asset);
 
@@ -403,7 +405,7 @@ impl Contract {
     }
 
     #[private]
-    pub fn callback_process_burrowland_force_close_result (
+    pub fn callback_process_shadow_force_close_result (
         &mut self,
         liquidation_account_id: AccountId,
         position: String, 
@@ -414,23 +416,22 @@ impl Contract {
         liquidation_account.is_locked = false;
 
         if is_promise_success() {
-            let collateral_tokenn_id = AccountId::new_unchecked(position.clone());
-            liquidation_account.collateral.remove(&collateral_tokenn_id);
-            liquidation_account.add_affected_farm(FarmId::Supplied(collateral_tokenn_id));
-            let borrows = liquidation_account.borrowed.remove(&position).unwrap();
-            for (token_id, shares) in borrows {
-                let mut asset = self.internal_unwrap_asset(&token_id);
-                let amount = asset.borrowed.shares_to_amount(shares, true);
+            if let Position::LPTokenPosition(position_info) = liquidation_account.positions.remove(&position).unwrap(){
+                liquidation_account.add_affected_farm(FarmId::Supplied(AccountId::new_unchecked(position_info.lpt_id.clone())));
+                for (token_id, shares) in position_info.borrowed {
+                    let mut asset = self.internal_unwrap_asset(&token_id);
+                    let amount = asset.borrowed.shares_to_amount(shares, true);
 
-                asset.reserved -= amount;
-                asset.borrowed.withdraw(shares, amount);
+                    asset.reserved -= amount;
+                    asset.borrowed.withdraw(shares, amount);
 
-                self.internal_set_asset(&token_id, asset);
-                
-                liquidation_account.add_affected_farm(FarmId::Borrowed(token_id));
+                    self.internal_set_asset(&token_id, asset);
+                    
+                    liquidation_account.add_affected_farm(FarmId::Borrowed(token_id));
+                }
+                self.internal_account_apply_affected_farms(&mut liquidation_account);
+                events::emit::force_close(&liquidation_account_id, &collateral_sum, &repaid_sum);
             }
-            self.internal_account_apply_affected_farms(&mut liquidation_account);
-            events::emit::force_close(&liquidation_account_id, &collateral_sum, &repaid_sum);
         }
         self.internal_set_account(&liquidation_account_id, liquidation_account);
     }
