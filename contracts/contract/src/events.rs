@@ -142,6 +142,7 @@ pub mod emit {
         liquidation_account_id: &AccountId,
         collateral_sum: &BigDecimal,
         repaid_sum: &BigDecimal,
+        position: &String
     ) {
         log_event(
             "liquidate",
@@ -150,6 +151,7 @@ pub mod emit {
                 "liquidation_account_id": liquidation_account_id,
                 "collateral_sum": collateral_sum,
                 "repaid_sum": repaid_sum,
+                "position": position,
             }),
         );
     }
@@ -158,6 +160,7 @@ pub mod emit {
         liquidation_account_id: &AccountId,
         collateral_sum: &BigDecimal,
         repaid_sum: &BigDecimal,
+        position: &String
     ) {
         log_event(
             "force_close",
@@ -165,6 +168,7 @@ pub mod emit {
                 "liquidation_account_id": liquidation_account_id,
                 "collateral_sum": collateral_sum,
                 "repaid_sum": repaid_sum,
+                "position": position,
             }),
         );
     }

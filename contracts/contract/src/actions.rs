@@ -482,10 +482,12 @@ impl Contract {
             &liquidation_account_id,
             &collateral_taken_sum,
             &borrowed_repaid_sum,
+            &position
         );
     }
 
     pub fn internal_force_close(&mut self, prices: &Prices, liquidation_account_id: &AccountId) {
+        let position = REGULAR_POSITION.to_string();
         let config = self.internal_config();
         assert!(
             config.force_closing_enabled,
@@ -499,7 +501,7 @@ impl Contract {
 
         let mut affected_farms = vec![];
 
-        if let Position::RegularPosition(mut regular_position) = liquidation_account.positions.remove(&REGULAR_POSITION.to_string()).expect("Position not found") {
+        if let Position::RegularPosition(mut regular_position) = liquidation_account.positions.remove(&position).expect("Position not found") {
             for (token_id, shares) in regular_position.collateral.drain() {
                 let mut asset = self.internal_unwrap_asset(&token_id);
                 let amount = asset.supplied.shares_to_amount(shares, false);
@@ -548,7 +550,7 @@ impl Contract {
             self.internal_account_apply_affected_farms(&mut liquidation_account);
             self.internal_set_account(liquidation_account_id, liquidation_account);
     
-            events::emit::force_close(&liquidation_account_id, &collateral_sum, &borrowed_sum);
+            events::emit::force_close(&liquidation_account_id, &collateral_sum, &borrowed_sum, &position);
         } else {
             env::panic_str("Internal error");
         }

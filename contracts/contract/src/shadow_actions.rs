@@ -398,6 +398,7 @@ impl Contract {
                 &liquidation_account_id,
                 &collateral_sum,
                 &repaid_sum,
+                &position
             );
         }
         self.internal_set_account(&sender_id, account);
@@ -430,7 +431,7 @@ impl Contract {
                     liquidation_account.add_affected_farm(FarmId::Borrowed(token_id));
                 }
                 self.internal_account_apply_affected_farms(&mut liquidation_account);
-                events::emit::force_close(&liquidation_account_id, &collateral_sum, &repaid_sum);
+                events::emit::force_close(&liquidation_account_id, &collateral_sum, &repaid_sum, &position);
             }
         }
         self.internal_set_account(&liquidation_account_id, liquidation_account);
