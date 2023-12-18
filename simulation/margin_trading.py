@@ -2,6 +2,8 @@
 # -*- coding:utf-8 -*-
 __author__ = 'Marco'
 
+import json
+
 
 class Pool(object):
     def __init__(self, shares, balance) -> None:
@@ -84,23 +86,14 @@ def global_init_accounts():
     ACCOUNTS["bob"] = Account("bob")
 
 
-'''
-represent those MarginTradingPositions stored on chain
-<pos_id, MarginTradingPosition>
-'''
-STORED_MT = {}
-
-
-class MarginTradingError(Exception):
-    pass
-
-
 class Config(object):
     def __init__(self) -> None:
         self.min_open_hf = 1.05
         self.max_leverage_rate = 2.0
         self.max_margin_value = float(1000)
-    
+
+CONFIG = Config()
+
 
 class Oracle(object):
     def __init__(self) -> None:
@@ -125,7 +118,7 @@ class Dex(object):
             "dai": 1.0,
             "usdt": 1.0,
             "usdc": 1.0,
-            "near": 3.1,
+            "near": 3.0,
         }
         self.last: int = 0
     
@@ -155,6 +148,10 @@ class RegularPosition(object):
         self.borrowed = {}  # <token_id, shares>
 
 
+class MarginTradingError(Exception):
+    pass
+
+
 class MarginTradingPosition(object):
 
     def __init__(self) -> None:
@@ -170,6 +167,10 @@ class MarginTradingPosition(object):
         self.position_amount = 0.0
         # pre-open, running, adjusting
         self.stat = "pre-open"
+        # TODO: keep a record in smart contract or leave it to off-line indexer work?
+        # keep a record of accumulated overpaid debt, which has 
+        # already been automatically deposited into user supply.
+        self.trace_accumulated_profit_shares = 0.0
 
     def __str__(self) -> str:
         return "Status: %s, Margin: (%s, %.02f), Pos: (%s, %.02f), Debt: (%s, %.02f)" % (self.stat, self.margin_asset, self.margin_shares,
@@ -200,18 +201,27 @@ class MarginTradingPosition(object):
 
 
     def get_hf(self, oracle: Oracle) -> float:
-        numerator = self.get_margin_value(oracle) * ASSETS[self.margin_asset].config.fr + \
-            self.get_position_value(oracle) * ASSETS[self.position_asset].config.fr
-        denominator = self.get_debt_value(oracle) / ASSETS[self.debt_asset].config.fr
-        return numerator/denominator
+        if self.get_debt_value(oracle) > 0:
+            numerator = self.get_margin_value(oracle) * ASSETS[self.margin_asset].config.fr + \
+                self.get_position_value(oracle) * ASSETS[self.position_asset].config.fr
+            denominator = self.get_debt_value(oracle) / ASSETS[self.debt_asset].config.fr
+            return numerator/denominator
+        else:
+            return 10000.0
 
     def get_pnl(self, oracle: Oracle) -> float:
         pnl = self.get_position_value(oracle) - self.get_debt_value(oracle)
         return pnl
 
     def get_lr(self, oracle: Oracle) -> float:
-        lr = self.get_debt_value(oracle) / self.get_margin_value(oracle)
-        return lr
+        if self.get_debt_value(oracle) > 0:
+            if self.get_margin_value(oracle) > 0:
+                lr = self.get_debt_value(oracle) / self.get_margin_value(oracle)
+                return lr
+            else:
+                return 10000.0
+        else:
+            return 0.0
 
     def status(self, oracle: Oracle) -> None:
         print(self)
@@ -219,16 +229,105 @@ class MarginTradingPosition(object):
 
 
 '''
+simulation of NEP-141 on_resovle_transfer
+'''
+def on_resolve_transfer(cross_call_rslt: bool, account_id: str, pos_id: str, amount: int, op: str) -> None:
+    print("-- Cross-Contract-Call return %s." % cross_call_rslt)
+    user: Account = ACCOUNTS[account_id]
+    mt: MarginTradingPosition = user.positions[pos_id]
+    asset_debt: Asset = ASSETS[mt.debt_asset]
+    asset_position: Asset = ASSETS[mt.position_asset]
+    if cross_call_rslt:
+        # nothing to do, as real trading result would be reported through on_notify
+        pass
+    else:
+        if op == "open":
+            user.supplied[mt.margin_asset] += mt.margin_shares
+            asset_debt.pending_debt -= amount
+            del user.positions[pos_id]
+            ACCOUNTS[account_id] = user
+            print("-- Position cancelled.")
+        elif op == "increase":
+            asset_debt.pending_debt -= amount
+            mt.stat = "running"
+            user.positions[pos_id] = mt
+            ACCOUNTS[account_id] = user
+            print("-- Increasing Position failed.")
+        elif op == "decrease":
+            asset_position.margin_position += amount
+            mt.stat = "running"
+            user.positions[pos_id] = mt
+            ACCOUNTS[account_id] = user
+            print("-- Decreasing Position failed.")
+        else:
+            pass
+
+
 
 '''
-def open_position(user_id: str, config: Config, oracle: Oracle, dex: Dex,
+simulation of NEP-141 ft_on_transfer
+'''
+def ft_on_transfer(token_id: str, sender_id: str, amount: int, msg: str) -> None:
+    print("-- %s transfer %s %s token, with msg: %s" % (sender_id, amount, token_id, msg))
+    msg_obj = json.loads(msg)
+
+    account: Account = ACCOUNTS[msg_obj["user_id"]]
+    mt: MarginTradingPosition = account.positions[msg_obj["pos_id"]]
+
+    if msg_obj["op"] in ["open", "increase"]:
+        asset_debt: Asset = ASSETS[mt.debt_asset]
+        debt_shares = asset_debt.margin_debt.amount_to_shares(msg_obj["token_in_amount"])
+        asset_debt.pending_debt -= msg_obj["token_in_amount"]
+        asset_debt.margin_debt.shares += debt_shares
+        asset_debt.margin_debt.balance += msg_obj["token_in_amount"]
+        asset_pos: Asset = ASSETS[mt.position_asset]
+        asset_pos.margin_position += amount
+
+        mt.debt_shares += debt_shares
+        mt.position_amount += amount
+        mt.stat = "running"
+        account.positions[msg_obj["pos_id"]] = mt
+        ACCOUNTS[msg_obj["user_id"]] = account
+        print("-- %s Position Succeeded." % msg_obj["op"])
+    elif msg_obj["op"] == "decrease":
+        asset_debt: Asset = ASSETS[mt.debt_asset]
+        debt_shares = asset_debt.margin_debt.amount_to_shares(amount)
+        repay_shares = min(debt_shares, mt.debt_shares)
+        repay_amount = asset_debt.margin_debt.shares_to_amount(repay_shares)
+        asset_debt.margin_debt.shares -= repay_shares
+        asset_debt.margin_debt.balance -= repay_amount
+        
+        mt.debt_shares -= repay_shares
+        mt.position_amount -= msg_obj["token_in_amount"]
+        mt.stat = "running"
+        account.positions[msg_obj["pos_id"]] = mt
+
+        # TODO: Shall we also make remaining position goes to user's supply when debt is 0?
+        overpay_amount = amount - repay_amount
+        if overpay_amount > 0:
+            # overpay part goes to user's supply
+            overpay_shares = asset_debt.supplied.amount_to_shares(overpay_amount)
+            asset_debt.supplied.shares += overpay_shares
+            asset_debt.supplied.balance += overpay_amount
+            account.supplied[mt.debt_asset] += overpay_shares
+            print("-- %s of %s token goes to %s supply as %s shares" % (overpay_amount, mt.debt_asset, msg_obj["user_id"], overpay_shares))
+
+        ACCOUNTS[msg_obj["user_id"]] = account
+        print("-- %s Position Succeeded." % msg_obj["op"])
+    else:
+        pass
+
+
+'''
+
+'''
+def open_position(user_id: str, oracle: Oracle, dex: Dex,
                   margin: str, margin_amount: float, 
                   debt: str, debt_amount: float, 
-                  position: str, position_amount: float) -> str:
+                  position: str, min_position_amount: float) -> str:
     pos_id = "%s-%s-%s" % (margin, debt, position)
     asset_debt: Asset = ASSETS[debt]
     asset_margin: Asset = ASSETS[margin]
-    asset_position: Asset = ASSETS[position]
     account: Account = ACCOUNTS[user_id]
 
     if pos_id in account.positions:
@@ -243,23 +342,23 @@ def open_position(user_id: str, config: Config, oracle: Oracle, dex: Dex,
     mt = MarginTradingPosition()
     mt.reset(margin, asset_margin.supplied.amount_to_shares(margin_amount), 
              debt, asset_debt.margin_debt.amount_to_shares(debt_amount), 
-             position, position_amount)
+             position, min_position_amount)
     print("Step1: created MTP with pre-open status:")
     mt.status(oracle)
 
     # step 2: check before call dex to trade
     # check if mt is valid
-    if mt.get_hf(oracle) < config.min_open_hf:
+    if mt.get_hf(oracle) < CONFIG.min_open_hf:
         raise MarginTradingError("Health factor is too low when open")
-    if mt.get_lr(oracle) > config.max_leverage_rate:
+    if mt.get_lr(oracle) > CONFIG.max_leverage_rate:
         raise MarginTradingError("Leverage rate is too high when open")
-    if mt.get_margin_value(oracle) > config.max_margin_value:
+    if mt.get_margin_value(oracle) > CONFIG.max_margin_value:
         raise MarginTradingError("Margin value is too high when open")
     # check if price from oracle and user differs too much
     position_amount_from_oracle = mt.get_debt_value(oracle) / oracle.asset_prices[position]
-    if position_amount_from_oracle < position_amount:
-        position_diff = position_amount - position_amount_from_oracle
-        if position_diff / position_amount > 0.05:
+    if position_amount_from_oracle < min_position_amount:
+        position_diff = min_position_amount - position_amount_from_oracle
+        if position_diff / min_position_amount > 0.05:
             print("detect possible ddos attack due to unreasonable position_amount")
             raise MarginTradingError("Unreasonable requested position amount")
     print("Step2: pre-open MTP passes valid check.")
@@ -273,50 +372,19 @@ def open_position(user_id: str, config: Config, oracle: Oracle, dex: Dex,
     print("Step3: pending_debt updated and pre-open MTP stored on-chain.")
 
     # step 4: call dex to trade and wait for callback
-    print("Step3: Call dex to trade:")
-    callback_params = {"user_id": user_id, "pos_id": pos_id, "debt_amount": debt_amount}
-    trade_ret = dex.trade(mt.debt_asset, debt_amount, mt.position_asset, position_amount)
+    print("Step4: Call dex to trade:")
+    trade_ret = dex.trade(mt.debt_asset, debt_amount, mt.position_asset, min_position_amount)
 
     # step 5a: 
-    print("Step5a: Processing trading callback:")
-    cb_user_id = callback_params["user_id"]
-    cb_pos_id = callback_params["pos_id"]
-
-    lookup_user: Account = ACCOUNTS[cb_user_id]
-    lookup_mt: MarginTradingPosition = lookup_user.positions[cb_pos_id]
-    if trade_ret:
-        # nothing to do, as real trading result would be reported through on_notify
-        pass
-    else:
-        lookup_user.supplied[lookup_mt.margin_asset] += lookup_mt.margin_shares
-        ASSETS[lookup_mt.debt_asset].pending_debt -= debt_amount
-        del lookup_user.positions[cb_pos_id]
-        ACCOUNTS[cb_user_id] = lookup_user
-        print("Position cancelled.")
+    print("Step5a: Callback:")
+    on_resolve_transfer(trade_ret, user_id, pos_id, debt_amount, "open")
 
     # step 5b: if trade_ret is true, the detailed trading info would be reported through on_notify
     if trade_ret:
-        print("Step5b: Processing trading notify:")
-        on_notify = {"user_id": user_id, "pos_id": pos_id, "token_in_amount": debt_amount, "token_out_amount": dex.get_latest_token_out_amount()}
-        notify_user: Account = ACCOUNTS[on_notify["user_id"]]
-        notify_mt: MarginTradingPosition = notify_user.positions[on_notify["pos_id"]]
-        
-        notify_asset_debt: Asset = ASSETS[notify_mt.debt_asset]
-        debt_shares = notify_asset_debt.margin_debt.amount_to_shares(on_notify["token_in_amount"])
-        notify_asset_debt.pending_debt -= on_notify["token_in_amount"]
-        notify_asset_debt.margin_debt.shares += debt_shares
-        notify_asset_debt.margin_debt.balance += on_notify["token_in_amount"]
-        notify_asset_pos: Asset = ASSETS[notify_mt.position_asset]
-        notify_asset_pos.margin_position += on_notify["token_out_amount"]
-
-        notify_mt.debt_shares = debt_shares
-        notify_mt.position_amount = on_notify["token_out_amount"]
-        notify_mt.stat = "running"
-        notify_user.positions[on_notify["pos_id"]] = notify_mt
-        ACCOUNTS[on_notify["user_id"]] = notify_user
-        
-        print("Position opened.")
-        notify_mt.status(oracle)
+        print("Step5b: Dex call ft_transfer_call to send token_out back to burrow:")
+        msg_obj = {"user_id": user_id, "pos_id": pos_id, "token_in_amount": debt_amount, "op": "open"}
+        ft_on_transfer(mt.debt_asset, "dex", dex.get_latest_token_out_amount(), json.dumps(msg_obj))
+        mt.status(oracle)
 
     return pos_id
 
@@ -324,166 +392,149 @@ def open_position(user_id: str, config: Config, oracle: Oracle, dex: Dex,
 '''
 
 '''
-def adjust_margin(config: Config, oracle: Oracle, pos_id: str, adjust_direction: int, adjust_amount: int):
-    mt: MarginTradingPosition = STORED_MT[pos_id]
-    adjust_margin_shares = config.supply_amount_to_share(mt.margin_asset, adjust_amount)
+def adjust_margin(user_id: str, oracle: Oracle, pos_id: str, adjust_direction: int, adjust_amount: int):
+    account: Account = ACCOUNTS[user_id]
+    mt: MarginTradingPosition = account.positions[pos_id]
+    asset_margin: Asset = ASSETS[mt.margin_asset]
+    adjust_margin_shares = asset_margin.supplied.amount_to_shares(adjust_amount)
     if adjust_direction == 0:
         # decrease, move asset from margin to user's supply, 
         mt.margin_shares -= adjust_margin_shares
-        # TODO: adjust user supply
+        account.supplied[mt.margin_asset] += adjust_amount
 
         # check updated MT is valid or not
-        if mt.get_hf(oracle) < config.min_open_hf:
+        if mt.get_hf(oracle) < CONFIG.min_open_hf:
             raise MarginTradingError("Health factor is too low when open")
-        if mt.get_lr(oracle) > config.max_leverage_rate:
+        if mt.get_lr(oracle) > CONFIG.max_leverage_rate:
             raise MarginTradingError("Leverage rate is too high when open")
     else:
         # increase, move asset from user's supply to this pos as margin
         mt.margin_shares += adjust_margin_shares
-        # TODO: adjust user supply
+        account.supplied[mt.margin_asset] -= adjust_amount
 
-    STORED_MT[pos_id]
+    account.positions[pos_id] = mt
+    ACCOUNTS[user_id] = account
 
 
 '''
 
 '''
-def increase_position(config: Config, oracle: Oracle, dex: Dex, pos_id: str, 
-                    increased_debt_amount: int, increased_position_amount: int, 
+def increase_position(user_id: str, oracle: Oracle, dex: Dex, pos_id: str, 
+                    increased_debt_amount: int, min_increased_position_amount: int, 
                     market_route_id: int):
-    mt: MarginTradingPosition = STORED_MT[pos_id]
+    account: Account = ACCOUNTS[user_id]
+    mt: MarginTradingPosition = account.positions[pos_id]
+    asset_debt: Asset = ASSETS[mt.debt_asset]
+
+    # step 0: check if pending_debt of debt asset has debt_amount room available
+    # pending_debt should less than 20% of available of this asset
+    if (increased_debt_amount + asset_debt.pending_debt) * 5 >= asset_debt.available_amount():
+         raise MarginTradingError("Pending debt will overflow")
 
     # step 1: check if price from oracle and user differs too much
     position_amount_from_oracle = increased_debt_amount * oracle.asset_prices[mt.debt_asset] / oracle.asset_prices[mt.position_asset]
-    if position_amount_from_oracle < increased_position_amount:
-        position_diff = increased_position_amount - position_amount_from_oracle
-        if position_diff / increased_position_amount > 0.05:
+    if position_amount_from_oracle < min_increased_position_amount:
+        position_diff = min_increased_position_amount - position_amount_from_oracle
+        if position_diff / min_increased_position_amount > 0.05:
             print("detect possible ddos attack due to unreasonable position_amount")
             raise MarginTradingError("Unreasonable requested position amount")
 
-    # step 2: adjust MT
-    increased_debt_shares = config.borrow_amount_to_share(mt.debt_asset, increased_debt_amount)
+    # step 2: try evaluating MT to see if it is valid.
+    increased_debt_shares = asset_debt.margin_debt.amount_to_shares(increased_debt_amount)
     mt.debt_shares += increased_debt_shares
-    mt.position_amount += increased_position_amount
-
-    # step 3: check before call dex to trade
-    # check if mt is valid
-    if mt.get_hf(oracle) < config.min_open_hf:
+    mt.position_amount += min_increased_position_amount
+    if mt.get_hf(oracle) < CONFIG.min_open_hf:
         raise MarginTradingError("Health factor is too low when open")
-    if mt.get_lr(oracle) > config.max_leverage_rate:
+    if mt.get_lr(oracle) > CONFIG.max_leverage_rate:
         raise MarginTradingError("Leverage rate is too high when open")
-    if mt.get_margin_value(oracle) > config.max_margin_value:
+    if mt.get_margin_value(oracle) > CONFIG.max_margin_value:
         raise MarginTradingError("Margin value is too high when open")
-    # TODO: adjust global asset's margin_position balance 
-    # TODO: adjust global margin_debt pool
+    print("Step2: evaluated MTP passes valid check.")
+
+    # step 3: restore MTP and make it go to adjusting state
+    mt.debt_shares -= increased_debt_shares
+    mt.position_amount -= min_increased_position_amount
     mt.stat = "adjusting"
-    STORED_MT[pos_id] = mt
-    print("Step3: adjusting MTP passes valid check and stored on-chain.")
+    account.positions[pos_id] = mt
+    asset_debt.pending_debt += increased_debt_amount
+    print("Step3: MTP goes to adjusting state.")
     
     # step 4: call dex to trade and wait for callback
     print("Step4: Call dex to trade:")
-    callback_params = {"position_key": pos_id, "increased_debt_shares": increased_debt_shares, "increased_position_amount": increased_position_amount}
-    trade_rslt = dex.trade(mt.debt_asset, increased_debt_amount, mt.position_asset, increased_position_amount)
+    trade_ret = dex.trade(mt.debt_asset, increased_debt_amount, mt.position_asset, min_increased_position_amount)
 
-    # step 5: in callback, update MTP status if trading succeed or cancel MTP if fail
-    # if we need cancel MTP, must cancel debt(not repay, means we pay without any interest)
-    print("Step5: Processing trading callback:")
-    position_key = callback_params["position_key"]
-    callback_increased_debt_shares = callback_params["increased_debt_shares"]
-    callback_increased_position_amount = callback_params["increased_position_amount"]
-    lookup_mt: MarginTradingPosition = STORED_MT[position_key]
-    if trade_rslt:
-        lookup_mt.stat = "running"
-        STORED_MT[position_key] = lookup_mt
-        print("Position adjusted.")
-        lookup_mt.status(oracle)
-    else:
-        # TODO: adjust global asset's margin_position balance 
-        # TODO: adjust global margin_debt pool
-        lookup_mt.debt_shares -= callback_increased_debt_shares
-        lookup_mt.position_amount -= callback_increased_position_amount
-        lookup_mt.stat = "running"
-        STORED_MT[position_key] = lookup_mt
-        print("Position adjusting failed.")
+    # step 5a: 
+    print("Step5a: Callback:")
+    on_resolve_transfer(trade_ret, user_id, pos_id, increased_debt_amount, "increase")
+
+    # step 5b: if trade_ret is true, the detailed trading info would be reported through ft_on_transfer
+    if trade_ret:
+        print("Step5b: Dex call ft_transfer_call to send token_out back to burrow:")
+        msg_obj = {"user_id": user_id, "pos_id": pos_id, "token_in_amount": increased_debt_amount, "op": "increase"}
+        ft_on_transfer(mt.debt_asset, "dex", dex.get_latest_token_out_amount(), json.dumps(msg_obj))
+        mt.status(oracle)
 
 
 '''
 
 '''
-def decrease_position(config: Config, oracle: Oracle, dex: Dex, pos_id: str, 
-                    decreased_debt_amount: int, decreased_position_amount: int, 
+def decrease_position(user_id: str, oracle: Oracle, dex: Dex, pos_id: str, 
+                    min_decreased_debt_amount: int, decreased_position_amount: int, 
                     market_route_id: int):
-    mt: MarginTradingPosition = STORED_MT[pos_id]
+    account: Account = ACCOUNTS[user_id]
+    mt: MarginTradingPosition = account.positions[pos_id]
+    asset_debt: Asset = ASSETS[mt.debt_asset]
+    asset_position: Asset = ASSETS[mt.position_asset]
 
-    # step 1: check if price from oracle and user differs too much
-    position_amount_from_oracle = decreased_debt_amount * oracle.asset_prices[mt.debt_asset] / oracle.asset_prices[mt.position_asset]
-    if position_amount_from_oracle < decreased_position_amount:
-        position_diff = decreased_position_amount - position_amount_from_oracle
-        if position_diff / decreased_position_amount > 0.05:
-            print("detect possible ddos attack due to unreasonable position_amount")
-            raise MarginTradingError("Unreasonable requested position amount")
+    # # step 1: check if price from oracle and user differs too much
+    # position_amount_from_oracle = min_decreased_debt_amount * oracle.asset_prices[mt.debt_asset] / oracle.asset_prices[mt.position_asset]
+    # if position_amount_from_oracle < decreased_position_amount:
+    #     position_diff = decreased_position_amount - position_amount_from_oracle
+    #     if position_diff / decreased_position_amount > 0.05:
+    #         print("detect possible ddos attack due to unreasonable position_amount")
+    #         raise MarginTradingError("Unreasonable requested position amount")
     
-    # step 2: adjust MT
-    decreased_debt_shares = config.borrow_amount_to_share(mt.debt_asset, decreased_debt_amount)
+    # step 2: try evaluating MT to see if it is valid.
+    decreased_debt_shares = asset_debt.margin_debt.amount_to_shares(min_decreased_debt_amount)
     mt.debt_shares -= decreased_debt_shares
     mt.position_amount -= decreased_position_amount
-
-    # step 3: check before call dex to trade
+    # TODO: seems it is unnecessary in a decreasing scenario
     if mt.position_amount > 0:
         # check if mt is valid
-        if mt.get_hf(oracle) < config.min_open_hf:
+        if mt.get_hf(oracle) < CONFIG.min_open_hf:
             raise MarginTradingError("Health factor is too low when open")
-        if mt.get_lr(oracle) > config.max_leverage_rate:
+        if mt.get_lr(oracle) > CONFIG.max_leverage_rate:
             raise MarginTradingError("Leverage rate is too high when open")
-        if mt.get_margin_value(oracle) > config.max_margin_value:
+        if mt.get_margin_value(oracle) > CONFIG.max_margin_value:
             raise MarginTradingError("Margin value is too high when open")
-    # TODO: adjust global asset's margin_position balance 
-    # TODO: can NOT adjust global margin_debt pool !!!
+    print("Step2: evaluated MTP passes valid check.")
+    
+    # step 3: restore MTP and make it to adjusting state
+    # Note: can NOT adjust global margin_debt pool in advance!!!
+    mt.debt_shares += decreased_debt_shares
+    mt.position_amount += decreased_position_amount
     mt.stat = "adjusting"
-    STORED_MT[pos_id] = mt
-    print("Step3: adjusting MTP passes valid check and stored on-chain.")
+    account.positions[pos_id] = mt
+    asset_position.margin_position -= decreased_position_amount
+    print("Step3: MTP goes to adjusting state.")
 
     # step 4: call dex to trade and wait for callback
     print("Step4: Call dex to trade:")
-    callback_params = {"position_key": pos_id, "decreased_debt_shares": decreased_debt_shares, "decreased_position_amount": decreased_position_amount}
-    trade_rslt = dex.trade(mt.debt_asset, decreased_debt_amount, mt.position_asset, decreased_position_amount)
+    # callback_params = {"position_key": pos_id, "decreased_debt_shares": decreased_debt_shares, "decreased_position_amount": decreased_position_amount}
+    # trade_ret = dex.trade(mt.debt_asset, decreased_debt_amount, mt.position_asset, decreased_position_amount)
+    trade_ret = dex.trade(mt.position_asset, decreased_position_amount, mt.debt_asset, min_decreased_debt_amount)
 
-    # step 5: in callback, update MTP status if trading succeed or cancel MTP if fail
-    # if we need cancel MTP, must cancel debt(not repay, means we pay without any interest)
-    print("Step5: Processing trading callback:")
-    position_key = callback_params["position_key"]
-    callback_decreased_debt_shares = callback_params["decreased_debt_shares"]
-    callback_decreased_position_amount = callback_params["decreased_position_amount"]
-    lookup_mt: MarginTradingPosition = STORED_MT[position_key]
-    if trade_rslt:
-        print("Position adjusted.")
-        if lookup_mt.position_amount == 0:
-            # if position is 0, close this position 
-            # TODO: and remaining debt to regular borrowed,
-            # equivalent_amount = Config.debt_share_to_amount(mt.debt_asset, lookup_mt.debt_shares)
-            # Asset.margin_debt.shares -= lookup_mt.debt_shares
-            # Asset.margin_debt.balance -= equivalent_amount
-            # borrowed_share = Config.borrowed_amount_to_share(mt.debt_asset, equivalent_amount)
-            # Asset.borrowed.shares += borrowed_share
-            # Asset.borrowed.balance += equivalent_amount
-            # TODO: adjust User Regular Position to add borrowed shares
-            # Account["Alice"].borrowed[mt.debt_asset] += borrowed_share
-            # TODO: as margin shares global asset's supply, only need to adjust user regular position to add margin as collateral.
-            # Account["Alice"].collateral[mt.margin_asset] += mt.margin_shares
-            del STORED_MT[position_key]
-            print("Position decreased to 0 and closed.")
-        else:
-            lookup_mt.stat = "running"
-            STORED_MT[position_key] = lookup_mt
-            lookup_mt.status(oracle)
-    else:
-        # TODO: adjust global asset's margin_position balance 
-        # TODO: adjust global margin_debt pool
-        lookup_mt.debt_shares += callback_decreased_debt_shares
-        lookup_mt.position_amount += callback_decreased_position_amount
-        lookup_mt.stat = "running"
-        STORED_MT[position_key] = lookup_mt
-        print("Position adjusting failed.")
+    # step 5a: 
+    print("Step5a: Callback:")
+    on_resolve_transfer(trade_ret, user_id, pos_id, decreased_position_amount, "decrease")
+
+    # step 5b: if trade_ret is true, the detailed trading info would be reported through ft_on_transfer
+    if trade_ret:
+        print("Step5b: Dex call ft_transfer_call to send token_out back to burrow:")
+        msg_obj = {"user_id": user_id, "pos_id": pos_id, "token_in_amount": decreased_position_amount, "op": "decrease"}
+        ft_on_transfer(mt.debt_asset, "dex", dex.get_latest_token_out_amount(), json.dumps(msg_obj))
+        mt.status(oracle)
+
 
 
 if __name__ == '__main__':
@@ -491,36 +542,51 @@ if __name__ == '__main__':
     # from margin_trading import * 
 
     global_init_assets()
-    print(ASSETS["usdt.e"])
+
     global_init_accounts()
 
-
-    config = Config()
     oracle = Oracle()
     dex = Dex()
-    # mt = MarginTradingPosition()
-    # mt.reset("usdt",1000,"near",500,"usdt",1500)
-    # mt.status(oracle)
-    # print()
+    oracle.asset_prices["near"] = 3.0
+    dex.prices["near"] = 3.0
 
     print("Try open a short-near position: ------------")
-    open_position("alice", config, oracle, dex, "usdt", 1000, "near", 500, "usdt", 1500)
+    debt_amount = 500
+    min_position_amount = 0.99 * debt_amount * oracle.asset_prices["near"] / oracle.asset_prices["usdt"]
+    open_position("alice", oracle, dex, "usdt", 1000, "near", debt_amount, "usdt", min_position_amount)
     print()
-
-    exit()
 
     print("Try increase the position: ------------")
-    increase_position(config, oracle, dex, "Alice", 100, 300, 0)
+    oracle.asset_prices["near"] = 2.9
+    dex.prices["near"] = 2.9
+    debt_amount = 100
+    min_position_amount = 0.99 * debt_amount * oracle.asset_prices["near"] / oracle.asset_prices["usdt"]
+    increase_position("alice", oracle, dex, "usdt-near-usdt", debt_amount, min_position_amount, 0)
     print()
+    # Status: running, Margin: (usdt, 1000.00), Pos: (usdt, 1790.00), Debt: (near, 600.00)
 
+    # 
     print("Try decrease half of the position: ------------")
-    decrease_position(config, oracle, dex, "Alice", 300, 900, 0)
+    oracle.asset_prices["near"] = 3.0
+    dex.prices["near"] = 3.0
+    pos_amount = 790
+    min_debt_amount = 0.99 * pos_amount * oracle.asset_prices["usdt"] / oracle.asset_prices["near"]
+    decrease_position("alice", oracle, dex, "usdt-near-usdt", min_debt_amount, pos_amount, 0)
     print()
+    # Status: running, Margin: (usdt, 1000.00), Pos: (usdt, 1000.00), Debt: (near, 336.67)
 
     print("Try close the position: ------------")
-    decrease_position(config, oracle, dex, "Alice", 300, 900, 0)
+    oracle.asset_prices["near"] = 2.8
+    dex.prices["near"] = 2.8
+    pos_amount = 1000
+    min_debt_amount = 0.99 * pos_amount * oracle.asset_prices["usdt"] / oracle.asset_prices["near"]
+    decrease_position("alice", oracle, dex, "usdt-near-usdt", 336.67, pos_amount, 0)
     print()
+
+    for key,asset in ASSETS.items():
+        print(key, asset)
     
+    print()
     print("#########-END-###########")
 
 
