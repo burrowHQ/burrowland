@@ -95,6 +95,7 @@ impl Farmer {
     }
 
     pub fn set_seed(&mut self, seed_id: &SeedId, seed: FarmerSeed) {
+        self.seeds.remove(seed_id);
         self.vseeds.insert(&seed_id, &seed.into());
     }
 }

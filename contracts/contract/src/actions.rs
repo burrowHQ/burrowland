@@ -557,19 +557,22 @@ impl Contract {
     }
 
     pub fn compute_max_discount(&self, position: &String, account: &Account, prices: &Prices) -> BigDecimal {
-        let position_info = account.positions.get(position).expect("Position not found");
-        if position_info.is_no_borrowed() {
-            return BigDecimal::zero();
-        }
-
-        let collateral_sum = self.get_collateral_sum_with_volatility_ratio(position_info, prices);
-
-        let borrowed_sum = self.get_borrowed_sum_with_volatility_ratio(position_info, prices);
-        
-        if borrowed_sum <= collateral_sum {
-            BigDecimal::zero()
+        if let Some(position_info) = account.positions.get(position) {
+            if position_info.is_no_borrowed() {
+                return BigDecimal::zero();
+            }
+    
+            let collateral_sum = self.get_collateral_sum_with_volatility_ratio(position_info, prices);
+    
+            let borrowed_sum = self.get_borrowed_sum_with_volatility_ratio(position_info, prices);
+            
+            if borrowed_sum <= collateral_sum {
+                BigDecimal::zero()
+            } else {
+                (borrowed_sum - collateral_sum) / borrowed_sum / BigDecimal::from(2u32)
+            }
         } else {
-            (borrowed_sum - collateral_sum) / borrowed_sum / BigDecimal::from(2u32)
+            BigDecimal::zero()
         }
     }
 }
