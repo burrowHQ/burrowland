@@ -22,6 +22,7 @@ mod upgrade;
 mod utils;
 mod shadow_actions;
 mod position;
+mod position_margintrading;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -45,6 +46,7 @@ use crate::storage_tracker::*;
 pub use crate::utils::*;
 pub use crate::shadow_actions::*;
 pub use crate::position::*;
+pub use crate::position_margintrading::*;
 
 use common::*;
 

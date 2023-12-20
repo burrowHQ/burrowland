@@ -122,6 +122,9 @@ impl Account {
                     potential_farms.insert(FarmId::Supplied(AccountId::new_unchecked(position.clone())));
                     potential_farms.extend(lp_token_position.borrowed.keys().cloned().map(FarmId::Borrowed));
                 }
+                Position::MarginTradingPosition(mt_position) => {
+                    // TODO: debt can't farm now
+                }
             }
         });
         potential_farms
@@ -136,6 +139,13 @@ impl Account {
                 Position::LPTokenPosition(lp_token_position) => {
                     if token_id.to_string().eq(position) {
                         acc + lp_token_position.collateral.0
+                    } else {
+                        acc
+                    }
+                }
+                Position::MarginTradingPosition(mt_position) => {
+                    if mt_position.margin_asset == token_id.clone() {
+                        acc + mt_position.margin_shares.0
                     } else {
                         acc
                     }
@@ -158,6 +168,9 @@ impl Account {
                 Position::LPTokenPosition(lp_token_position) => {
                     acc + lp_token_position.borrowed.get(&token_id).map(|s| s.0).unwrap_or(0)
                 }
+                Position::MarginTradingPosition(mt_position) => {
+                    acc
+                }
             }
         }).into()
     }
@@ -170,6 +183,9 @@ impl Account {
                 }
                 Position::LPTokenPosition(lp_token_position) => {
                     acc + 1 + lp_token_position.borrowed.len()
+                }
+                Position::MarginTradingPosition(mt_position) => {
+                    acc + 3
                 }
             }
         }) as u32

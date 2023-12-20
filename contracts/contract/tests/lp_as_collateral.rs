@@ -272,10 +272,16 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
     let token_asset = burrowland_contract.get_asset(&token_id).await?;
     assert_eq!(token_asset.supplied.balance, d(30000, 18));
     let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
-    let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
+    if let EPositionView::LPTokenPosition(position_info) = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap() {
+        assert_eq!(position_info.collateral[0].balance, d(5000, 18));
+        assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
+    } else {
+        assert!(false, "Not EPositionView::LPTokenPosition");
+    }
+    // let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
     assert_eq!(alice_burrowland_account.supplied[0].balance, d(25000, 18));
-    assert_eq!(position_info.collateral[0].balance, d(5000, 18));
-    assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
+    // assert_eq!(position_info.collateral[0].balance, d(5000, 18));
+    // assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
     
     let shadow_record_infos = ref_exchange_contract.get_shadow_records(&alice).await?;
     let shadow_record_info = shadow_record_infos.get(&0).unwrap();
@@ -385,13 +391,23 @@ async fn test_position_liquidate() -> Result<()> {
     check!(ref_exchange_contract.mft_register( &bob, ":0".to_string(), bob.id()));
 
     let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
-    let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
-    assert_eq!(position_info.collateral[0].balance, d(30000, 18));
-    assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
-    assert_eq!(
-        (position_info.borrowed[0].balance / d(1, 18)) as f64,
-        d(100, 24 - 18) as f64
-    );
+    if let EPositionView::LPTokenPosition(position_info) = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap() {
+        assert_eq!(position_info.collateral[0].balance, d(30000, 18));
+        assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
+        assert_eq!(
+            (position_info.borrowed[0].balance / d(1, 18)) as f64,
+            d(100, 24 - 18) as f64
+        );
+    } else {
+        assert!(false, "Not EPositionView::LPTokenPosition");
+    }
+    // let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
+    // assert_eq!(position_info.collateral[0].balance, d(30000, 18));
+    // assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
+    // assert_eq!(
+    //     (position_info.borrowed[0].balance / d(1, 18)) as f64,
+    //     d(100, 24 - 18) as f64
+    // );
 
     let bob_burrowland_account = burrowland_contract.get_account_all_positions(&bob).await?.unwrap();
     assert_eq!(bob_burrowland_account.supplied[0].token_id.to_string(), wrap_token_contract.0.id().to_string());
@@ -418,13 +434,23 @@ async fn test_position_liquidate() -> Result<()> {
 
     let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
     assert!(!alice_burrowland_account.is_locked);
-    let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
-    assert_eq!(position_info.collateral[0].balance, d(30000 - 13, 18));
-    assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
-    assert_eq!(
-        (position_info.borrowed[0].balance / d(1, 18)) as f64,
-        d(100 - 1, 24 - 18) as f64
-    );
+    if let EPositionView::LPTokenPosition(position_info) = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap() {
+        assert_eq!(position_info.collateral[0].balance, d(30000 - 13, 18));
+        assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
+        assert_eq!(
+            (position_info.borrowed[0].balance / d(1, 18)) as f64,
+            d(100 - 1, 24 - 18) as f64
+        );
+    } else {
+        assert!(false, "Not EPositionView::LPTokenPosition");
+    }
+    // let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
+    // assert_eq!(position_info.collateral[0].balance, d(30000 - 13, 18));
+    // assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
+    // assert_eq!(
+    //     (position_info.borrowed[0].balance / d(1, 18)) as f64,
+    //     d(100 - 1, 24 - 18) as f64
+    // );
 
     let bob_burrowland_account = burrowland_contract.get_account_all_positions(&bob).await?.unwrap();
     assert!(!bob_burrowland_account.is_locked);
@@ -550,13 +576,23 @@ async fn test_position_force_close() -> Result<()> {
     check!(ref_exchange_contract.mft_register( &bob, ":0".to_string(), bob.id()));
 
     let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
-    let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
-    assert_eq!(position_info.collateral[0].balance, d(30000, 18));
-    assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
-    assert_eq!(
-        (position_info.borrowed[0].balance / d(1, 18)) as f64,
-        d(100, 24 - 18) as f64
-    );
+    if let EPositionView::LPTokenPosition(position_info) = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap() {
+        assert_eq!(position_info.collateral[0].balance, d(30000, 18));
+        assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
+        assert_eq!(
+            (position_info.borrowed[0].balance / d(1, 18)) as f64,
+            d(100, 24 - 18) as f64
+        );
+    } else {
+        assert!(false, "Not EPositionView::LPTokenPosition");
+    }
+    // let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
+    // assert_eq!(position_info.collateral[0].balance, d(30000, 18));
+    // assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
+    // assert_eq!(
+    //     (position_info.borrowed[0].balance / d(1, 18)) as f64,
+    //     d(100, 24 - 18) as f64
+    // );
 
     let bob_burrowland_account = burrowland_contract.get_account_all_positions(&bob).await?.unwrap();
     assert_eq!(bob_burrowland_account.supplied[0].token_id.to_string(), wrap_token_contract.0.id().to_string());

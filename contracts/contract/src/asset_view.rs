@@ -9,6 +9,14 @@ pub struct AssetDetailedView {
     pub supplied: Pool,
     /// Total borrowed.
     pub borrowed: Pool,
+    /// Total margin debt.
+    pub margin_debt: Pool,
+    /// borrowed by margin position and currently in trading process
+    #[serde(with = "u128_dec_format")]
+    pub margin_pending_debt: Balance,
+    /// total position in margin
+    #[serde(with = "u128_dec_format")]
+    pub margin_position: Balance,
     /// The amount reserved for the stability. This amount can also be borrowed and affects
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
@@ -57,6 +65,9 @@ impl Contract {
         let Asset {
             supplied,
             borrowed,
+            margin_debt,
+            margin_pending_debt,
+            margin_position,
             reserved,
             prot_fee,
             last_update_timestamp,
@@ -66,6 +77,9 @@ impl Contract {
             token_id,
             supplied,
             borrowed,
+            margin_debt,
+            margin_pending_debt,
+            margin_position,
             reserved,
             prot_fee,
             last_update_timestamp,

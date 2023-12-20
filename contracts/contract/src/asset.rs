@@ -13,6 +13,14 @@ pub struct Asset {
     pub supplied: Pool,
     /// Total borrowed.
     pub borrowed: Pool,
+    /// Total margin debt.
+    pub margin_debt: Pool,
+    /// borrowed by margin position and currently in trading process
+    #[serde(with = "u128_dec_format")]
+    pub margin_pending_debt: Balance,
+    /// total position in margin
+    #[serde(with = "u128_dec_format")]
+    pub margin_position: Balance,
     /// The amount reserved for the stability. This amount can also be borrowed and affects
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
@@ -32,6 +40,7 @@ pub struct Asset {
 pub enum VAsset {
     V0(AssetV0),
     V1(AssetV1),
+    V2(AssetV2),
     Current(Asset),
 }
 
@@ -40,6 +49,7 @@ impl From<VAsset> for Asset {
         match v {
             VAsset::V0(v) => v.into(),
             VAsset::V1(v) => v.into(),
+            VAsset::V2(v) => v.into(),
             VAsset::Current(c) => c,
         }
     }
@@ -56,6 +66,9 @@ impl Asset {
         Self {
             supplied: Pool::new(),
             borrowed: Pool::new(),
+            margin_debt: Pool::new(),
+            margin_pending_debt: 0,
+            margin_position: 0,
             reserved: 0,
             prot_fee: 0,
             last_update_timestamp: timestamp,
@@ -65,7 +78,12 @@ impl Asset {
 
     pub fn get_rate(&self) -> BigDecimal {
         self.config
-            .get_rate(self.borrowed.balance, self.supplied.balance + self.reserved + self.prot_fee)
+            .get_rate(self.borrowed.balance + self.margin_debt.balance + self.margin_pending_debt, self.supplied.balance + self.reserved + self.prot_fee)
+    }
+
+    pub fn get_margin_debt_rate(&self) -> BigDecimal {
+        // TODO: Put this discount ratio to Config
+        self.get_rate() * BigDecimal::from_ratio(5000)
     }
 
     pub fn get_borrow_apr(&self) -> BigDecimal {
@@ -100,6 +118,7 @@ impl Asset {
     // r = n * ((x ** (1 / n)) - 1)
     // n = in millis
     fn compound(&mut self, time_diff_ms: Duration) {
+        // handle common borrowed
         let rate = self.get_rate();
         let interest =
             rate.pow(time_diff_ms).round_mul_u128(self.borrowed.balance) - self.borrowed.balance;
@@ -117,6 +136,24 @@ impl Asset {
             self.prot_fee += prot_fee;
         }
         self.borrowed.balance += interest;
+
+        // handle margin debt
+        let margin_debt_rate = self.get_margin_debt_rate();
+        let interest =
+            margin_debt_rate.pow(time_diff_ms).round_mul_u128(self.margin_debt.balance) - self.margin_debt.balance;
+        let reserved = ratio(interest, self.config.reserve_ratio);
+        if self.supplied.shares.0 > 0 {
+            self.supplied.balance += interest - reserved;
+            
+            let prot_fee = ratio(reserved, self.config.prot_ratio);
+            self.reserved += reserved - prot_fee;
+            self.prot_fee += prot_fee;
+        } else {
+            let prot_fee = ratio(interest, self.config.prot_ratio);
+            self.reserved += interest - prot_fee;
+            self.prot_fee += prot_fee;
+        }
+        self.margin_debt.balance += interest;
     }
 
     pub fn update(&mut self) {
@@ -130,7 +167,12 @@ impl Asset {
     }
 
     pub fn available_amount(&self) -> Balance {
-        self.supplied.balance + self.reserved + self.prot_fee - self.borrowed.balance
+        // old version: self.supplied.balance + self.reserved + self.prot_fee - self.borrowed.balance
+        // margin_position can NOT be used for lending, we must ensure a postition can be decreased at any time.
+        self.supplied.balance + self.reserved + self.prot_fee
+            - self.borrowed.balance
+            - self.margin_debt.balance
+            - self.margin_pending_debt
     }
 }
 

@@ -259,6 +259,9 @@ impl From<AssetV0> for Asset {
         Self {
             supplied,
             borrowed,
+            margin_debt: Pool::new(),
+            margin_pending_debt: 0,
+            margin_position: 0,
             reserved,
             prot_fee: 0,
             last_update_timestamp,
@@ -369,10 +372,56 @@ impl From<AssetV1> for Asset {
         Self {
             supplied,
             borrowed,
+            margin_debt: Pool::new(),
+            margin_pending_debt: 0,
+            margin_position: 0,
             reserved,
             prot_fee: 0,
             last_update_timestamp,
             config: config.into(),
+        }
+    }
+}
+
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AssetV2 {
+    /// Total supplied including collateral, but excluding reserved.
+    pub supplied: Pool,
+    /// Total borrowed.
+    pub borrowed: Pool,
+    /// The amount reserved for the stability. This amount can also be borrowed and affects
+    /// borrowing rate.
+    pub reserved: Balance,
+    /// The amount belongs to the protocol. This amount can also be borrowed and affects
+    /// borrowing rate.
+    pub prot_fee: Balance,
+    /// When the asset was last updated. It's always going to be the current block timestamp.
+    pub last_update_timestamp: Timestamp,
+    /// The asset config.
+    pub config: AssetConfig,
+}
+
+impl From<AssetV2> for Asset {
+    fn from(a: AssetV2) -> Self {
+        let AssetV2 {
+            supplied,
+            borrowed,
+            reserved,
+            prot_fee,
+            last_update_timestamp,
+            config,
+        } = a;
+        Self {
+            supplied,
+            borrowed,
+            margin_debt: Pool::new(),
+            margin_pending_debt: 0,
+            margin_position: 0,
+            reserved,
+            prot_fee,
+            last_update_timestamp,
+            config,
         }
     }
 }
