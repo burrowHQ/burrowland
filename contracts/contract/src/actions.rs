@@ -52,6 +52,15 @@ pub enum Action {
         account_id: AccountId,
         position: Option<String>,
     },
+    OpenMTPosition {
+        margin_asset_id: AccountId,
+        margin_amount: U128,
+        debt_asset_id: AccountId,
+        debt_amount: U128,
+        position_asset_id: AccountId,
+        min_position_amount: U128,
+        market_route_id: u32,
+    },
 }
 
 impl Contract {
@@ -204,6 +213,26 @@ impl Contract {
                         liquidation_account.is_locked = true;
                         self.internal_set_account(&liquidation_account_id, liquidation_account);
                     }
+                }
+                Action::OpenMTPosition { 
+                    margin_asset_id, 
+                    margin_amount, 
+                    debt_asset_id, 
+                    debt_amount, 
+                    position_asset_id, 
+                    min_position_amount, 
+                    market_route_id 
+                } => {
+                    self.internal_open_margin(
+                        account,
+                        &margin_asset_id, 
+                        margin_amount.0, 
+                        &debt_asset_id, 
+                        debt_amount.0, 
+                        &position_asset_id, 
+                        min_position_amount.0, 
+                        market_route_id,
+                        &prices);
                 }
             }
         }

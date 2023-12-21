@@ -17,6 +17,7 @@ const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 20);
 pub enum TokenReceiverMsg {
     Execute { actions: Vec<Action> },
     DepositToReserve,
+    SwapOut {account_id: AccountId, pos_id: String, amount_in: U128, op: String},
 }
 
 #[near_bindgen]
@@ -53,6 +54,82 @@ impl FungibleTokenReceiver for Contract {
                     asset.reserved += amount;
                     self.internal_set_asset(&token_id, asset);
                     events::emit::deposit_to_reserve(&sender_id, amount, &token_id);
+                    return PromiseOrValue::Value(U128(0));
+                }
+                TokenReceiverMsg::SwapOut { 
+                    account_id, 
+                    pos_id, 
+                    amount_in, 
+                    op 
+                } => {
+                    let mut account = self.internal_unwrap_account(&account_id);
+                    let mut mt = if let Position::MarginTradingPosition(mt) = account.positions.get(&pos_id).unwrap() {
+                        mt.clone()
+                    } else {
+                        env::panic_str("Invalid position type")
+                    };
+                    if op == "open" {
+                        let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
+                        asset_debt.margin_pending_debt -= amount_in.0;
+                        let debt_shares = asset_debt.margin_debt.amount_to_shares(amount_in.0, true);
+                        asset_debt.margin_debt.deposit(debt_shares, amount_in.0);
+                        self.internal_set_asset(&mt.debt_asset, asset_debt);
+
+                        let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
+                        asset_position.margin_position += amount;
+                        self.internal_set_asset(&mt.position_asset, asset_position);
+
+                        mt.debt_shares.0 += debt_shares.0;
+                        mt.position_amount += amount;
+                        mt.stat = 0;
+                        account.positions.insert(pos_id, Position::MarginTradingPosition(mt));
+                    } else if op == "increase" {
+                        let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
+                        asset_debt.margin_pending_debt -= amount_in.0;
+                        let debt_shares = asset_debt.margin_debt.amount_to_shares(amount_in.0, true);
+                        asset_debt.margin_debt.deposit(debt_shares, amount_in.0);
+                        self.internal_set_asset(&mt.debt_asset, asset_debt);
+
+                        let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
+                        asset_position.margin_position += amount;
+                        self.internal_set_asset(&mt.position_asset, asset_position);
+
+                        mt.debt_shares.0 += debt_shares.0;
+                        mt.position_amount += amount;
+                        mt.stat = 0;
+                        account.positions.insert(pos_id, Position::MarginTradingPosition(mt));
+                    } else if op == "decrease" {
+                        let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
+                        let debt_amount = asset_debt.margin_debt.shares_to_amount(mt.debt_shares, true);
+                        let (repay_amount, left_amount) = if amount > debt_amount {
+                            (debt_amount, amount - debt_amount)
+                        } else {
+                            (amount, 0)
+                        };
+                        let repay_shares = asset_debt.margin_debt.amount_to_shares(repay_amount, false);
+                        asset_debt.margin_debt.withdraw(repay_shares, repay_amount);
+                        let supply_shares = asset_debt.supplied.amount_to_shares(left_amount, false);
+                        if supply_shares.0 > 0 {
+                            asset_debt.supplied.deposit(supply_shares, left_amount);
+                        }
+                        self.internal_set_asset(&mt.debt_asset, asset_debt);
+
+                        let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
+                        asset_position.margin_position -= amount_in.0;
+                        self.internal_set_asset(&mt.position_asset, asset_position);
+
+                        if supply_shares.0 > 0 {
+                            let mut account_asset = account.internal_unwrap_asset(&mt.debt_asset);
+                            account_asset.deposit_shares(supply_shares);
+                            account.internal_set_asset(&mt.debt_asset, account_asset);
+                        }
+                        mt.debt_shares.0 -= repay_shares.0;
+                        mt.position_amount -= amount_in.0;
+                        mt.stat = 0;
+                        account.positions.insert(pos_id, Position::MarginTradingPosition(mt));
+                    }
+                    self.internal_set_account(&account_id, account);
+
                     return PromiseOrValue::Value(U128(0));
                 }
             }
