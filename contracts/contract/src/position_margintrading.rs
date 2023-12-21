@@ -152,7 +152,24 @@ impl Contract {
         mtp: &MarginTradingPosition,
         prices: &Prices,
     ) -> Option<BigDecimal> {
-        None
+        let asset_position = self.internal_unwrap_asset(&mtp.position_asset);
+        let position_value = BigDecimal::from_balance_price(
+            mtp.position_amount,
+            prices.get_unwrap(&mtp.position_asset),
+            asset_position.config.extra_decimals,
+        );
+        let asset_debt = self.internal_unwrap_asset(&mtp.debt_asset);
+        let debt_balance = asset_debt.margin_debt.shares_to_amount(mtp.debt_shares, true);
+        let debt_value = BigDecimal::from_balance_price(
+            debt_balance,
+            prices.get_unwrap(&mtp.debt_asset),
+            asset_debt.config.extra_decimals,
+        );
+        if position_value >= debt_value {
+            Some(position_value - debt_value)
+        } else {
+            None
+        }
     }
 
     pub(crate) fn get_mtp_loss(
@@ -160,7 +177,24 @@ impl Contract {
         mtp: &MarginTradingPosition,
         prices: &Prices,
     ) -> Option<BigDecimal> {
-        None
+        let asset_position = self.internal_unwrap_asset(&mtp.position_asset);
+        let position_value = BigDecimal::from_balance_price(
+            mtp.position_amount,
+            prices.get_unwrap(&mtp.position_asset),
+            asset_position.config.extra_decimals,
+        );
+        let asset_debt = self.internal_unwrap_asset(&mtp.debt_asset);
+        let debt_balance = asset_debt.margin_debt.shares_to_amount(mtp.debt_shares, true);
+        let debt_value = BigDecimal::from_balance_price(
+            debt_balance,
+            prices.get_unwrap(&mtp.debt_asset),
+            asset_debt.config.extra_decimals,
+        );
+        if position_value < debt_value {
+            Some(debt_value - position_value)
+        } else {
+            None
+        }
     }
 
     pub(crate) fn get_mtp_lr(
@@ -168,7 +202,27 @@ impl Contract {
         mtp: &MarginTradingPosition,
         prices: &Prices,
     ) -> Option<BigDecimal> {
-        None
+        if mtp.margin_shares.0 == 0 || mtp.debt_shares.0 == 0 {
+            None
+        } else {
+            let asset_debt = self.internal_unwrap_asset(&mtp.debt_asset);
+            let debt_balance = asset_debt.margin_debt.shares_to_amount(mtp.debt_shares, true);
+            let debt_value = BigDecimal::from_balance_price(
+                debt_balance,
+                prices.get_unwrap(&mtp.debt_asset),
+                asset_debt.config.extra_decimals,
+            );
+            let asset_margin = self.internal_unwrap_asset(&mtp.margin_asset);
+            let margin_balance = asset_margin
+                .supplied
+                .shares_to_amount(mtp.margin_shares, false);
+            let margin_value = BigDecimal::from_balance_price(
+                margin_balance,
+                prices.get_unwrap(&mtp.margin_asset),
+                asset_margin.config.extra_decimals,
+            );
+            Some(debt_value/margin_value)
+        }
     }
 
     pub(crate) fn get_mtp_hf(
@@ -253,6 +307,126 @@ impl Contract {
             );
 
     }
+
+    pub(crate) fn internal_increase_margin_position(
+        &mut self, 
+        account: &mut Account,
+        pos_id: &String, 
+        debt_amount: Balance, 
+        min_position_amount: Balance,
+        market_route_id: u32,
+        prices: &Prices
+    ) {
+        let mut mt = if let Position::MarginTradingPosition(mt) = account.positions.get(pos_id).expect("Position not exist") {
+            mt.clone()
+        } else {
+            env::panic_str("Invalid position type")
+        };
+
+        let debt_id = mt.debt_asset.clone();
+        // step 0: check if pending_debt of debt asset has debt_amount room available
+        // pending_debt should less than tbd_x% of available of this asset
+        let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
+        let tbd_x = 10_u128;
+        assert!(tbd_x * (asset_debt.margin_pending_debt + debt_amount) < asset_debt.available_amount(), "Pending debt will overflow");
+
+        // step 1: try evaluating MT to see if it is valid.
+        let increase_debt_shares = asset_debt.margin_debt.amount_to_shares(debt_amount, true);
+        mt.debt_shares.0  += increase_debt_shares.0;
+        mt.position_amount += min_position_amount;
+        // check if mt is valid
+        let hf_nom = self.get_mtp_collateral_sum_with_volatility_ratio(&mt, prices);
+        let hf_den = self.get_mtp_borrowed_sum_with_volatility_ratio(&mt, prices);
+        let hf = hf_nom / hf_den;
+        let tbd_min_open_margin_hf = 1.05_f64;
+        assert!(hf>BigDecimal::from(tbd_min_open_margin_hf), "Invalid health factor");
+
+        // step 2:
+        mt.stat = 2;
+        mt.debt_shares.0 -= increase_debt_shares.0;
+        mt.position_amount -= min_position_amount;
+        asset_debt.margin_pending_debt += debt_amount;
+        self.internal_set_asset(&mt.debt_asset, asset_debt);
+        account.positions.insert(pos_id.clone(), Position::MarginTradingPosition(mt));
+
+        // step 3: call dex to trade and wait for callback
+        // TODO: organize swap action
+        let swap_msg = format!("");
+        ext_fungible_token::ext(debt_id.clone())
+            .with_attached_deposit(1)
+            .with_static_gas(GAS_FOR_FT_TRANSFER_CALL)
+            .ft_transfer_call(
+                self.get_config().ref_exchange_id.clone(), 
+                U128(debt_amount), 
+                None, 
+                swap_msg
+            ).then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_FOR_FT_TRANSFER_CALL_CALLBACK)
+                    .callback_dex_trade(account.account_id.clone(), pos_id.clone(), debt_amount.into(), format!("increase"))
+            );
+    }
+
+    pub(crate) fn internal_decrease_margin_position(
+        &mut self, 
+        account: &mut Account,
+        pos_id: &String, 
+        position_amount: Balance, 
+        min_debt_amount: Balance,
+        market_route_id: u32,
+        prices: &Prices
+    ) {
+        let mut mt = if let Position::MarginTradingPosition(mt) = account.positions.get(pos_id).expect("Position not exist") {
+            mt.clone()
+        } else {
+            env::panic_str("Invalid position type")
+        };
+
+        let position_id = mt.position_asset.clone();
+        let mut asset_pos = self.internal_unwrap_asset(&mt.position_asset);
+        let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
+
+        // step 1: try evaluating MT to see if it is valid.
+        let decrease_debt_shares = asset_debt.margin_debt.amount_to_shares(min_debt_amount, false);
+        let repay_shares = if decrease_debt_shares.0 > mt.debt_shares.0 {
+            mt.debt_shares
+        } else {
+            decrease_debt_shares
+        };
+        mt.debt_shares.0 -= repay_shares.0;
+        mt.position_amount -= position_amount;
+        // check if mt is valid
+        let hf_nom = self.get_mtp_collateral_sum_with_volatility_ratio(&mt, prices);
+        let hf_den = self.get_mtp_borrowed_sum_with_volatility_ratio(&mt, prices);
+        let hf = hf_nom / hf_den;
+        let tbd_min_open_margin_hf = 1.05_f64;
+        assert!(hf>BigDecimal::from(tbd_min_open_margin_hf), "Invalid health factor");
+
+        // step 2:
+        mt.stat = 2;
+        mt.debt_shares.0 += repay_shares.0;
+        mt.position_amount += position_amount;
+        asset_pos.margin_position -= position_amount;
+        self.internal_set_asset(&mt.position_asset, asset_pos);
+        account.positions.insert(pos_id.clone(), Position::MarginTradingPosition(mt));
+        
+        // step 3: call dex to trade and wait for callback
+        // TODO: organize swap action
+        let swap_msg = format!("");
+        ext_fungible_token::ext(position_id.clone())
+            .with_attached_deposit(1)
+            .with_static_gas(GAS_FOR_FT_TRANSFER_CALL)
+            .ft_transfer_call(
+                self.get_config().ref_exchange_id.clone(), 
+                U128(position_amount), 
+                None, 
+                swap_msg
+            ).then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_FOR_FT_TRANSFER_CALL_CALLBACK)
+                    .callback_dex_trade(account.account_id.clone(), pos_id.clone(), position_amount.into(), format!("decrease"))
+            );
+    }
 }
 
 #[near_bindgen]
@@ -299,5 +473,6 @@ impl Contract {
 
         }
 
+        
     }
 }

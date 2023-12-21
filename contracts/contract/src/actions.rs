@@ -61,6 +61,18 @@ pub enum Action {
         min_position_amount: U128,
         market_route_id: u32,
     },
+    IncreaseMTPosition {
+        pos_id: String,
+        debt_amount: U128,
+        min_position_amount: U128,
+        market_route_id: u32,
+    },
+    DecreaseMTPosition {
+        pos_id: String,
+        position_amount: U128,
+        min_debt_amount: U128,
+        market_route_id: u32,
+    },
 }
 
 impl Contract {
@@ -231,6 +243,34 @@ impl Contract {
                         debt_amount.0, 
                         &position_asset_id, 
                         min_position_amount.0, 
+                        market_route_id,
+                        &prices);
+                }
+                Action::IncreaseMTPosition { 
+                    pos_id, 
+                    debt_amount, 
+                    min_position_amount, 
+                    market_route_id 
+                } => {
+                    self.internal_increase_margin_position(
+                        account,
+                        &pos_id, 
+                        debt_amount.0, 
+                        min_position_amount.0, 
+                        market_route_id,
+                        &prices);
+                }
+                Action::DecreaseMTPosition { 
+                    pos_id, 
+                    position_amount, 
+                    min_debt_amount, 
+                    market_route_id 
+                } => {
+                    self.internal_decrease_margin_position(
+                        account,
+                        &pos_id, 
+                        position_amount.0, 
+                        min_debt_amount.0, 
                         market_route_id,
                         &prices);
                 }
