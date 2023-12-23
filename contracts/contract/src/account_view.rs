@@ -277,19 +277,6 @@ impl Contract {
                                 }
                             )
                         }
-                        Position::MarginTradingPosition(mt_position) => {
-                            EPositionView::MarginTradingPosition(
-                                MTPositionView {
-                                    margin_token_id: mt_position.margin_asset,
-                                    margin_shares: mt_position.margin_shares,
-                                    debt_token_id: mt_position.debt_asset,
-                                    debt_shares: mt_position.debt_shares,
-                                    position_token_id: mt_position.position_asset,
-                                    position_balance: mt_position.position_amount,
-                                    stat: mt_position.stat
-                                }
-                            )
-                        }
                     };
                     (position, position_view)
                 })

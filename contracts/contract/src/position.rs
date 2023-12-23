@@ -30,7 +30,6 @@ impl LPTokenPosition {
 pub enum Position {
     RegularPosition(RegularPosition),
     LPTokenPosition(LPTokenPosition),
-    MarginTradingPosition(MarginTradingPosition),
 }
 
 impl Position {
@@ -51,9 +50,6 @@ impl Position {
             Position::LPTokenPosition(lp_token_position) => {
                 lp_token_position.collateral.0 == 0 && lp_token_position.borrowed.is_empty()
             }
-            Position::MarginTradingPosition(mt_position) => {
-                mt_position.is_empty()
-            }
         }
     }
 
@@ -64,9 +60,6 @@ impl Position {
             }
             Position::LPTokenPosition(lp_token_position) => {
                 lp_token_position.borrowed.is_empty()
-            }
-            Position::MarginTradingPosition(mt_position) => {
-                mt_position.is_no_borrowed()
             }
         }
     }
@@ -81,9 +74,6 @@ impl Position {
             }
             Position::LPTokenPosition(lp_token_position) => {
                 lp_token_position.collateral = U128(lp_token_position.collateral.0 + shares.0);
-            }
-            Position::MarginTradingPosition(mt_position) => {
-                mt_position.increase_collateral(token_id, shares)
             }
         }
     }
@@ -106,9 +96,6 @@ impl Position {
             Position::LPTokenPosition(lp_token_position) => {
                 lp_token_position.collateral = U128(lp_token_position.collateral.0 - shares.0);
             }
-            Position::MarginTradingPosition(mt_position) => {
-                mt_position.decrease_collateral(token_id, shares)
-            }
         }
     }
 
@@ -125,9 +112,6 @@ impl Position {
                     .entry(token_id.clone())
                     .or_insert_with(|| 0.into())
                     .0 += shares.0;
-            }
-            Position::MarginTradingPosition(mt_position) => {
-                mt_position.increase_borrowed(token_id, shares)
             }
         }
     }
@@ -160,9 +144,6 @@ impl Position {
                     env::panic_str("Not enough borrowed balance");
                 }
             }
-            Position::MarginTradingPosition(mt_position) => {
-                mt_position.decrease_borrowed(token_id, shares)
-            }
         }
     }
 
@@ -176,9 +157,6 @@ impl Position {
             }
             Position::LPTokenPosition(lp_token_position) => {
                 lp_token_position.collateral
-            }
-            Position::MarginTradingPosition(mt_position) => {
-                mt_position.internal_unwrap_collateral(token_id)
             }
         }
     }
@@ -195,9 +173,6 @@ impl Position {
                     .borrowed
                     .get(token_id)
                     .expect("Borrowed asset not found")
-            }
-            Position::MarginTradingPosition(mt_position) => {
-                mt_position.internal_unwrap_borrowed(token_id)
             }
         }
     }
@@ -243,9 +218,6 @@ impl Contract {
                         .mul_ratio(token_asset.config.volatility_ratio)
                     }).mul_ratio(collateral_asset.config.volatility_ratio)
             }
-            Position::MarginTradingPosition(mt_position) => {
-                self.get_mtp_collateral_sum_with_volatility_ratio(mt_position, prices)
-            }
         }
     }
 
@@ -280,9 +252,6 @@ impl Contract {
                     )
                     .div_ratio(asset.config.volatility_ratio)
                 })
-            }
-            Position::MarginTradingPosition(mt_position) => {
-                self.get_mtp_borrowed_sum_with_volatility_ratio(mt_position, prices)
             }
         }
     }

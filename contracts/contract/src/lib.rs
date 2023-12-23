@@ -23,6 +23,8 @@ mod utils;
 mod shadow_actions;
 mod position;
 mod position_margintrading;
+mod margin_accounts;
+mod margin_actions;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -47,6 +49,8 @@ pub use crate::utils::*;
 pub use crate::shadow_actions::*;
 pub use crate::position::*;
 pub use crate::position_margintrading::*;
+pub use crate::margin_accounts::*;
+pub use crate::margin_actions::*;
 
 use common::*;
 
@@ -74,7 +78,8 @@ enum StorageKey {
     InactiveAssetFarmRewards { farm_id: FarmId },
     AssetIds,
     Config,
-    Guardian
+    Guardian,
+    MarginAccounts,
 }
 
 #[near_bindgen]
@@ -90,6 +95,7 @@ pub struct Contract {
     /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
     pub last_prices: HashMap<TokenId, Price>,
     pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
+    pub margin_accounts: UnorderedMap<AccountId, VMarginAccount>,
 }
 
 #[near_bindgen]
@@ -108,6 +114,7 @@ impl Contract {
             guardians: UnorderedSet::new(StorageKey::Guardian),
             last_prices: HashMap::new(),
             last_lp_token_infos: HashMap::new(),
+            margin_accounts: UnorderedMap::new(StorageKey::MarginAccounts),
         }
     }
 

@@ -17,7 +17,7 @@ const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 20);
 pub enum TokenReceiverMsg {
     Execute { actions: Vec<Action> },
     DepositToReserve,
-    SwapOut {account_id: AccountId, pos_id: String, amount_in: U128, op: String},
+    SwapOut {account_id: AccountId, pos_id: String, amount_in: U128, op: String, liquidator_id: Option<AccountId>},
 }
 
 #[near_bindgen]
@@ -60,14 +60,11 @@ impl FungibleTokenReceiver for Contract {
                     account_id, 
                     pos_id, 
                     amount_in, 
-                    op 
+                    op, 
+                    liquidator_id,
                 } => {
-                    let mut account = self.internal_unwrap_account(&account_id);
-                    let mut mt = if let Position::MarginTradingPosition(mt) = account.positions.get(&pos_id).unwrap() {
-                        mt.clone()
-                    } else {
-                        env::panic_str("Invalid position type")
-                    };
+                    let mut account = self.internal_unwrap_margin_account(&account_id);
+                    let mut mt = account.margin_positions.get(&pos_id).unwrap().clone();
                     if op == "open" {
                         let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
                         asset_debt.margin_pending_debt -= amount_in.0;
@@ -81,54 +78,132 @@ impl FungibleTokenReceiver for Contract {
 
                         mt.debt_shares.0 += debt_shares.0;
                         mt.position_amount += amount;
-                        mt.stat = 0;
-                        account.positions.insert(pos_id, Position::MarginTradingPosition(mt));
-                    } else if op == "increase" {
-                        let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
-                        asset_debt.margin_pending_debt -= amount_in.0;
-                        let debt_shares = asset_debt.margin_debt.amount_to_shares(amount_in.0, true);
-                        asset_debt.margin_debt.deposit(debt_shares, amount_in.0);
-                        self.internal_set_asset(&mt.debt_asset, asset_debt);
-
-                        let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
-                        asset_position.margin_position += amount;
-                        self.internal_set_asset(&mt.position_asset, asset_position);
-
-                        mt.debt_shares.0 += debt_shares.0;
-                        mt.position_amount += amount;
-                        mt.stat = 0;
-                        account.positions.insert(pos_id, Position::MarginTradingPosition(mt));
+                        mt.is_locking = false;
+                        account.margin_positions.insert(pos_id, mt.clone());
                     } else if op == "decrease" {
                         let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
+                        let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
+                        // figure out actual repay amount and shares
                         let debt_amount = asset_debt.margin_debt.shares_to_amount(mt.debt_shares, true);
-                        let (repay_amount, left_amount) = if amount > debt_amount {
-                            (debt_amount, amount - debt_amount)
+                        let (repay_amount, repay_shares, left_amount) = if amount >= debt_amount {
+                            (debt_amount, mt.debt_shares, amount - debt_amount)
                         } else {
-                            (amount, 0)
+                            (amount, asset_debt.margin_debt.amount_to_shares(amount, false), 0)
                         };
-                        let repay_shares = asset_debt.margin_debt.amount_to_shares(repay_amount, false);
                         asset_debt.margin_debt.withdraw(repay_shares, repay_amount);
-                        let supply_shares = asset_debt.supplied.amount_to_shares(left_amount, false);
-                        if supply_shares.0 > 0 {
-                            asset_debt.supplied.deposit(supply_shares, left_amount);
+                        mt.debt_shares.0 -= repay_shares.0;
+                        mt.is_locking = false;
+                        // handle possible leftover debt asset, put them into user's supply
+                        if left_amount > 0 {
+                            let supply_shares = asset_debt.supplied.amount_to_shares(left_amount, false);
+                            if supply_shares.0 > 0 {
+                                asset_debt.supplied.deposit(supply_shares, left_amount);
+                                account.deposit_supply_shares(&mt.debt_asset, &supply_shares);
+                            }
+                        }
+                        // try to repay remaining debt from margin
+                        if mt.debt_shares.0 > 0 && mt.debt_asset == mt.margin_asset {
+                            let remain_debt_balance = asset_debt.margin_debt.shares_to_amount(mt.debt_shares, true);
+                            let margin_shares_to_repay = asset_debt.supplied.amount_to_shares(remain_debt_balance, true);
+                            let (repay_debt_share, used_supply_share, repay_amount) = if margin_shares_to_repay <= mt.margin_shares {
+                                (mt.debt_shares, margin_shares_to_repay, remain_debt_balance)
+                            } else {
+                                // use all margin balance to repay
+                                let margin_balance = asset_debt.supplied.shares_to_amount(mt.margin_shares, false);
+                                let repay_debt_shares = asset_debt.margin_debt.amount_to_shares(margin_balance, false);
+                                (repay_debt_shares, mt.margin_shares, margin_balance)
+                            };
+                            asset_debt.supplied.withdraw(used_supply_share, repay_amount);
+                            asset_debt.margin_debt.withdraw(repay_debt_share, repay_amount);
+                            mt.debt_shares.0 -= repay_debt_share.0;
+                            mt.margin_shares.0 -= used_supply_share.0;
+                        }
+                        account.margin_positions.insert(pos_id.clone(), mt.clone());
+                        // try to settle this position
+                        if mt.debt_shares.0 == 0 {
+                            // close this position and remaining asset goes back to user's inner account
+                            // TODO: change to directly send assets back to user
+                            if mt.margin_shares.0 > 0 {
+                                account.deposit_supply_shares(&mt.margin_asset, &mt.margin_shares);
+                            }
+                            if mt.position_amount > 0 {
+                                let position_shares = asset_position.supplied.amount_to_shares(mt.position_amount, false);
+                                asset_position.supplied.deposit(position_shares, mt.position_amount);
+                                account.deposit_supply_shares(&mt.position_asset, &position_shares);
+                            }
+                            account.margin_positions.remove(&pos_id);
                         }
                         self.internal_set_asset(&mt.debt_asset, asset_debt);
-
-                        let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
-                        asset_position.margin_position -= amount_in.0;
                         self.internal_set_asset(&mt.position_asset, asset_position);
 
-                        if supply_shares.0 > 0 {
-                            let mut account_asset = account.internal_unwrap_asset(&mt.debt_asset);
-                            account_asset.deposit_shares(supply_shares);
-                            account.internal_set_asset(&mt.debt_asset, account_asset);
-                        }
+                    } else if op == "liquidate" {
+                        let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
+                        let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
+                        // figure out actual liquidator
+                        let mut liquidator_account = if let Some(liquidator_account_id) = liquidator_id {
+                            if let Some(x) = self.internal_get_margin_account(&liquidator_account_id) {
+                                x
+                            } else {
+                                self.internal_unwrap_margin_account(&self.internal_config().owner_id)
+                            }
+                        } else {
+                            self.internal_unwrap_margin_account(&self.internal_config().owner_id)
+                        };
+                        // figure out actual repay amount and shares
+                        let debt_amount = asset_debt.margin_debt.shares_to_amount(mt.debt_shares, true);
+                        let (repay_amount, repay_shares, left_amount) = if amount >= debt_amount {
+                            (debt_amount, mt.debt_shares, amount - debt_amount)
+                        } else {
+                            (amount, asset_debt.margin_debt.amount_to_shares(amount, false), 0)
+                        };
+                        asset_debt.margin_debt.withdraw(repay_shares, repay_amount);
                         mt.debt_shares.0 -= repay_shares.0;
-                        mt.position_amount -= amount_in.0;
-                        mt.stat = 0;
-                        account.positions.insert(pos_id, Position::MarginTradingPosition(mt));
+                        mt.is_locking = false;
+                        // handle possible leftover debt asset, put them into liquidator's supply
+                        if left_amount > 0 {
+                            let supply_shares = asset_debt.supplied.amount_to_shares(left_amount, false);
+                            if supply_shares.0 > 0 {
+                                asset_debt.supplied.deposit(supply_shares, left_amount);
+                                liquidator_account.deposit_supply_shares(&mt.debt_asset, &supply_shares);
+                            }
+                        }
+                        // try to repay remaining debt from margin
+                        if mt.debt_shares.0 > 0 && mt.debt_asset == mt.margin_asset {
+                            let remain_debt_balance = asset_debt.margin_debt.shares_to_amount(mt.debt_shares, true);
+                            let margin_shares_to_repay = asset_debt.supplied.amount_to_shares(remain_debt_balance, true);
+                            let (repay_debt_share, used_supply_share, repay_amount) = if margin_shares_to_repay <= mt.margin_shares {
+                                (mt.debt_shares, margin_shares_to_repay, remain_debt_balance)
+                            } else {
+                                // use all margin balance to repay
+                                let margin_balance = asset_debt.supplied.shares_to_amount(mt.margin_shares, false);
+                                let repay_debt_shares = asset_debt.margin_debt.amount_to_shares(margin_balance, false);
+                                (repay_debt_shares, mt.margin_shares, margin_balance)
+                            };
+                            asset_debt.supplied.withdraw(used_supply_share, repay_amount);
+                            asset_debt.margin_debt.withdraw(repay_debt_share, repay_amount);
+                            mt.debt_shares.0 -= repay_debt_share.0;
+                            mt.margin_shares.0 -= used_supply_share.0;
+                        }
+                        account.margin_positions.insert(pos_id.clone(), mt.clone());
+                        // try to settle this position
+                        if mt.debt_shares.0 == 0 {
+                            // close this position and remaining asset goes back to liquidator's inner account
+                            // TODO: change to directly send assets back to liquidator
+                            if mt.margin_shares.0 > 0 {
+                                liquidator_account.deposit_supply_shares(&mt.margin_asset, &mt.margin_shares);
+                            }
+                            if mt.position_amount > 0 {
+                                let position_shares = asset_position.supplied.amount_to_shares(mt.position_amount, false);
+                                asset_position.supplied.deposit(position_shares, mt.position_amount);
+                                liquidator_account.deposit_supply_shares(&mt.position_asset, &position_shares);
+                            }
+                            account.margin_positions.remove(&pos_id);
+                        }
+                        self.internal_set_margin_account(&liquidator_account.account_id.clone(), liquidator_account);
+                        self.internal_set_asset(&mt.debt_asset, asset_debt);
+                        self.internal_set_asset(&mt.position_asset, asset_position);
                     }
-                    self.internal_set_account(&account_id, account);
+                    self.internal_set_margin_account(&account_id, account);
 
                     return PromiseOrValue::Value(U128(0));
                 }

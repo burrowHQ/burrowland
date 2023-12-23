@@ -111,7 +111,7 @@ impl AccountV1 {
             affected_farms,
             storage_tracker,
             booster_staking,
-            is_locked: false
+            is_locked: false,
         }
     }
 }
@@ -158,7 +158,7 @@ impl AccountV2 {
             affected_farms,
             storage_tracker,
             booster_staking,
-            is_locked: false
+            is_locked: false,
         }
     }
 }
@@ -513,4 +513,18 @@ pub struct ContractV080 {
     pub config: LazyOption<ConfigV0>,
     /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
     pub last_prices: HashMap<TokenId, Price>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize)]
+pub struct ContractV090 {
+    pub accounts: UnorderedMap<AccountId, VAccount>,
+    pub storage: LookupMap<AccountId, VStorage>,
+    pub assets: LookupMap<TokenId, VAsset>,
+    pub asset_farms: LookupMap<FarmId, VAssetFarm>,
+    pub asset_ids: UnorderedSet<TokenId>,
+    pub config: LazyOption<Config>,
+    pub guardians: UnorderedSet<AccountId>,
+    /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
+    pub last_prices: HashMap<TokenId, Price>,
+    pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
 }
