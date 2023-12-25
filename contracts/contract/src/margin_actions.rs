@@ -44,6 +44,13 @@ pub enum MarginAction {
         min_debt_amount: U128,
         swap_indication: SwapIndication,
     },
+    ForceCloseMTPosition {
+        pos_owner_id: AccountId,
+        pos_id: PosId,
+        position_amount: U128,
+        min_debt_amount: U128,
+        swap_indication: SwapIndication,
+    },
 }
 
 impl Contract {
@@ -121,6 +128,22 @@ impl Contract {
                 } => {
                     self.internal_margin_liquidate_position(
                         account_id,
+                        &pos_owner_id,
+                        &pos_id,
+                        position_amount.into(),
+                        min_debt_amount.into(),
+                        &swap_indication,
+                        &prices,
+                    );
+                }
+                MarginAction::ForceCloseMTPosition {
+                    pos_owner_id,
+                    pos_id,
+                    position_amount,
+                    min_debt_amount,
+                    swap_indication,
+                } => {
+                    self.internal_margin_forceclose_position(
                         &pos_owner_id,
                         &pos_id,
                         position_amount.into(),
