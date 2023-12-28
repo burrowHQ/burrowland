@@ -174,6 +174,14 @@ impl Asset {
             - self.margin_debt.balance
             - self.margin_pending_debt
     }
+
+    pub fn increase_margin_pending_debt(&mut self, amount: Balance, pending_debt_scale: u32) {
+        self.margin_pending_debt += amount;
+        assert!(
+            self.available_amount() * pending_debt_scale as u128 / MAX_RATIO as u128 > self.margin_pending_debt, 
+            "Pending debt will overflow"
+        );
+    } 
 }
 
 impl Contract {

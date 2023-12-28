@@ -30,6 +30,13 @@ impl Contract {
             last_prices, 
             last_lp_token_infos,
             margin_accounts: UnorderedMap::new(StorageKey::MarginAccounts),
+            margin_config: LazyOption::new(StorageKey::MarginConfig, Some(&MarginConfig {
+                pending_debt_scale: 1000_u32,
+                max_slippage_rate: 1000_u32,
+                min_safty_buffer: 1000_u32,
+                registered_dexes: HashMap::new(),
+                registered_tokens: HashMap::new(),
+            })),
         }
     }
 

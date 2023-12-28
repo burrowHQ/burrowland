@@ -103,7 +103,16 @@ impl Contract {
                     position_amount,
                     min_debt_amount,
                     swap_indication,
-                } => {}
+                } => {
+                    self.internal_margin_decrease_position(
+                        account,
+                        &pos_id,
+                        position_amount.into(),
+                        min_debt_amount.into(),
+                        &swap_indication,
+                        &prices,
+                    );
+                }
                 MarginAction::CloseMTPosition {
                     pos_id,
                     position_amount,
@@ -220,6 +229,20 @@ impl Contract {
         // TODO: send token to user by ft_transfer
     }
 
+    pub(crate) fn internal_margin_deposit(
+        &mut self,
+        account: &mut MarginAccount,
+        token_id: &TokenId,
+        amount: Balance,
+    ) -> Shares {
+        let mut asset = self.internal_unwrap_asset(token_id);
+        let shares: Shares = asset.supplied.amount_to_shares(amount, false);
+        account.deposit_supply_shares(token_id, &shares);
+        asset.supplied.deposit(shares, amount);
+        self.internal_set_asset(token_id, asset);
+        shares
+    }
+
     pub(crate) fn internal_margin_withdraw_supply(
         &mut self,
         account: &mut MarginAccount,
@@ -234,8 +257,10 @@ impl Contract {
             let amount = asset.supplied.shares_to_amount(shares, false);
             (shares, amount)
         };
-        asset.supplied.withdraw(withdraw_shares, withdraw_amount);
         account.withdraw_supply_shares(token_id, &withdraw_shares);
+        asset.supplied.withdraw(withdraw_shares, withdraw_amount);
+        self.internal_set_asset(token_id, asset);
+        
 
         // TODO: send token back to user
     }

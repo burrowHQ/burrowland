@@ -22,9 +22,11 @@ mod upgrade;
 mod utils;
 mod shadow_actions;
 mod position;
-mod position_margintrading;
+mod margin_position;
 mod margin_accounts;
 mod margin_actions;
+mod margin_trading;
+mod margin_config;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -48,9 +50,11 @@ use crate::storage_tracker::*;
 pub use crate::utils::*;
 pub use crate::shadow_actions::*;
 pub use crate::position::*;
-pub use crate::position_margintrading::*;
+pub use crate::margin_position::*;
 pub use crate::margin_accounts::*;
 pub use crate::margin_actions::*;
+pub use crate::margin_trading::*;
+pub use crate::margin_config::*;
 
 use common::*;
 
@@ -80,6 +84,7 @@ enum StorageKey {
     Config,
     Guardian,
     MarginAccounts,
+    MarginConfig,
 }
 
 #[near_bindgen]
@@ -96,6 +101,7 @@ pub struct Contract {
     pub last_prices: HashMap<TokenId, Price>,
     pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
     pub margin_accounts: UnorderedMap<AccountId, VMarginAccount>,
+    pub margin_config: LazyOption<MarginConfig>,
 }
 
 #[near_bindgen]
@@ -115,6 +121,13 @@ impl Contract {
             last_prices: HashMap::new(),
             last_lp_token_infos: HashMap::new(),
             margin_accounts: UnorderedMap::new(StorageKey::MarginAccounts),
+            margin_config: LazyOption::new(StorageKey::MarginConfig, Some(&MarginConfig {
+                pending_debt_scale: 1000_u32,
+                max_slippage_rate: 1000_u32,
+                min_safty_buffer: 1000_u32,
+                registered_dexes: HashMap::new(),
+                registered_tokens: HashMap::new(),
+            })),
         }
     }
 

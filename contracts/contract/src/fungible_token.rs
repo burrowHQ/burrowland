@@ -17,7 +17,9 @@ const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 20);
 pub enum TokenReceiverMsg {
     Execute { actions: Vec<Action> },
     DepositToReserve,
-    SwapOut {account_id: AccountId, pos_id: String, amount_in: U128, op: String, liquidator_id: Option<AccountId>},
+    DepositToMargin,
+    MarginExecute { actions: Vec<MarginAction> },
+    SwapReference { swap_ref: SwapReference },
 }
 
 #[near_bindgen]
@@ -56,25 +58,35 @@ impl FungibleTokenReceiver for Contract {
                     events::emit::deposit_to_reserve(&sender_id, amount, &token_id);
                     return PromiseOrValue::Value(U128(0));
                 }
-                TokenReceiverMsg::SwapOut { 
-                    account_id, 
-                    pos_id, 
-                    amount_in, 
-                    op, 
-                    liquidator_id,
-                } => {
-                    let mut account = self.internal_unwrap_margin_account(&account_id);
-                    if op == "open" {
-                        self.on_open_trade_return(&mut account, pos_id, amount, amount_in.into());
-                    } else if op == "decrease" {
-                        self.on_decrease_trade_return(&mut account, pos_id, amount, amount_in.into());
-                    } else if op == "liquidate" {
-                        self.on_liquidate_trade_return(&mut account, pos_id, amount, amount_in.into(), liquidator_id);
-                    } else if op == "forceclose" {
-                        self.on_forceclose_trade_return(&mut account, pos_id, amount, amount_in.into());
+                TokenReceiverMsg::DepositToMargin => {
+                    // keep this independent deposit to support price oracle flow
+                    let mut account = self.internal_unwrap_margin_account(&sender_id);
+                    self.internal_margin_deposit(&mut account, &token_id, amount);
+                    // events::emit::deposit(&sender_id, amount, &token_id);
+                    self.internal_set_margin_account(&sender_id, account);
+                    return PromiseOrValue::Value(U128(0));
+                }
+                TokenReceiverMsg::MarginExecute { actions } => {
+                    let mut account = self.internal_unwrap_margin_account(&sender_id);
+                    self.internal_margin_deposit(&mut account, &token_id, amount);
+                    // events::emit::deposit(&sender_id, amount, &token_id);
+                    self.internal_margin_execute(&sender_id, &mut account, actions, Prices::new());
+                    self.internal_set_margin_account(&sender_id, account);
+                    return PromiseOrValue::Value(U128(0));
+                }
+                TokenReceiverMsg::SwapReference { swap_ref } => {
+                    let mut account = self.internal_unwrap_margin_account(&swap_ref.account_id);
+                    if swap_ref.op == "open" {
+                        // self.internal_margin_deposit(&mut account, &token_id, amount);
+                        self.on_open_trade_return(&mut account, amount, &swap_ref);
+                    } else if swap_ref.op == "decrease"
+                        || swap_ref.op == "close"
+                        || swap_ref.op == "liquidate"
+                        || swap_ref.op == "forceclose"
+                    {
+                        self.on_decrease_trade_return(&mut account, amount, &swap_ref);
                     }
-                    self.internal_set_margin_account(&account_id, account);
-
+                    self.internal_set_margin_account(&swap_ref.account_id, account);
                     return PromiseOrValue::Value(U128(0));
                 }
             }
@@ -100,22 +112,14 @@ impl Contract {
         let asset = self.internal_unwrap_asset(token_id);
         let ft_amount = amount / 10u128.pow(asset.config.extra_decimals as u32);
         ext_fungible_token::ext(token_id.clone())
-        .with_attached_deposit(ONE_YOCTO)
-        .with_static_gas(GAS_FOR_FT_TRANSFER)
-        .ft_transfer(
-            account_id.clone(),
-            ft_amount.into(),
-            None,
-        )
-        .then(
-            Self::ext(env::current_account_id())
-                .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
-                .after_ft_transfer(
-                    account_id.clone(),
-                    token_id.clone(),
-                    amount.into(),
-                )
-        )
+            .with_attached_deposit(ONE_YOCTO)
+            .with_static_gas(GAS_FOR_FT_TRANSFER)
+            .ft_transfer(account_id.clone(), ft_amount.into(), None)
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
+                    .after_ft_transfer(account_id.clone(), token_id.clone(), amount.into()),
+            )
     }
 }
 
