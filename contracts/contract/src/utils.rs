@@ -2,6 +2,7 @@ use crate::*;
 
 pub(crate) type TokenId = AccountId;
 pub(crate) type PosId = String;
+pub(crate) const UNIT: u128 = 1_000_000_000_000_000_000_u128;
 
 pub(crate) fn nano_to_ms(nano: u64) -> u64 {
     nano / 10u64.pow(6)

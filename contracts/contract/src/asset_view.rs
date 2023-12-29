@@ -70,6 +70,7 @@ impl Contract {
             margin_position,
             reserved,
             prot_fee,
+            unit_acc_hp_interest,
             last_update_timestamp,
             config,
         } = asset;

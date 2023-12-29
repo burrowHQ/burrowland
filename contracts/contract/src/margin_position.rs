@@ -26,13 +26,22 @@ pub trait FungibleToken {
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct MarginTradingPosition {
+    /// Used for convenient view
     pub open_ts: Timestamp,
+    /// Record the unit accumulated holding-position interest when open
+    pub uahpi_at_open: Balance,
+    /// The capital of debt, used for calculate holding position fee
+    pub debt_cap: Balance,
+
     pub margin_asset: TokenId,
     pub margin_shares: Shares,
+
     pub debt_asset: TokenId,
     pub debt_shares: Shares,
+
     pub position_asset: TokenId,
     pub position_amount: Balance,
+
     pub is_locking: bool,
 }
 
@@ -46,6 +55,8 @@ impl MarginTradingPosition {
     ) -> Self {
         MarginTradingPosition {
             open_ts,
+            uahpi_at_open: 0_u128,
+            debt_cap: 0_u128,
             margin_asset,
             margin_shares,
             debt_asset,
@@ -384,17 +395,23 @@ impl Contract {
 
         if op == "close" || op == "liquidate" {
             //   ensure all debt would be repaid
+            //   and take holding-position fee into account
             let total_debt_amount = asset_debt
                 .margin_debt
                 .shares_to_amount(mt.debt_shares, true);
-            if min_debt_amount < total_debt_amount {
+            let hp_fee = u128_ratio(
+                mt.debt_cap,
+                asset_debt.unit_acc_hp_interest - mt.uahpi_at_open,
+                UNIT,
+            );
+            if min_debt_amount < total_debt_amount + hp_fee {
                 assert_eq!(
                     mt.margin_asset, mt.debt_asset,
                     "Can NOT trade under total debt when margin and debt asset are not the same"
                 );
                 let gap_shares = asset_debt
                     .supplied
-                    .amount_to_shares(total_debt_amount - min_debt_amount, true);
+                    .amount_to_shares(total_debt_amount + hp_fee - min_debt_amount, true);
                 assert!(
                     mt.margin_shares.0 > gap_shares.0,
                     "Not all debt could be repaid"

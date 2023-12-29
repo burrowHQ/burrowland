@@ -264,6 +264,7 @@ impl From<AssetV0> for Asset {
             margin_position: 0,
             reserved,
             prot_fee: 0,
+            unit_acc_hp_interest: 0,
             last_update_timestamp,
             config: config.into(),
         }
@@ -377,6 +378,7 @@ impl From<AssetV1> for Asset {
             margin_position: 0,
             reserved,
             prot_fee: 0,
+            unit_acc_hp_interest: 0,
             last_update_timestamp,
             config: config.into(),
         }
@@ -420,6 +422,7 @@ impl From<AssetV2> for Asset {
             margin_position: 0,
             reserved,
             prot_fee,
+            unit_acc_hp_interest: 0,
             last_update_timestamp,
             config,
         }

@@ -293,6 +293,7 @@ impl Contract {
     ) {
         let mut mt = account.margin_positions.get(&sr.pos_id).unwrap().clone();
         let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
+        let uahi = asset_debt.unit_acc_hp_interest;
         asset_debt.margin_pending_debt -= sr.amount_in.0;
         let debt_shares = asset_debt.margin_debt.amount_to_shares(sr.amount_in.0, true);
         asset_debt.margin_debt.deposit(debt_shares, sr.amount_in.0);
@@ -302,6 +303,10 @@ impl Contract {
         asset_position.margin_position += amount;
         self.internal_set_asset(&mt.position_asset, asset_position);
 
+        // TODO: charge open position fee from margin_shares
+
+        mt.debt_cap = sr.amount_in.0;
+        mt.uahpi_at_open = uahi;
         mt.debt_shares.0 += debt_shares.0;
         mt.position_amount += amount;
         mt.is_locking = false;
@@ -320,20 +325,32 @@ impl Contract {
         let (mut benefit_m_shares, mut benefit_d_shares, mut benefit_p_shares) = (0_u128, 0_u128, 0_u128);
 
         // figure out actual repay amount and shares
+        // figure out how many debt_cap been repaid, and charge corresponding holding-position fee from repayment.
         let debt_amount = asset_debt
             .margin_debt
             .shares_to_amount(mt.debt_shares, true);
-        let (repay_amount, repay_shares, left_amount) = if amount >= debt_amount {
-            (debt_amount, mt.debt_shares, amount - debt_amount)
+        let hp_fee = u128_ratio(mt.debt_cap,asset_debt.unit_acc_hp_interest - mt.uahpi_at_open,UNIT);
+        let repay_cap = u128_ratio(mt.debt_cap, amount, debt_amount+hp_fee);
+
+        let (repay_amount, repay_shares, left_amount, repay_hp_fee) = if repay_cap >= mt.debt_cap {
+            (debt_amount, mt.debt_shares, amount - debt_amount, hp_fee)
         } else {
+            let repay_hp_fee = u128_ratio(hp_fee, repay_cap, mt.debt_cap);
             (
-                amount,
-                asset_debt.margin_debt.amount_to_shares(amount, false),
+                amount - repay_hp_fee,
+                asset_debt.margin_debt.amount_to_shares(amount - repay_hp_fee, false),
                 0,
+                repay_hp_fee
             )
         };
         asset_debt.margin_debt.withdraw(repay_shares, repay_amount);
         mt.debt_shares.0 -= repay_shares.0;
+        mt.debt_cap = if repay_cap >= mt.debt_cap {
+            0
+        } else {
+            mt.debt_cap -repay_cap
+        };
+        // TODO: distribute hp_fee to owner supply or asset reserve
 
         // handle possible leftover debt asset, put them into user's supply
         if left_amount > 0 {

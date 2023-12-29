@@ -125,6 +125,7 @@ impl Contract {
                 pending_debt_scale: 1000_u32,
                 max_slippage_rate: 1000_u32,
                 min_safty_buffer: 1000_u32,
+                margin_debt_discount_rate: 5000_u32,
                 registered_dexes: HashMap::new(),
                 registered_tokens: HashMap::new(),
             })),

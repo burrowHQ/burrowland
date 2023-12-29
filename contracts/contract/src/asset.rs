@@ -29,6 +29,9 @@ pub struct Asset {
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
     pub prot_fee: Balance,
+    /// The accumulated holding margin position interests till self.last_update_timestamp.
+    #[serde(with = "u128_dec_format")]
+    pub unit_acc_hp_interest: Balance,
     /// When the asset was last updated. It's always going to be the current block timestamp.
     #[serde(with = "u64_dec_format")]
     pub last_update_timestamp: Timestamp,
@@ -71,6 +74,7 @@ impl Asset {
             margin_position: 0,
             reserved: 0,
             prot_fee: 0,
+            unit_acc_hp_interest: 0,
             last_update_timestamp: timestamp,
             config,
         }
@@ -81,9 +85,8 @@ impl Asset {
             .get_rate(self.borrowed.balance + self.margin_debt.balance + self.margin_pending_debt, self.supplied.balance + self.reserved + self.prot_fee)
     }
 
-    pub fn get_margin_debt_rate(&self) -> BigDecimal {
-        // TODO: Put this discount ratio to Config
-        self.get_rate() * BigDecimal::from_ratio(5000)
+    pub fn get_margin_debt_rate(&self, margin_debt_discount_rate: u32) -> BigDecimal {
+        self.get_rate() * BigDecimal::from_ratio(margin_debt_discount_rate)
     }
 
     pub fn get_borrow_apr(&self) -> BigDecimal {
@@ -117,7 +120,7 @@ impl Asset {
     // r / n = (x ** (1 / n)) - 1
     // r = n * ((x ** (1 / n)) - 1)
     // n = in millis
-    fn compound(&mut self, time_diff_ms: Duration) {
+    fn compound(&mut self, time_diff_ms: Duration, margin_debt_discount_rate: u32) {
         // handle common borrowed
         let rate = self.get_rate();
         let interest =
@@ -138,7 +141,7 @@ impl Asset {
         self.borrowed.balance += interest;
 
         // handle margin debt
-        let margin_debt_rate = self.get_margin_debt_rate();
+        let margin_debt_rate = self.get_margin_debt_rate(margin_debt_discount_rate);
         let interest =
             margin_debt_rate.pow(time_diff_ms).round_mul_u128(self.margin_debt.balance) - self.margin_debt.balance;
         let reserved = ratio(interest, self.config.reserve_ratio);
@@ -156,13 +159,17 @@ impl Asset {
         self.margin_debt.balance += interest;
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, margin_debt_discount_rate: u32) {
         let timestamp = env::block_timestamp();
         let time_diff_ms = nano_to_ms(timestamp - self.last_update_timestamp);
         if time_diff_ms > 0 {
             // update
             self.last_update_timestamp += ms_to_nano(time_diff_ms);
-            self.compound(time_diff_ms);
+            self.compound(time_diff_ms, margin_debt_discount_rate);
+            // update unit accumulated holding position interest
+            // TODO: make this hp_rate into AssetConfig
+            let hp_rate = BigDecimal::from(0_u32);
+            self.unit_acc_hp_interest += hp_rate.pow(time_diff_ms).round_mul_u128(1000000000000000000_u128) - 1000000000000000000_u128;
         }
     }
 
@@ -194,7 +201,7 @@ impl Contract {
         cache.get(token_id).cloned().unwrap_or_else(|| {
             let asset = self.assets.get(token_id).map(|o| {
                 let mut asset: Asset = o.into();
-                asset.update();
+                asset.update(self.internal_margin_config().margin_debt_discount_rate);
                 asset
             });
             cache.insert(token_id.clone(), asset.clone());
@@ -254,7 +261,7 @@ impl Contract {
             .map(|index| {
                 let key = keys.get(index).unwrap();
                 let mut asset: Asset = self.assets.get(&key).unwrap().into();
-                asset.update();
+                asset.update(self.internal_margin_config().margin_debt_discount_rate);
                 (key, asset)
             })
             .collect()
@@ -272,7 +279,7 @@ impl Contract {
             .map(|index| {
                 let token_id = keys.get(index).unwrap();
                 let mut asset: Asset = self.assets.get(&token_id).unwrap().into();
-                asset.update();
+                asset.update(self.internal_margin_config().margin_debt_discount_rate);
                 self.asset_into_detailed_view(token_id, asset)
             })
             .collect()

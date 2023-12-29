@@ -7,6 +7,7 @@ pub struct MarginConfig {
     pub pending_debt_scale: u32,
     pub max_slippage_rate: u32,
     pub min_safty_buffer: u32,
+    pub margin_debt_discount_rate: u32,
     /// dex account id and its version (1 - RefV1, 2 - RefV2)
     pub registered_dexes: HashMap<AccountId, u8>,
     /// token and its party side, such as 1 and 2 are in different parties,
