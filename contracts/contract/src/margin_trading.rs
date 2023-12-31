@@ -291,26 +291,54 @@ impl Contract {
         amount: Balance,
         sr: &SwapReference,
     ) {
+        let margin_config = self.internal_margin_config();
         let mut mt = account.margin_positions.get(&sr.pos_id).unwrap().clone();
         let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
-        let uahi = asset_debt.unit_acc_hp_interest;
-        asset_debt.margin_pending_debt -= sr.amount_in.0;
-        let debt_shares = asset_debt.margin_debt.amount_to_shares(sr.amount_in.0, true);
-        asset_debt.margin_debt.deposit(debt_shares, sr.amount_in.0);
-        self.internal_set_asset(&mt.debt_asset, asset_debt);
-
         let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
+
+        asset_debt.margin_pending_debt -= sr.amount_in.0;
+        let debt_shares = asset_debt
+            .margin_debt
+            .amount_to_shares(sr.amount_in.0, true);
+        asset_debt.margin_debt.deposit(debt_shares, sr.amount_in.0);
         asset_position.margin_position += amount;
-        self.internal_set_asset(&mt.position_asset, asset_position);
 
-        // TODO: charge open position fee from margin_shares
+        // TODO: emit charge open position fee event
+        let open_fee_shares = u128_ratio(
+            mt.margin_shares.0,
+            margin_config.open_position_fee_rate as u128,
+            MAX_RATIO as u128,
+        );
+        if mt.margin_asset == mt.debt_asset {
+            let open_fee_amount = asset_debt
+                .supplied
+                .shares_to_amount(open_fee_shares.into(), false);
+            asset_debt
+                .supplied
+                .withdraw(open_fee_shares.into(), open_fee_amount);
+            asset_debt.prot_fee += open_fee_amount;
+        } else {
+            let open_fee_amount = asset_position
+                .supplied
+                .shares_to_amount(open_fee_shares.into(), false);
+            asset_position
+                .supplied
+                .withdraw(open_fee_shares.into(), open_fee_amount);
+            asset_position.prot_fee += open_fee_amount;
+        }
 
+        mt.margin_shares.0 -= open_fee_shares;
         mt.debt_cap = sr.amount_in.0;
-        mt.uahpi_at_open = uahi;
+        mt.uahpi_at_open = asset_debt.unit_acc_hp_interest;
         mt.debt_shares.0 += debt_shares.0;
         mt.position_amount += amount;
         mt.is_locking = false;
-        account.margin_positions.insert(sr.pos_id.clone(), mt.clone());
+        account
+            .margin_positions
+            .insert(sr.pos_id.clone(), mt.clone());
+
+        self.internal_set_asset(&mt.debt_asset, asset_debt);
+        self.internal_set_asset(&mt.position_asset, asset_position);
     }
 
     pub(crate) fn on_decrease_trade_return(
@@ -322,25 +350,32 @@ impl Contract {
         let mut mt = account.margin_positions.get(&sr.pos_id).unwrap().clone();
         let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
         let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
-        let (mut benefit_m_shares, mut benefit_d_shares, mut benefit_p_shares) = (0_u128, 0_u128, 0_u128);
+        let (mut benefit_m_shares, mut benefit_d_shares, mut benefit_p_shares) =
+            (0_u128, 0_u128, 0_u128);
 
         // figure out actual repay amount and shares
         // figure out how many debt_cap been repaid, and charge corresponding holding-position fee from repayment.
         let debt_amount = asset_debt
             .margin_debt
             .shares_to_amount(mt.debt_shares, true);
-        let hp_fee = u128_ratio(mt.debt_cap,asset_debt.unit_acc_hp_interest - mt.uahpi_at_open,UNIT);
-        let repay_cap = u128_ratio(mt.debt_cap, amount, debt_amount+hp_fee);
+        let hp_fee = u128_ratio(
+            mt.debt_cap,
+            asset_debt.unit_acc_hp_interest - mt.uahpi_at_open,
+            UNIT,
+        );
+        let repay_cap = u128_ratio(mt.debt_cap, amount, debt_amount + hp_fee);
 
         let (repay_amount, repay_shares, left_amount, repay_hp_fee) = if repay_cap >= mt.debt_cap {
-            (debt_amount, mt.debt_shares, amount - debt_amount, hp_fee)
+            (debt_amount, mt.debt_shares, amount - debt_amount - hp_fee, hp_fee)
         } else {
             let repay_hp_fee = u128_ratio(hp_fee, repay_cap, mt.debt_cap);
             (
                 amount - repay_hp_fee,
-                asset_debt.margin_debt.amount_to_shares(amount - repay_hp_fee, false),
+                asset_debt
+                    .margin_debt
+                    .amount_to_shares(amount - repay_hp_fee, false),
                 0,
-                repay_hp_fee
+                repay_hp_fee,
             )
         };
         asset_debt.margin_debt.withdraw(repay_shares, repay_amount);
@@ -348,9 +383,11 @@ impl Contract {
         mt.debt_cap = if repay_cap >= mt.debt_cap {
             0
         } else {
-            mt.debt_cap -repay_cap
+            mt.debt_cap - repay_cap
         };
-        // TODO: distribute hp_fee to owner supply or asset reserve
+        // distribute hp_fee
+        // TODO: emit event
+        asset_debt.prot_fee += repay_hp_fee;
 
         // handle possible leftover debt asset, put them into user's supply
         if left_amount > 0 {
@@ -409,9 +446,11 @@ impl Contract {
                 }
             }
         }
-        
+
         mt.is_locking = false;
-        account.margin_positions.insert(sr.pos_id.clone(), mt.clone());
+        account
+            .margin_positions
+            .insert(sr.pos_id.clone(), mt.clone());
 
         // try to settle this position
         if mt.debt_shares.0 == 0 {
@@ -445,23 +484,27 @@ impl Contract {
         // distribute benefits
         if benefit_d_shares > 0 || benefit_m_shares > 0 || benefit_p_shares > 0 {
             if sr.op == "liquidate" || sr.op == "forceclose" {
-                let mut liquidator_account = if let Some(ref liquidator_account_id) = sr.liquidator_id {
-                    if let Some(x) = self.internal_get_margin_account(&liquidator_account_id) {
-                        x
+                let mut liquidator_account =
+                    if let Some(ref liquidator_account_id) = sr.liquidator_id {
+                        if let Some(x) = self.internal_get_margin_account(&liquidator_account_id) {
+                            x
+                        } else {
+                            self.internal_unwrap_margin_account(&self.internal_config().owner_id)
+                        }
                     } else {
                         self.internal_unwrap_margin_account(&self.internal_config().owner_id)
-                    }
-                } else {
-                    self.internal_unwrap_margin_account(&self.internal_config().owner_id)
-                };
+                    };
                 if benefit_d_shares > 0 {
-                    liquidator_account.deposit_supply_shares(&mt.debt_asset, &U128(benefit_d_shares));
+                    liquidator_account
+                        .deposit_supply_shares(&mt.debt_asset, &U128(benefit_d_shares));
                 }
                 if benefit_m_shares > 0 {
-                    liquidator_account.deposit_supply_shares(&mt.margin_asset, &U128(benefit_m_shares));
+                    liquidator_account
+                        .deposit_supply_shares(&mt.margin_asset, &U128(benefit_m_shares));
                 }
                 if benefit_p_shares > 0 {
-                    liquidator_account.deposit_supply_shares(&mt.position_asset, &U128(benefit_p_shares));
+                    liquidator_account
+                        .deposit_supply_shares(&mt.position_asset, &U128(benefit_p_shares));
                 }
                 self.internal_set_margin_account(
                     &liquidator_account.account_id.clone(),
@@ -479,13 +522,11 @@ impl Contract {
                 }
             }
         }
-        
+
         self.internal_set_asset(&mt.debt_asset, asset_debt);
         self.internal_set_asset(&mt.position_asset, asset_position);
     }
-
 }
-
 
 #[test]
 fn aa() {

@@ -44,6 +44,10 @@ pub struct AssetConfig {
     /// Use `apr_to_rate.py` script to compute the value for a given APR.
     /// Given as a decimal string. E.g. "1000000000039724853136740579" for 250% APR.
     pub max_utilization_rate: LowU128,
+    /// The compounding rate when holding a margin position.
+    /// Use `apr_to_rate.py` script to compute the value for a given APR.
+    /// Given as a decimal string. E.g. "1000000000003593629036885046" for 12% APR.
+    pub holding_position_fee_rate: LowU128,
     /// Volatility ratio (multiplied by 10000).
     /// It defines which percentage collateral that covers borrowing as well as which percentage of
     /// borrowed asset can be taken.
@@ -120,6 +124,7 @@ mod tests {
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
+            holding_position_fee_rate: U128(1000000000000000000000000000),
             volatility_ratio: 6000,
             extra_decimals: 0,
             can_deposit: true,

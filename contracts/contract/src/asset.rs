@@ -167,9 +167,8 @@ impl Asset {
             self.last_update_timestamp += ms_to_nano(time_diff_ms);
             self.compound(time_diff_ms, margin_debt_discount_rate);
             // update unit accumulated holding position interest
-            // TODO: make this hp_rate into AssetConfig
-            let hp_rate = BigDecimal::from(0_u32);
-            self.unit_acc_hp_interest += hp_rate.pow(time_diff_ms).round_mul_u128(1000000000000000000_u128) - 1000000000000000000_u128;
+            let hp_rate = BigDecimal::from(self.config.holding_position_fee_rate);
+            self.unit_acc_hp_interest += hp_rate.pow(time_diff_ms).round_mul_u128(UNIT) - UNIT;
         }
     }
 

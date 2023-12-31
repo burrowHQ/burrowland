@@ -221,6 +221,7 @@ impl From<AssetConfigV0> for AssetConfig {
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
+            holding_position_fee_rate: U128(1000000000000000000000000000),
             volatility_ratio,
             extra_decimals,
             can_deposit,
@@ -335,6 +336,7 @@ impl From<AssetConfigV1> for AssetConfig {
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
+            holding_position_fee_rate: U128(1000000000000000000000000000),
             volatility_ratio,
             extra_decimals,
             can_deposit,
@@ -385,6 +387,55 @@ impl From<AssetV1> for Asset {
     }
 }
 
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AssetConfigV2 {
+    pub reserve_ratio: u32,
+    pub prot_ratio: u32,
+    pub target_utilization: u32,
+    pub target_utilization_rate: LowU128,
+    pub max_utilization_rate: LowU128,
+    pub volatility_ratio: u32,
+    pub extra_decimals: u8,
+    pub can_deposit: bool,
+    pub can_withdraw: bool,
+    pub can_use_as_collateral: bool,
+    pub can_borrow: bool,
+    pub net_tvl_multiplier: u32,
+}
+
+impl From<AssetConfigV2> for AssetConfig {
+    fn from(a: AssetConfigV2) -> Self {
+        let AssetConfigV2 {
+            reserve_ratio,
+            prot_ratio,
+            target_utilization,
+            target_utilization_rate,
+            max_utilization_rate,
+            volatility_ratio,
+            extra_decimals,
+            can_deposit,
+            can_withdraw,
+            can_use_as_collateral,
+            can_borrow,
+            net_tvl_multiplier,
+        } = a;
+        Self {
+            reserve_ratio,
+            prot_ratio,
+            target_utilization,
+            target_utilization_rate,
+            max_utilization_rate,
+            holding_position_fee_rate: U128(1000000000000000000000000000),
+            volatility_ratio,
+            extra_decimals,
+            can_deposit,
+            can_withdraw,
+            can_use_as_collateral,
+            can_borrow,
+            net_tvl_multiplier,
+        }
+    }
+}
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct AssetV2 {
@@ -401,7 +452,7 @@ pub struct AssetV2 {
     /// When the asset was last updated. It's always going to be the current block timestamp.
     pub last_update_timestamp: Timestamp,
     /// The asset config.
-    pub config: AssetConfig,
+    pub config: AssetConfigV2,
 }
 
 impl From<AssetV2> for Asset {
@@ -424,7 +475,7 @@ impl From<AssetV2> for Asset {
             prot_fee,
             unit_acc_hp_interest: 0,
             last_update_timestamp,
-            config,
+            config: config.into(),
         }
     }
 }

@@ -6,11 +6,16 @@ use crate::*;
 pub struct MarginConfig {
     pub pending_debt_scale: u32,
     pub max_slippage_rate: u32,
+    /// The position will be liquidated when debt is larger than 
+    ///   (margin + position) * (1 + min_safty_buffer_rate).
     pub min_safty_buffer: u32,
+    /// Compare to regular borrowing, margin borrow enjoy a discount.
     pub margin_debt_discount_rate: u32,
-    /// dex account id and its version (1 - RefV1, 2 - RefV2)
+    /// Open fee is on the margin asset.
+    pub open_position_fee_rate: u32,
+    /// Dex account id and its version (1 - RefV1, 2 - RefV2)
     pub registered_dexes: HashMap<AccountId, u8>,
-    /// token and its party side, such as 1 and 2 are in different parties,
+    /// Token and its party side, such as 1 and 2 are in different parties,
     /// hence they can be a debt and a position. In other word,
     /// Tokens in the same party, can NOT exist in the same position.
     pub registered_tokens: HashMap<AccountId, u8>,
