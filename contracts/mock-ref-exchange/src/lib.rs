@@ -27,6 +27,7 @@ pub use crate::custom_keys::*;
 pub use crate::views::{PoolInfo, ShadowRecordInfo, RatedPoolInfo, StablePoolInfo, ContractMetadata, RatedTokenInfo, AddLiquidityPrediction, RefStorageState, AccountBaseInfo};
 pub use crate::token_receiver::AddLiquidityInfo;
 pub use crate::shadow_actions::*;
+pub use crate::unit_lpt_cumulative_infos::*;
 
 mod account_deposit;
 mod action;
@@ -45,6 +46,7 @@ mod utils;
 mod views;
 mod custom_keys;
 mod shadow_actions;
+mod unit_lpt_cumulative_infos;
 
 #[derive(BorshStorageKey, BorshSerialize)]
 pub(crate) enum StorageKey {
@@ -57,6 +59,7 @@ pub(crate) enum StorageKey {
     Frozenlist,
     Referral,
     ShadowRecord {account_id: AccountId},
+    UnitShareCumulativeInfo
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Eq, PartialEq, Clone)]
@@ -105,6 +108,7 @@ pub struct Contract {
     frozen_tokens: UnorderedSet<AccountId>,
     /// Map of referrals
     referrals: UnorderedMap<AccountId, u32>,
+    unit_share_cumulative_infos: UnorderedMap<u64, VUnitShareCumulativeInfo>,
 }
 
 #[near_bindgen]
@@ -123,6 +127,7 @@ impl Contract {
             state: RunningState::Running,
             frozen_tokens: UnorderedSet::new(StorageKey::Frozenlist),
             referrals: UnorderedMap::new(StorageKey::Referral),
+            unit_share_cumulative_infos: UnorderedMap::new(StorageKey::UnitShareCumulativeInfo),
         }
     }
 
@@ -283,7 +288,7 @@ impl Contract {
         self.internal_save_account(&sender_id, deposits);
         self.pools.replace(pool_id, &pool);
         self.internal_check_storage(prev_storage);
-
+        self.internal_update_unit_share_cumulative_info(pool_id);
         U128(shares)
     }
 
@@ -328,7 +333,7 @@ impl Contract {
         self.internal_save_account(&sender_id, deposits);
         self.pools.replace(pool_id, &pool);
         self.internal_check_storage(prev_storage);
-
+        self.internal_update_unit_share_cumulative_info(pool_id);
         mint_shares.into()
     }
 
@@ -376,6 +381,7 @@ impl Contract {
                 (prev_storage - env::storage_usage()) as Balance * env::storage_byte_cost();
         }
         self.internal_save_account(&sender_id, deposits);
+        self.internal_update_unit_share_cumulative_info(pool_id);
 
         amounts
             .into_iter()
@@ -427,7 +433,7 @@ impl Contract {
                 (prev_storage - env::storage_usage()) as Balance * env::storage_byte_cost();
         }
         self.internal_save_account(&sender_id, deposits);
-
+        self.internal_update_unit_share_cumulative_info(pool_id);
         burn_shares.into()
     }
 
@@ -604,6 +610,7 @@ impl Contract {
             false
         );
         self.pools.replace(pool_id, &pool);
+        self.internal_update_unit_share_cumulative_info(pool_id);
         amount_out
     }
 }

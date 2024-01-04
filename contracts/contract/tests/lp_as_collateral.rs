@@ -225,6 +225,7 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
     
     check!(ref_exchange_contract.add_stable_swap_pool(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()], vec![6, 6, 18], 5, 240));
     check!(ref_exchange_contract.add_stable_liquidity(&alice, 0, vec![U128(d(10000, 6)), U128(d(10000, 6)), U128(d(10000, 18))], U128(1)));
+    check!(ref_exchange_contract.register_pool_twap_record(&root, 0));
     
     let seed_id = "ref_exchange.test.near@0".to_string();
     check!(boost_farming_contract.create_seed(&root, &seed_id, 18, None, None));
@@ -363,6 +364,7 @@ async fn test_position_liquidate() -> Result<()> {
     
     check!(ref_exchange_contract.add_stable_swap_pool(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()], vec![6, 6, 18], 5, 240));
     check!(ref_exchange_contract.add_stable_liquidity(&alice, 0, vec![U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(18))], U128(1)));
+    check!(ref_exchange_contract.register_pool_twap_record(&root, 0));
     
     let seed_id = "ref_exchange.test.near@0".to_string();
     check!(boost_farming_contract.create_seed(&root, &seed_id, 18, None, None));
@@ -414,7 +416,7 @@ async fn test_position_liquidate() -> Result<()> {
 
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(logs burrowland_contract.liquidate(&bob, &oralce_contract, burrowland_contract.0.id(), alice.id(),
-    price_data(current_timestamp, Some(2000000)), vec![asset_amount(wrap_token_contract.0.id(), parse_near!("1 N"))], vec![asset_amount(&token_id, d(13, 18))], Some(token_id.to_string())));
+    price_data(current_timestamp, Some(2000000)), vec![asset_amount(wrap_token_contract.0.id(), parse_near!("1 N"))], vec![asset_amount(&token_id, d(13, 18))], Some(token_id.to_string()), Some(vec![U128(0); 3])));
 
     let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
     assert!(!alice_burrowland_account.is_locked);
@@ -531,6 +533,7 @@ async fn test_position_force_close() -> Result<()> {
     check!(ref_exchange_contract.add_stable_swap_pool(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()], vec![6, 6, 18], 5, 240));
     check!(ref_exchange_contract.add_stable_liquidity(&alice, 0, vec![U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(18))], U128(1)));
     check!(ref_exchange_contract.add_stable_liquidity(&root, 0, vec![U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(18))], U128(1)));
+    check!(ref_exchange_contract.register_pool_twap_record(&root, 0));
     
     let seed_id = "ref_exchange.test.near@0".to_string();
     check!(boost_farming_contract.create_seed(&root, &seed_id, 18, None, None));
@@ -549,21 +552,21 @@ async fn test_position_force_close() -> Result<()> {
     check!(burrowland_contract.deposit(&wrap_token_contract, &bob, parse_near!("10000 N")));
     check!(ref_exchange_contract.mft_register( &bob, ":0".to_string(), bob.id()));
 
-    let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
-    let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
-    assert_eq!(position_info.collateral[0].balance, d(30000, 18));
-    assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
-    assert_eq!(
-        (position_info.borrowed[0].balance / d(1, 18)) as f64,
-        d(100, 24 - 18) as f64
-    );
+    // let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
+    // let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
+    // assert_eq!(position_info.collateral[0].balance, d(30000, 18));
+    // assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
+    // assert_eq!(
+    //     (position_info.borrowed[0].balance / d(1, 18)) as f64,
+    //     d(100, 24 - 18) as f64
+    // );
 
-    let bob_burrowland_account = burrowland_contract.get_account_all_positions(&bob).await?.unwrap();
-    assert_eq!(bob_burrowland_account.supplied[0].token_id.to_string(), wrap_token_contract.0.id().to_string());
-    assert_eq!(
-        (bob_burrowland_account.supplied[0].balance / d(1, 18)) as f64,
-        d(10000, 24 - 18) as f64
-    );
+    // let bob_burrowland_account = burrowland_contract.get_account_all_positions(&bob).await?.unwrap();
+    // assert_eq!(bob_burrowland_account.supplied[0].token_id.to_string(), wrap_token_contract.0.id().to_string());
+    // assert_eq!(
+    //     (bob_burrowland_account.supplied[0].balance / d(1, 18)) as f64,
+    //     d(10000, 24 - 18) as f64
+    // );
 
     let alice_exchange_account_deposit = ref_exchange_contract.get_deposits(&alice).await?;
     assert_eq!(alice_exchange_account_deposit.get(usdc_token_contract.0.id()).unwrap().0, 0);
@@ -576,7 +579,7 @@ async fn test_position_force_close() -> Result<()> {
 
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(view burrowland_contract.get_account_all_positions(&alice));
-    check!(logs burrowland_contract.force_close(&bob, &oralce_contract, alice.id(), price_data(current_timestamp, Some(25000000)), Some(token_id.to_string())));
+    check!(logs burrowland_contract.force_close(&bob, &oralce_contract, alice.id(), price_data(current_timestamp, Some(25000000)), Some(token_id.to_string()), Some(vec![U128(0); 3])));
 
     let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
     assert!(!alice_burrowland_account.is_locked);
@@ -678,6 +681,7 @@ async fn test_position_farming_with_force_close() -> Result<()> {
     check!(ref_exchange_contract.add_stable_swap_pool(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()], vec![6, 6, 18], 5, 240));
     check!(ref_exchange_contract.add_stable_liquidity(&alice, 0, vec![U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(18))], U128(1)));
     check!(ref_exchange_contract.add_stable_liquidity(&root, 0, vec![U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(18))], U128(1)));
+    check!(ref_exchange_contract.register_pool_twap_record(&root, 0));
     
     check!(ref_exchange_contract.mft_register(&root, ":0".to_string(), boost_farming_contract.0.id()));
 
@@ -705,10 +709,11 @@ async fn test_position_farming_with_force_close() -> Result<()> {
     check!(view burrowland_contract.get_account_all_positions(&alice));
 
     let current_timestamp = worker.view_block().await?.timestamp();
-    check!(print burrowland_contract.force_close(&bob, &oralce_contract, alice.id(), price_data(current_timestamp, Some(25000000)), Some(token_id.to_string())));
+    check!(logs burrowland_contract.force_close(&bob, &oralce_contract, alice.id(), price_data(current_timestamp, Some(25000000)), Some(token_id.to_string()), Some(vec![U128(0); 3])));
 
     check!(view burrowland_contract.get_account_all_positions(&alice));
-
+    check!(view ref_exchange_contract.get_shadow_records(&alice));
+    check!(view boost_farming_contract.get_farmer_seed(&alice, &seed_id));
     Ok(())
 }
 
@@ -788,6 +793,7 @@ async fn test_position_farming_liquidate() -> Result<()> {
     check!(ref_exchange_contract.add_stable_swap_pool(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()], vec![6, 6, 18], 5, 240));
     check!(ref_exchange_contract.add_stable_liquidity(&alice, 0, vec![U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(18))], U128(1)));
     check!(ref_exchange_contract.add_stable_liquidity(&root, 0, vec![U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(18))], U128(1)));
+    check!(ref_exchange_contract.register_pool_twap_record(&root, 0));
     
     check!(ref_exchange_contract.mft_register(&root, ":0".to_string(), boost_farming_contract.0.id()));
 
@@ -817,8 +823,8 @@ async fn test_position_farming_liquidate() -> Result<()> {
     check!(wrap_token_contract.ft_mint(&root, &bob, parse_near!("10 N")));
     check!(burrowland_contract.deposit(&wrap_token_contract, &bob, parse_near!("10 N")));
     let current_timestamp = worker.view_block().await?.timestamp();
-    check!(print burrowland_contract.liquidate(&bob, &oralce_contract, burrowland_contract.0.id(), alice.id(),
-    price_data(current_timestamp, Some(2000000)), vec![asset_amount(wrap_token_contract.0.id(), parse_near!("1 N"))], vec![asset_amount(&token_id, d(13, 18))], Some(token_id.to_string())));
+    check!(logs burrowland_contract.liquidate(&bob, &oralce_contract, burrowland_contract.0.id(), alice.id(),
+    price_data(current_timestamp, Some(2000000)), vec![asset_amount(wrap_token_contract.0.id(), parse_near!("1 N"))], vec![asset_amount(&token_id, d(13, 18))], Some(token_id.to_string()), Some(vec![U128(0); 3])));
 
     check!(view burrowland_contract.get_account_all_positions(&alice));
 

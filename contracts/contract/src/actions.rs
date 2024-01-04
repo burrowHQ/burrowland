@@ -45,12 +45,14 @@ pub enum Action {
         in_assets: Vec<AssetAmount>,
         out_assets: Vec<AssetAmount>,
         position: Option<String>,
+        min_token_amounts: Option<Vec<U128>>
     },
     /// If the sum of burrowed assets exceeds the collateral, the account will be liquidated
     /// using reserves.
     ForceClose {
         account_id: AccountId,
         position: Option<String>,
+        min_token_amounts: Option<Vec<U128>>
     },
 }
 
@@ -84,12 +86,15 @@ impl Contract {
                     need_number_check = true;
                     if position == REGULAR_POSITION {
                         assert!(!asset_amount.token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
+                    } else {
+                        assert!(asset_amount.token_id.to_string() == position);
                     }
                     let amount = self.internal_increase_collateral(&position, account, &asset_amount);
                     events::emit::increase_collateral(&account_id, amount, &asset_amount.token_id, &position);
                 }
                 Action::DecreaseCollateral(asset_amount) => {
                     let position = REGULAR_POSITION.to_string();
+                    assert!(!asset_amount.token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
                     risk_check_positions.insert(position.clone());
                     let mut account_asset =
                         account.internal_get_asset_or_default(&asset_amount.token_id);
@@ -103,6 +108,11 @@ impl Contract {
                     events::emit::decrease_collateral(&account_id, amount, &asset_amount.token_id, &position);
                 }
                 Action::PositionDecreaseCollateral { position, asset_amount } => {
+                    if position == REGULAR_POSITION {
+                        assert!(!asset_amount.token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
+                    } else {
+                        assert!(asset_amount.token_id.to_string() == position);
+                    }
                     risk_check_positions.insert(position.clone());
                     let mut account_asset =
                         account.internal_get_asset_or_default(&asset_amount.token_id);
@@ -149,7 +159,8 @@ impl Contract {
                     account_id: liquidation_account_id,
                     in_assets,
                     out_assets,
-                    position
+                    position,
+                    min_token_amounts
                 } => {
                     assert_ne!(
                         account_id, &liquidation_account_id,
@@ -158,6 +169,7 @@ impl Contract {
                     let position = position.unwrap_or(REGULAR_POSITION.to_string());
                     if position == REGULAR_POSITION {
                         assert!(!in_assets.is_empty() && !out_assets.is_empty());
+                        assert!(min_token_amounts.is_none());
                         self.internal_liquidate(
                             account_id,
                             account,
@@ -167,8 +179,10 @@ impl Contract {
                             out_assets,
                         );
                     } else {
-                        assert!(!in_assets.is_empty() && !out_assets.is_empty() 
+                        assert!(!in_assets.is_empty()
                             && out_assets.len() == 1 && out_assets[0].token_id.to_string() == position);
+                        let min_token_amounts = min_token_amounts.expect("Missing min_token_amounts");
+                        assert!(min_token_amounts.len() == self.last_lp_token_infos.get(&position).unwrap().tokens.len(), "Invalid min_token_amounts");
                         let mut in_asset_tokens = HashSet::new();
                         in_assets.iter().for_each(|v| assert!(in_asset_tokens.insert(&v.token_id), "Duplicate assets!"));
                         let mut temp_account = account.clone();
@@ -180,6 +194,7 @@ impl Contract {
                             &liquidation_account_id,
                             in_assets,
                             out_assets,
+                            min_token_amounts
                         );
                         let mut liquidation_account = self.internal_unwrap_account(&liquidation_account_id);
                         liquidation_account.is_locked = true;
@@ -189,7 +204,8 @@ impl Contract {
                 }
                 Action::ForceClose {
                     account_id: liquidation_account_id,
-                    position
+                    position,
+                    min_token_amounts
                 } => {
                     assert_ne!(
                         account_id, &liquidation_account_id,
@@ -197,9 +213,12 @@ impl Contract {
                     );
                     let position = position.unwrap_or(REGULAR_POSITION.to_string());
                     if position == REGULAR_POSITION {
+                        assert!(min_token_amounts.is_none());
                         self.internal_force_close(&prices, &liquidation_account_id);
                     } else {
-                        self.internal_shadow_force_close(&position, &prices, &liquidation_account_id);
+                        let min_token_amounts = min_token_amounts.expect("Missing min_token_amounts");
+                        assert!(min_token_amounts.len() == self.last_lp_token_infos.get(&position).unwrap().tokens.len(), "Invalid min_token_amounts");
+                        self.internal_shadow_force_close(&position, &prices, &liquidation_account_id, min_token_amounts);
                         let mut liquidation_account = self.internal_unwrap_account(&liquidation_account_id);
                         liquidation_account.is_locked = true;
                         self.internal_set_account(&liquidation_account_id, liquidation_account);

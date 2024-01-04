@@ -246,12 +246,13 @@ impl Burrowland {
         in_assets: Vec<AssetAmount>,
         out_assets: Vec<AssetAmount>,
         position: Option<String>,
+        min_token_amounts: Option<Vec<U128>>
     ) -> Result<ExecutionFinalResult> {
         oracle.oracle_call(caller, receiver_id, price_data, PriceReceiverMsg::Execute {
             actions: vec![
                 Action::Liquidate { 
                     account_id: near_sdk::AccountId::new_unchecked(liquidation_account_id.to_string()), 
-                    in_assets, out_assets, position
+                    in_assets, out_assets, position, min_token_amounts
                 },
             ],
         }).await
@@ -263,13 +264,14 @@ impl Burrowland {
         oracle: &Oralce,
         force_close_account_id: &AccountId,
         price_data: PriceData,
-        position: Option<String>
+        position: Option<String>,
+        min_token_amounts: Option<Vec<U128>>
     ) -> Result<ExecutionFinalResult> {
         oracle.oracle_call(caller, self.0.id(), price_data, PriceReceiverMsg::Execute {
             actions: vec![
                 Action::ForceClose { 
                     account_id: near_sdk::AccountId::new_unchecked(force_close_account_id.to_string()),
-                    position
+                    position, min_token_amounts
                 },
             ],
         }).await

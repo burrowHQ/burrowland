@@ -69,7 +69,7 @@ async fn test_liquidation_decrease_health_factor() -> Result<()> {
     let usdc_amount_out = d(50, 18);
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(burrowland_contract.liquidate(&bob, &oracle_contract, burrowland_contract.0.id(), alice.id(), price_data(current_timestamp, Some(120000)), 
-    vec![asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)], None), "The health factor of liquidation account can't decrease");
+    vec![asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)], None, None), "The health factor of liquidation account can't decrease");
 
     // Assuming ~2% discount for 5 NEAR at 12$. 50 USDT -> ~51 USDC, 4.9 NEAR -> 60 USDC.
     let wnear_amount_in = d(49, 23);
@@ -77,7 +77,7 @@ async fn test_liquidation_decrease_health_factor() -> Result<()> {
     let usdc_amount_out = d(111, 18);
     let current_timestamp = worker.view_block().await?.timestamp();
     let outcome = burrowland_contract.liquidate(&bob, &oracle_contract, burrowland_contract.0.id(), alice.id(), price_data(current_timestamp, Some(120000)), 
-    vec![asset_amount(wrap_token_contract.0.id(), wnear_amount_in), asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)], None).await?;
+    vec![asset_amount(wrap_token_contract.0.id(), wnear_amount_in), asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)], None, None).await?;
 
     let logs = outcome.logs();
     let event = &logs[0];
@@ -155,11 +155,11 @@ async fn test_force_close() -> Result<()> {
    let bob = create_account(&root, "bob", None).await;
    check!(burrowland_contract.storage_deposit(&bob));
    let current_timestamp = worker.view_block().await?.timestamp();
-   check!(burrowland_contract.force_close(&bob, &oracle_contract, alice.id(), price_data(current_timestamp, Some(120000)), None), "is not greater than total collateral");
+   check!(burrowland_contract.force_close(&bob, &oracle_contract, alice.id(), price_data(current_timestamp, Some(120000)), None, None), "is not greater than total collateral");
 
     // Force closing account with NEAR at 25$.
    let current_timestamp = worker.view_block().await?.timestamp();
-   let outcome = burrowland_contract.force_close(&bob, &oracle_contract, alice.id(), price_data(current_timestamp, Some(250000)), None).await?;
+   let outcome = burrowland_contract.force_close(&bob, &oracle_contract, alice.id(), price_data(current_timestamp, Some(250000)), None, None).await?;
 
     let logs = outcome.logs();
     let event = &logs[0];

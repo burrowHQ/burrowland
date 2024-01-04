@@ -5,10 +5,10 @@ pub const GAS_FOR_SYNC_REF_EXCHANGE_LP_INFOS: Gas = Gas(Gas::ONE_TERA.0 * 50);
 pub const GAS_FOR_SYNC_REF_EXCHANGE_LP_INFOS_CALLBACK: Gas = Gas(Gas::ONE_TERA.0 * 20);
 
 pub const GAS_FOR_PROCESS_LIQUIDATE_RESULT: Gas = Gas(50 * Gas::ONE_TERA.0);
-pub const GAS_FOR_CALLBACK_PROCESS_LIQUIDATE_RESULT: Gas = Gas(100 * Gas::ONE_TERA.0);
+pub const GAS_FOR_CALLBACK_PROCESS_LIQUIDATE_RESULT: Gas = Gas(40 * Gas::ONE_TERA.0);
 
 pub const GAS_FOR_PROCESS_FORCE_CLOSE_RESULT: Gas = Gas(50 * Gas::ONE_TERA.0);
-pub const GAS_FOR_CALLBACK_PROCESS_FORCE_CLOSE_RESULT: Gas = Gas(50 * Gas::ONE_TERA.0);
+pub const GAS_FOR_CALLBACK_PROCESS_FORCE_CLOSE_RESULT: Gas = Gas(40 * Gas::ONE_TERA.0);
 
 #[ext_contract(ext_ref_exchange)]
 pub trait ExtRefExchange {
@@ -100,12 +100,12 @@ impl Contract {
         } 
 
         let token_id = AccountId::new_unchecked(shadow_id);
+        let mut asset = self.internal_unwrap_asset(&token_id);
         let withdraw_asset_amount = AssetAmount {
             token_id,
-            amount: Some(amount),
+            amount: Some(U128(amount.0 * 10u128.pow(asset.config.extra_decimals as u32))),
             max_amount: None,
         };
-        let mut asset = self.internal_unwrap_asset(&withdraw_asset_amount.token_id);
         let mut account_asset = account.internal_unwrap_asset(&withdraw_asset_amount.token_id);
         let (shares, amount) =
             asset_amount_to_shares(&asset.supplied, account_asset.shares, &withdraw_asset_amount, false);
@@ -140,6 +140,7 @@ impl Contract {
         liquidation_account_id: &AccountId,
         in_assets: Vec<AssetAmount>,
         out_assets: Vec<AssetAmount>,
+        min_token_amounts: Vec<U128>
     ) {
         let mut liquidation_account = self.internal_unwrap_account(liquidation_account_id);
         let max_discount = self.compute_max_discount(position, &liquidation_account, &prices);
@@ -195,7 +196,6 @@ impl Contract {
         liquidation_account.decrease_collateral(position, &out_assets[0].token_id, shares);
 
 
-        let mut min_token_amounts = vec![];
         let unit_share_tokens = self.last_lp_token_infos.get(position).expect("lp_token_infos not found");
         let config = self.internal_config();
         assert!(env::block_timestamp() - unit_share_tokens.timestamp <= to_nano(config.lp_tokens_info_valid_duration_sec), "LP token info timestamp is too stale");
@@ -206,7 +206,6 @@ impl Contract {
                 let token_asset = self.internal_unwrap_asset(&unit_share_token_value.token_id);
                 let token_stdd_amount = unit_share_token_value.amount.0 * 10u128.pow(token_asset.config.extra_decimals as u32);
                 let token_balance = u128_ratio(token_stdd_amount, amount, 10u128.pow(collateral_asset.config.extra_decimals as u32) * unit_share);
-                min_token_amounts.push(U128(token_balance / 10u128.pow(token_asset.config.extra_decimals as u32)));
                 sum + BigDecimal::from_balance_price(
                     token_balance,
                     prices.get_unwrap(&unit_share_token_value.token_id),
@@ -258,7 +257,7 @@ impl Contract {
         
     }
 
-    pub fn internal_shadow_force_close(&mut self, position: &String, prices: &Prices, liquidation_account_id: &AccountId) {
+    pub fn internal_shadow_force_close(&mut self, position: &String, prices: &Prices, liquidation_account_id: &AccountId, min_token_amounts: Vec<U128>) {
         let config = self.internal_config();
         assert!(
             config.force_closing_enabled,
@@ -273,7 +272,6 @@ impl Contract {
             let collateral_shares = position_info.collateral;
             let collateral_balance = collateral_asset.supplied.shares_to_amount(collateral_shares, false);
 
-            let mut min_token_amounts = vec![];
             let unit_share_tokens = self.last_lp_token_infos.get(position).expect("lp_token_infos not found");
             assert!(env::block_timestamp() - unit_share_tokens.timestamp <= to_nano(config.lp_tokens_info_valid_duration_sec), "LP token info timestamp is too stale");
             let unit_share = 10u128.pow(unit_share_tokens.decimals as u32);
@@ -283,7 +281,6 @@ impl Contract {
                     let token_asset = self.internal_unwrap_asset(&unit_share_token_value.token_id);
                     let token_stdd_amount = unit_share_token_value.amount.0 * 10u128.pow(token_asset.config.extra_decimals as u32);
                     let token_balance = u128_ratio(token_stdd_amount, collateral_balance, 10u128.pow(collateral_asset.config.extra_decimals as u32) * unit_share);
-                    min_token_amounts.push(U128(token_balance / 10u128.pow(token_asset.config.extra_decimals as u32)));
                     
                     sum + BigDecimal::from_balance_price(
                         token_balance,
@@ -418,17 +415,27 @@ impl Contract {
 
         if is_promise_success() {
             if let Position::LPTokenPosition(position_info) = liquidation_account.positions.remove(&position).unwrap(){
+                let mut remain_borrowed = HashMap::new();
                 liquidation_account.add_affected_farm(FarmId::Supplied(AccountId::new_unchecked(position_info.lpt_id.clone())));
                 for (token_id, shares) in position_info.borrowed {
                     let mut asset = self.internal_unwrap_asset(&token_id);
                     let amount = asset.borrowed.shares_to_amount(shares, true);
-
-                    asset.reserved -= amount;
-                    asset.borrowed.withdraw(shares, amount);
-
-                    self.internal_set_asset(&token_id, asset);
-                    
-                    liquidation_account.add_affected_farm(FarmId::Borrowed(token_id));
+                    if asset.reserved >= amount {
+                        asset.reserved -= amount;
+                        asset.borrowed.withdraw(shares, amount);
+                        self.internal_set_asset(&token_id, asset);
+                        liquidation_account.add_affected_farm(FarmId::Borrowed(token_id));
+                    } else {
+                        remain_borrowed.insert(token_id, shares);
+                    }
+                }
+                if !remain_borrowed.is_empty() {
+                    events::emit::force_close_remain_borrowed(&liquidation_account_id, &remain_borrowed, &position);
+                    liquidation_account.positions.insert(position.clone(), Position::LPTokenPosition(LPTokenPosition{
+                        lpt_id: position_info.lpt_id.clone(),
+                        collateral: U128(0),
+                        borrowed: remain_borrowed,
+                    }));
                 }
                 self.internal_account_apply_affected_farms(&mut liquidation_account);
                 events::emit::force_close(&liquidation_account_id, &collateral_sum, &repaid_sum, &position);

@@ -13,7 +13,7 @@ impl Prices {
     }
 
     pub fn get_unwrap(&self, token_id: &TokenId) -> &Price {
-        self.prices.get(token_id).expect("Asset price is missing")
+        self.prices.get(token_id).expect(format!("Asset {} price is missing", token_id).as_str())
     }
 }
 

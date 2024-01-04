@@ -53,6 +53,19 @@ impl RefExchange {
         token_contract.ft_transfer_call(caller, self.0.id(), amount, "".to_string()).await
     }
 
+    pub async fn swap(
+        &self,
+        token_contract: &FtContract,
+        caller: &Account,
+        amount: u128,
+        pool_id: u64,
+        token_out_id: &AccountId
+    ) -> Result<ExecutionFinalResult> {
+        token_contract.ft_transfer_call(caller, self.0.id(), amount,
+        format!("{{\"actions\": [{{\"pool_id\": {}, \"token_in\": \"{}\", \"token_out\": \"{}\", \"min_amount_out\": \"1\"}}]}}", pool_id, token_contract.0.id().to_string(), token_out_id.to_string())
+        ).await
+    }
+
     pub async fn extend_whitelisted_tokens(
         &self,
         caller: &Account,
@@ -83,6 +96,60 @@ impl RefExchange {
             }))
             .max_gas()
             .deposit(parse_near!("1 N"))
+            .transact()
+            .await
+    }
+
+    pub async fn add_simple_swap_pool(
+        &self,
+        caller: &Account,
+        tokens: Vec<&AccountId>,
+        fee: u32,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "add_simple_pool")
+            .args_json(json!({
+                "tokens": tokens,
+                "fee": fee,
+            }))
+            .max_gas()
+            .deposit(parse_near!("0.01 N"))
+            .transact()
+            .await
+    }
+
+    pub async fn add_simple_liquidity(
+        &self,
+        caller: &Account,
+        pool_id: u64,
+        amounts: Vec<U128>,
+        min_amounts: Option<Vec<U128>>,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "add_liquidity")
+            .args_json(json!({
+                "pool_id": pool_id,
+                "amounts": amounts,
+                "min_amounts": min_amounts,
+            }))
+            .max_gas()
+            .deposit(parse_near!("0.01 N"))
+            .transact()
+            .await
+    }
+
+    pub async fn register_pool_twap_record(
+        &self,
+        caller: &Account,
+        pool_id: u64,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "register_pool_twap_record")
+            .args_json(json!({
+                "pool_id": pool_id,
+            }))
+            .max_gas()
+            .deposit(1)
             .transact()
             .await
     }

@@ -342,7 +342,8 @@ mod unit_env {
                     account_id: liquidation_user,
                     in_assets,
                     out_assets,
-                    position: None
+                    position: None,
+                    min_token_amounts: None
                 }],
             }).unwrap();
             self.contract_oracle_call(sender_id, price_data, msg);
@@ -351,7 +352,7 @@ mod unit_env {
         pub fn force_close(&mut self, sender_id: AccountId, force_close_user: AccountId, price_data: PriceData) {
             let msg = serde_json::to_string(&PriceReceiverMsg::Execute {
                 actions: vec![
-                    Action::ForceClose { account_id: force_close_user, position: None }],
+                    Action::ForceClose { account_id: force_close_user, position: None, min_token_amounts: None }],
             }).unwrap();
             self.contract_oracle_call(sender_id, price_data, msg);
         }
