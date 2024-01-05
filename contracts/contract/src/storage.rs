@@ -144,6 +144,7 @@ impl StorageManagement for Contract {
             self.internal_set_storage(&account_id, storage);
             account.storage_tracker.stop();
             self.internal_set_account(&account_id, account);
+            self.internal_set_margin_account(&account_id, MarginAccount::new(&account_id));
         }
         self.internal_storage_balance_of(&account_id).unwrap()
     }

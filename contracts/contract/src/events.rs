@@ -236,4 +236,126 @@ pub mod emit {
             },
         );
     }
+
+    pub fn margin_withdraw_started(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_started_margin",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+
+    #[derive(Serialize)]
+    #[serde(crate = "near_sdk::serde")]
+    pub struct EventMarginOpen {
+        pub account_id: AccountId,
+        pub pos_id: String,
+        pub collateral_token_id: TokenId,
+        #[serde(with = "u128_dec_format")]
+        pub collateral_amount: Balance,
+        pub collateral_shares: U128,
+        pub debt_token_id: TokenId,
+        #[serde(with = "u128_dec_format")]
+        pub debt_amount: Balance,
+        pub debt_shares: U128,
+        pub position_token_id: TokenId,
+        #[serde(with = "u128_dec_format")]
+        pub position_amount: Balance,
+        #[serde(with = "u128_dec_format")]
+        pub open_fee: Balance,
+        #[serde(with = "u128_dec_format")]
+        pub holding_fee: Balance,
+    }
+
+    pub fn margin_open_started(data: EventMarginOpen) {
+        log_event(
+            "margin_open_started",
+            data,
+        );
+    }
+
+    pub fn margin_open_failed(data: EventMarginOpen) {
+        log_event(
+            "margin_open_failed",
+            data,
+        );
+    }
+
+    pub fn margin_open_succeeded(data: EventMarginOpen) {
+        log_event(
+            "margin_open_succeeded",
+            data,
+        );
+    }
+
+    #[derive(Serialize)]
+    #[serde(crate = "near_sdk::serde")]
+    pub struct EventMarginClose {
+        pub account_id: AccountId,
+        pub pos_id: String,
+        pub liquidator_id: Option<AccountId>,
+        pub position_token_id: TokenId,
+        #[serde(with = "u128_dec_format")]
+        pub position_amount: Balance,
+        pub debt_token_id: TokenId,
+        #[serde(with = "u128_dec_format")]
+        pub debt_amount: Balance,
+    }
+
+    pub fn margin_decrease_started(event_id: &str, data: EventMarginClose) {
+        log_event(
+            event_id,
+            data,
+        );
+    }
+
+    pub fn margin_decrease_failed(account_id: &AccountId, pos_id: &String) {
+        log_event(
+            "margin_decrease_failed",
+            json!({
+                "account_id": account_id,
+                "pos_id": pos_id,
+            }),
+        );
+    }
+
+    #[derive(Serialize)]
+    #[serde(crate = "near_sdk::serde")]
+    pub struct EventMarginDecreaseResult {
+        pub account_id: AccountId,
+        pub pos_id: String,
+        pub liquidator_id: Option<AccountId>,
+        pub collateral_token_id: TokenId,
+        pub collateral_shares: U128,
+        pub debt_token_id: TokenId,
+        pub debt_shares: U128,
+        pub position_token_id: TokenId,
+        #[serde(with = "u128_dec_format")]
+        pub position_amount: Balance,
+        #[serde(with = "u128_dec_format")]
+        pub holding_fee: Balance,
+    }
+
+    pub fn margin_decrease_succeeded(op_id: &str, data: EventMarginDecreaseResult) {
+        let event_id: &str = if op_id == "decrease" {
+            "margin_decrease_succeeded"
+        } else if op_id == "close" {
+            "margin_close_succeeded"
+        } else if op_id == "liquidate" {
+            "margin_liquidate_succeeded"
+        } else if op_id == "forceclose" {
+            "margin_forceclose_succeeded"
+        } else {
+            op_id
+        };
+
+        log_event(
+            event_id,
+            data,
+        );
+    }
 }

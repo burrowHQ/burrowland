@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{*, events::emit::{EventMarginOpen,EventMarginDecreaseResult}};
 use near_sdk::serde_json;
 
 /// clients use this to indicate how to trading
@@ -303,13 +303,12 @@ impl Contract {
         asset_debt.margin_debt.deposit(debt_shares, sr.amount_in.0);
         asset_position.margin_position += amount;
 
-        // TODO: emit charge open position fee event
         let open_fee_shares = u128_ratio(
             mt.margin_shares.0,
             margin_config.open_position_fee_rate as u128,
             MAX_RATIO as u128,
         );
-        if mt.margin_asset == mt.debt_asset {
+        let open_fee_amount = if mt.margin_asset == mt.debt_asset {
             let open_fee_amount = asset_debt
                 .supplied
                 .shares_to_amount(open_fee_shares.into(), false);
@@ -317,6 +316,7 @@ impl Contract {
                 .supplied
                 .withdraw(open_fee_shares.into(), open_fee_amount);
             asset_debt.prot_fee += open_fee_amount;
+            open_fee_amount
         } else {
             let open_fee_amount = asset_position
                 .supplied
@@ -325,7 +325,8 @@ impl Contract {
                 .supplied
                 .withdraw(open_fee_shares.into(), open_fee_amount);
             asset_position.prot_fee += open_fee_amount;
-        }
+            open_fee_amount
+        };
 
         mt.margin_shares.0 -= open_fee_shares;
         mt.debt_cap = sr.amount_in.0;
@@ -339,6 +340,22 @@ impl Contract {
 
         self.internal_set_asset(&mt.debt_asset, asset_debt);
         self.internal_set_asset(&mt.position_asset, asset_position);
+
+        let event = EventMarginOpen {
+            account_id: account.account_id.clone(),
+            pos_id: sr.pos_id.clone(),
+            collateral_token_id: mt.margin_asset.clone(),
+            collateral_amount: 0,
+            collateral_shares: mt.margin_shares,
+            debt_token_id: mt.debt_asset.clone(),
+            debt_amount: 0,
+            debt_shares: mt.debt_shares,
+            position_token_id: mt.position_asset.clone(),
+            position_amount: mt.position_amount,
+            open_fee: open_fee_amount,
+            holding_fee: 0,
+        };
+        events::emit::margin_open_succeeded(event);
     }
 
     pub(crate) fn on_decrease_trade_return(
@@ -346,7 +363,7 @@ impl Contract {
         account: &mut MarginAccount,
         amount: Balance,
         sr: &SwapReference,
-    ) {
+    ) -> EventMarginDecreaseResult {
         let mut mt = account.margin_positions.get(&sr.pos_id).unwrap().clone();
         let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
         let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
@@ -386,7 +403,6 @@ impl Contract {
             mt.debt_cap - repay_cap
         };
         // distribute hp_fee
-        // TODO: emit event
         asset_debt.prot_fee += repay_hp_fee;
 
         // handle possible leftover debt asset, put them into user's supply
@@ -452,6 +468,19 @@ impl Contract {
             .margin_positions
             .insert(sr.pos_id.clone(), mt.clone());
 
+        let event = EventMarginDecreaseResult {
+            account_id: account.account_id.clone(),
+            pos_id: sr.pos_id.clone(),
+            liquidator_id: sr.liquidator_id.clone(),
+            collateral_token_id: mt.margin_asset.clone(),
+            collateral_shares: mt.margin_shares,
+            debt_token_id: mt.debt_asset.clone(),
+            debt_shares: mt.debt_shares,
+            position_token_id: mt.position_asset.clone(),
+            position_amount: mt.position_amount,
+            holding_fee: repay_hp_fee,
+        };
+        
         // try to settle this position
         if mt.debt_shares.0 == 0 {
             // close this position and remaining asset goes back to user's inner account
@@ -525,6 +554,8 @@ impl Contract {
 
         self.internal_set_asset(&mt.debt_asset, asset_debt);
         self.internal_set_asset(&mt.position_asset, asset_position);
+
+        event
     }
 }
 

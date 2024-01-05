@@ -4,12 +4,20 @@ use crate::*;
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct MarginConfig {
+    /// When open a position or decrease collateral, the new leverage rate should less than this,
+    /// Eg: 5 means 5 times collateral value should more than debt value.
+    pub max_leverage_rate: u8, 
+    /// Ensure pending debt less than this portion of availabe amount, 
+    /// Eg: 1000 means pending debt amount should less than 10% of available amount.
     pub pending_debt_scale: u32,
+    /// Ensure the slippage in SwapIndication less than this one,
+    /// Eg: 1000 means we allow a max slippage of 10%.
     pub max_slippage_rate: u32,
     /// The position will be liquidated when debt is larger than 
     ///   (margin + position) * (1 + min_safty_buffer_rate).
     pub min_safty_buffer: u32,
     /// Compare to regular borrowing, margin borrow enjoy a discount.
+    /// Eg: 7000 means margin debt equals 70% of regular debt.
     pub margin_debt_discount_rate: u32,
     /// Open fee is on the margin asset.
     pub open_position_fee_rate: u32,
@@ -86,6 +94,39 @@ impl Contract {
         let mut mc = self.internal_margin_config();
         if mc.registered_dexes.remove(&dex_id).is_none() {
             env::panic_str("margin dex does NOT exist.");
+        }
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
+    pub fn register_margin_token(&mut self, token_id: AccountId, token_party: u8) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut mc = self.internal_margin_config();
+        if mc.registered_tokens.insert(token_id, token_party).is_some() {
+            env::panic_str("margin token already exists.");
+        }
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
+    pub fn update_margin_token(&mut self, token_id: AccountId, token_party: u8) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut mc = self.internal_margin_config();
+        if mc.registered_tokens.insert(token_id, token_party).is_none() {
+            env::panic_str("margin token does NOT exist.");
+        }
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
+    pub fn unregister_margin_token(&mut self, token_id: AccountId) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut mc = self.internal_margin_config();
+        if mc.registered_tokens.remove(&token_id).is_none() {
+            env::panic_str("margin token does NOT exist.");
         }
         self.margin_config.set(&mc);
     }

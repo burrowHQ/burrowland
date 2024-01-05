@@ -84,7 +84,8 @@ impl FungibleTokenReceiver for Contract {
                         || swap_ref.op == "liquidate"
                         || swap_ref.op == "forceclose"
                     {
-                        self.on_decrease_trade_return(&mut account, amount, &swap_ref);
+                        let event = self.on_decrease_trade_return(&mut account, amount, &swap_ref);
+                        events::emit::margin_decrease_succeeded(&swap_ref.op, event);
                     }
                     self.internal_set_margin_account(&swap_ref.account_id, account);
                     return PromiseOrValue::Value(U128(0));

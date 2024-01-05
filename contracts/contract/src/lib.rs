@@ -122,6 +122,7 @@ impl Contract {
             last_lp_token_infos: HashMap::new(),
             margin_accounts: UnorderedMap::new(StorageKey::MarginAccounts),
             margin_config: LazyOption::new(StorageKey::MarginConfig, Some(&MarginConfig {
+                max_leverage_rate: 10_u8,
                 pending_debt_scale: 1000_u32,
                 max_slippage_rate: 1000_u32,
                 min_safty_buffer: 1000_u32,

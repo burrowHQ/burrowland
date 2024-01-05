@@ -81,8 +81,10 @@ impl Asset {
     }
 
     pub fn get_rate(&self) -> BigDecimal {
-        self.config
-            .get_rate(self.borrowed.balance + self.margin_debt.balance + self.margin_pending_debt, self.supplied.balance + self.reserved + self.prot_fee)
+        self.config.get_rate(
+            self.borrowed.balance + self.margin_debt.balance + self.margin_pending_debt,
+            self.supplied.balance + self.reserved + self.prot_fee,
+        )
     }
 
     pub fn get_margin_debt_rate(&self, margin_debt_discount_rate: u32) -> BigDecimal {
@@ -129,7 +131,7 @@ impl Asset {
         let reserved = ratio(interest, self.config.reserve_ratio);
         if self.supplied.shares.0 > 0 {
             self.supplied.balance += interest - reserved;
-            
+
             let prot_fee = ratio(reserved, self.config.prot_ratio);
             self.reserved += reserved - prot_fee;
             self.prot_fee += prot_fee;
@@ -142,12 +144,14 @@ impl Asset {
 
         // handle margin debt
         let margin_debt_rate = self.get_margin_debt_rate(margin_debt_discount_rate);
-        let interest =
-            margin_debt_rate.pow(time_diff_ms).round_mul_u128(self.margin_debt.balance) - self.margin_debt.balance;
+        let interest = margin_debt_rate
+            .pow(time_diff_ms)
+            .round_mul_u128(self.margin_debt.balance)
+            - self.margin_debt.balance;
         let reserved = ratio(interest, self.config.reserve_ratio);
         if self.supplied.shares.0 > 0 {
             self.supplied.balance += interest - reserved;
-            
+
             let prot_fee = ratio(reserved, self.config.prot_ratio);
             self.reserved += reserved - prot_fee;
             self.prot_fee += prot_fee;
@@ -184,10 +188,11 @@ impl Asset {
     pub fn increase_margin_pending_debt(&mut self, amount: Balance, pending_debt_scale: u32) {
         self.margin_pending_debt += amount;
         assert!(
-            self.available_amount() * pending_debt_scale as u128 / MAX_RATIO as u128 > self.margin_pending_debt, 
+            u128_ratio(self.available_amount(), pending_debt_scale as u128, MAX_RATIO as u128)
+                > self.margin_pending_debt,
             "Pending debt will overflow"
         );
-    } 
+    }
 }
 
 impl Contract {
@@ -286,7 +291,7 @@ impl Contract {
 }
 
 #[cfg(test)]
-pub fn clean_assets_cache(){
+pub fn clean_assets_cache() {
     let mut cache = ASSETS.lock().unwrap();
     cache.clear();
 }

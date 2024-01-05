@@ -21,14 +21,6 @@ pub enum VMarginAccount {
     Current(MarginAccount),
 }
 
-// impl VMarginAccount {
-//     pub fn into_margin_account(self) -> MarginAccount {
-//         match self {
-//             VMarginAccount::Current(c) => c,
-//         }
-//     }
-// }
-
 impl From<MarginAccount> for VMarginAccount {
     fn from(c: MarginAccount) -> Self {
         VMarginAccount::Current(c)
@@ -44,7 +36,7 @@ impl From<VMarginAccount> for MarginAccount {
 }
 
 impl MarginAccount {
-    pub fn new(account_id: &AccountId) -> Self {
+    pub(crate) fn new(account_id: &AccountId) -> Self {
         Self {
             account_id: account_id.clone(),
             supplied: HashMap::new(),
@@ -53,7 +45,7 @@ impl MarginAccount {
         }
     }
 
-    pub fn withdraw_supply_shares(&mut self, token_id: &AccountId, shares: &Shares) {
+    pub(crate) fn withdraw_supply_shares(&mut self, token_id: &AccountId, shares: &Shares) {
         let supply_shares = self.supplied.get_mut(token_id).unwrap();
         if let Some(new_balance) = supply_shares.0.checked_sub(shares.0) {
             supply_shares.0 = new_balance;
@@ -62,25 +54,33 @@ impl MarginAccount {
         }
     }
 
-    pub fn deposit_supply_shares(&mut self, token_id: &AccountId, shares: &Shares) {
+    pub(crate) fn deposit_supply_shares(&mut self, token_id: &AccountId, shares: &Shares) {
         let supply_shares = self.supplied.get_mut(token_id).unwrap();
         supply_shares.0 += shares.0;
     }
 }
 
 impl Contract {
-    pub fn internal_get_margin_account(&self, account_id: &AccountId) -> Option<MarginAccount> {
+    pub(crate) fn internal_get_margin_account(&self, account_id: &AccountId) -> Option<MarginAccount> {
         self.margin_accounts
             .get(account_id)
             .map(|o| o.into())
     }
 
-    pub fn internal_unwrap_margin_account(&self, account_id: &AccountId) -> MarginAccount {
-        self.internal_get_margin_account(account_id)
-            .expect("Margin account is not registered")
+    pub(crate) fn internal_unwrap_margin_account(&self, account_id: &AccountId) -> MarginAccount {
+        // if inner account exists, would auto create margin account if needed
+        if let Some(account) = self.internal_get_margin_account(account_id){
+            account
+        } else {
+            if self.internal_get_account(account_id, true).is_some() {
+                MarginAccount::new(account_id)
+            } else {
+                env::panic_str("Account is not registered")
+            }
+        }
     }
 
-    pub fn internal_set_margin_account(&mut self, account_id: &AccountId, mut account: MarginAccount) {
+    pub(crate) fn internal_set_margin_account(&mut self, account_id: &AccountId, mut account: MarginAccount) {
         let mut storage = self.internal_unwrap_storage(account_id);
         storage
             .storage_tracker

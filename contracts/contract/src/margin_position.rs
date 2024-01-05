@@ -1,12 +1,12 @@
-use crate::*;
-use near_sdk::{is_promise_success, promise_result_as_success, serde_json, PromiseOrValue};
+use crate::{*, events::emit::{EventMarginOpen, EventMarginClose}};
+use near_sdk::{promise_result_as_success, serde_json, PromiseOrValue};
 
-pub const GAS_FOR_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
-pub const GAS_FOR_FT_TRANSFER_CALLBACK: Gas = Gas(Gas::ONE_TERA.0 * 5);
+// pub const GAS_FOR_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
+// pub const GAS_FOR_FT_TRANSFER_CALLBACK: Gas = Gas(Gas::ONE_TERA.0 * 5);
 pub const GAS_FOR_FT_TRANSFER_CALL: Gas = Gas(20 * Gas::ONE_TERA.0);
-pub const GAS_FOR_FT_BALANCE_OF: Gas = Gas(10 * Gas::ONE_TERA.0);
+// pub const GAS_FOR_FT_BALANCE_OF: Gas = Gas(10 * Gas::ONE_TERA.0);
 pub const GAS_FOR_FT_TRANSFER_CALL_CALLBACK: Gas = Gas(20 * Gas::ONE_TERA.0);
-pub const GAS_FOR_TO_DISTRIBUTE_CALLBACK: Gas = Gas(20 * Gas::ONE_TERA.0);
+// pub const GAS_FOR_TO_DISTRIBUTE_CALLBACK: Gas = Gas(20 * Gas::ONE_TERA.0);
 
 #[ext_contract(ext_fungible_token)]
 pub trait FungibleToken {
@@ -69,7 +69,7 @@ impl MarginTradingPosition {
 }
 
 impl Contract {
-    pub(crate) fn get_mtp_collateral_sum(
+    pub(crate) fn get_mtp_margin_value(
         &self,
         mtp: &MarginTradingPosition,
         prices: &Prices,
@@ -78,23 +78,27 @@ impl Contract {
         let margin_balance = asset_margin
             .supplied
             .shares_to_amount(mtp.margin_shares, false);
-        let margin_adjusted_value = BigDecimal::from_balance_price(
+        BigDecimal::from_balance_price(
             margin_balance,
             prices.get_unwrap(&mtp.margin_asset),
             asset_margin.config.extra_decimals,
-        );
+        )
+    }
 
+    pub(crate) fn get_mtp_position_value(
+        &self,
+        mtp: &MarginTradingPosition,
+        prices: &Prices,
+    ) -> BigDecimal {
         let asset_position = self.internal_unwrap_asset(&mtp.position_asset);
-        let position_adjusted_value = BigDecimal::from_balance_price(
+        BigDecimal::from_balance_price(
             mtp.position_amount,
             prices.get_unwrap(&mtp.position_asset),
             asset_position.config.extra_decimals,
-        );
-
-        margin_adjusted_value + position_adjusted_value
+        )
     }
 
-    pub(crate) fn get_mtp_borrowed_sum(
+    pub(crate) fn get_mtp_debt_value(
         &self,
         mtp: &MarginTradingPosition,
         prices: &Prices,
@@ -108,98 +112,50 @@ impl Contract {
         )
     }
 
+    pub(crate) fn get_mtp_fee_value(
+        &self,
+        mtp: &MarginTradingPosition,
+        prices: &Prices,
+    ) -> BigDecimal {
+        let asset = self.internal_unwrap_asset(&mtp.debt_asset);
+        let total_hp_fee = u128_ratio(
+            mtp.debt_cap,
+            asset.unit_acc_hp_interest - mtp.uahpi_at_open,
+            UNIT,
+        );
+        if total_hp_fee > 0 {
+            BigDecimal::from_balance_price(
+                total_hp_fee,
+                prices.get_unwrap(&mtp.debt_asset),
+                asset.config.extra_decimals,
+            )
+        } else {
+            BigDecimal::from(0_u128)
+        }
+    }
+
     pub(crate) fn is_mt_liquidatable(
         &self,
         mt: &MarginTradingPosition,
         prices: &Prices,
         safty_buffer: u32,
     ) -> bool {
-        let total_cap = self.get_mtp_collateral_sum(&mt, prices);
-        let total_debt = self.get_mtp_borrowed_sum(&mt, prices);
-        total_cap.mul_ratio(safty_buffer) + total_cap < total_debt
-    }
-
-    pub(crate) fn get_mtp_profit(
-        &self,
-        mtp: &MarginTradingPosition,
-        prices: &Prices,
-    ) -> Option<BigDecimal> {
-        let asset_position = self.internal_unwrap_asset(&mtp.position_asset);
-        let position_value = BigDecimal::from_balance_price(
-            mtp.position_amount,
-            prices.get_unwrap(&mtp.position_asset),
-            asset_position.config.extra_decimals,
-        );
-        let asset_debt = self.internal_unwrap_asset(&mtp.debt_asset);
-        let debt_balance = asset_debt
-            .margin_debt
-            .shares_to_amount(mtp.debt_shares, true);
-        let debt_value = BigDecimal::from_balance_price(
-            debt_balance,
-            prices.get_unwrap(&mtp.debt_asset),
-            asset_debt.config.extra_decimals,
-        );
-        if position_value >= debt_value {
-            Some(position_value - debt_value)
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn get_mtp_loss(
-        &self,
-        mtp: &MarginTradingPosition,
-        prices: &Prices,
-    ) -> Option<BigDecimal> {
-        let asset_position = self.internal_unwrap_asset(&mtp.position_asset);
-        let position_value = BigDecimal::from_balance_price(
-            mtp.position_amount,
-            prices.get_unwrap(&mtp.position_asset),
-            asset_position.config.extra_decimals,
-        );
-        let asset_debt = self.internal_unwrap_asset(&mtp.debt_asset);
-        let debt_balance = asset_debt
-            .margin_debt
-            .shares_to_amount(mtp.debt_shares, true);
-        let debt_value = BigDecimal::from_balance_price(
-            debt_balance,
-            prices.get_unwrap(&mtp.debt_asset),
-            asset_debt.config.extra_decimals,
-        );
-        if position_value < debt_value {
-            Some(debt_value - position_value)
-        } else {
-            None
-        }
+        let total_cap =
+            self.get_mtp_margin_value(&mt, prices) + self.get_mtp_position_value(&mt, prices);
+        let total_debt = self.get_mtp_debt_value(&mt, prices);
+        let total_hp_fee = self.get_mtp_fee_value(&mt, prices);
+        total_cap.mul_ratio(safty_buffer) + total_cap < total_debt + total_hp_fee
     }
 
     pub(crate) fn get_mtp_lr(
         &self,
-        mtp: &MarginTradingPosition,
+        mt: &MarginTradingPosition,
         prices: &Prices,
     ) -> Option<BigDecimal> {
-        if mtp.margin_shares.0 == 0 || mtp.debt_shares.0 == 0 {
+        if mt.margin_shares.0 == 0 || mt.debt_shares.0 == 0 {
             None
         } else {
-            let asset_debt = self.internal_unwrap_asset(&mtp.debt_asset);
-            let debt_balance = asset_debt
-                .margin_debt
-                .shares_to_amount(mtp.debt_shares, true);
-            let debt_value = BigDecimal::from_balance_price(
-                debt_balance,
-                prices.get_unwrap(&mtp.debt_asset),
-                asset_debt.config.extra_decimals,
-            );
-            let asset_margin = self.internal_unwrap_asset(&mtp.margin_asset);
-            let margin_balance = asset_margin
-                .supplied
-                .shares_to_amount(mtp.margin_shares, false);
-            let margin_value = BigDecimal::from_balance_price(
-                margin_balance,
-                prices.get_unwrap(&mtp.margin_asset),
-                asset_margin.config.extra_decimals,
-            );
-            Some(debt_value / margin_value)
+            Some(self.get_mtp_debt_value(&mt, prices) / self.get_mtp_margin_value(&mt, prices))
         }
     }
 }
@@ -217,7 +173,7 @@ impl Contract {
         min_position_amount: Balance,
         swap_indication: &SwapIndication,
         prices: &Prices,
-    ) {
+    ) -> EventMarginOpen {
         let pos_id = format!("{}_{}", account.account_id.clone(), ts);
         assert!(
             !account.margin_positions.contains_key(&pos_id),
@@ -244,7 +200,7 @@ impl Contract {
             "token_out check failed"
         );
 
-        // check safty: min_position_amount reasonable; margin_hf more than 1 + safty_buffer_rate(10%)
+        // check safty:
         //   min_position_amount reasonable
         assert!(
             is_min_amount_out_reasonable(
@@ -273,8 +229,28 @@ impl Contract {
             !self.is_mt_liquidatable(&mt, prices, margin_config.min_safty_buffer),
             "Debt is too much"
         );
+        //   leverage rate less than max leverage rate
+        assert!(
+            self.get_mtp_lr(&mt, prices).unwrap()
+                <= BigDecimal::from(margin_config.max_leverage_rate as u32),
+            "Leverage rate is too high"
+        );
 
         // passes all check, start to open
+        let event = EventMarginOpen {
+            account_id: account.account_id.clone(),
+            pos_id: pos_id.clone(),
+            collateral_token_id: margin_id.clone(),
+            collateral_amount: margin_amount,
+            collateral_shares: mt.margin_shares,
+            debt_token_id: debt_id.clone(),
+            debt_amount,
+            debt_shares: U128(0),
+            position_token_id: position_id.clone(),
+            position_amount: min_position_amount,
+            open_fee: 0,
+            holding_fee: 0,
+        };
         account.withdraw_supply_shares(margin_id, &margin_shares);
         mt.debt_shares.0 = 0;
         mt.position_amount = 0;
@@ -314,6 +290,7 @@ impl Contract {
                         format!("open"),
                     ),
             );
+            event
     }
 
     /// actual process for decreasing margin position
@@ -327,7 +304,7 @@ impl Contract {
         prices: &Prices,
         op: String,
         liquidator_id: Option<AccountId>,
-    ) {
+    ) -> EventMarginClose {
         let mut mt = account
             .margin_positions
             .get_mut(pos_id)
@@ -436,6 +413,16 @@ impl Contract {
         self.internal_set_asset(&mt.position_asset, asset_pos);
         // TODO: mt may be needed to change to store in an unorderedmap in user Account
 
+        let event = EventMarginClose {
+            account_id: account.account_id.clone(),
+            pos_id: pos_id.clone(),
+            liquidator_id: liquidator_id.clone(),
+            position_token_id: mt.position_asset.clone(),
+            position_amount,
+            debt_token_id: mt.debt_asset.clone(),
+            debt_amount: min_debt_amount,
+        };
+
         // step 3: call dex to trade and wait for callback
         // organize swap action
         let swap_ref = SwapReference {
@@ -467,6 +454,7 @@ impl Contract {
                         format!("decrease"),
                     ),
             );
+        event
     }
 
     /// intent to reduce the position.
@@ -479,7 +467,7 @@ impl Contract {
         min_debt_amount: Balance,
         swap_indication: &SwapIndication,
         prices: &Prices,
-    ) {
+    ) -> EventMarginClose {
         self.process_decrease_margin_position(
             account,
             pos_id,
@@ -489,7 +477,7 @@ impl Contract {
             prices,
             "decrease".to_string(),
             None,
-        );
+        )
     }
 
     /// intent to close the position.
@@ -504,7 +492,7 @@ impl Contract {
         min_debt_amount: Balance,
         swap_indication: &SwapIndication,
         prices: &Prices,
-    ) {
+    ) -> EventMarginClose {
         self.process_decrease_margin_position(
             account,
             pos_id,
@@ -514,7 +502,7 @@ impl Contract {
             prices,
             "close".to_string(),
             None,
-        );
+        )
     }
 
     pub(crate) fn internal_margin_liquidate_position(
@@ -526,7 +514,7 @@ impl Contract {
         min_debt_amount: Balance,
         swap_indication: &SwapIndication,
         prices: &Prices,
-    ) {
+    ) -> EventMarginClose {
         let mut pos_owner = self.internal_unwrap_margin_account(pos_owner_id);
         self.process_decrease_margin_position(
             &mut pos_owner,
@@ -537,7 +525,7 @@ impl Contract {
             prices,
             "liquidate".to_string(),
             Some(liquidator_id.clone()),
-        );
+        )
     }
 
     pub(crate) fn internal_margin_forceclose_position(
@@ -548,7 +536,7 @@ impl Contract {
         min_debt_amount: Balance,
         swap_indication: &SwapIndication,
         prices: &Prices,
-    ) {
+    ) -> EventMarginClose {
         let mut pos_owner = self.internal_unwrap_margin_account(pos_owner_id);
         self.process_decrease_margin_position(
             &mut pos_owner,
@@ -559,7 +547,7 @@ impl Contract {
             prices,
             "forceclose".to_string(),
             None,
-        );
+        )
     }
 }
 
@@ -586,11 +574,27 @@ impl Contract {
             let mut account = self.internal_unwrap_margin_account(&account_id);
             if op == "open" {
                 let mt = account.margin_positions.get(&pos_id).unwrap();
+                let event = EventMarginOpen {
+                    account_id: account_id.clone(),
+                    pos_id: pos_id.clone(),
+                    collateral_token_id: mt.margin_asset.clone(),
+                    collateral_amount: 0,
+                    collateral_shares: mt.margin_shares,
+                    debt_token_id: mt.debt_asset.clone(),
+                    debt_amount: amount_in.0,
+                    debt_shares: U128(0),
+                    position_token_id: mt.position_asset.clone(),
+                    position_amount: pre_position_amount.0,
+                    open_fee: 0,
+                    holding_fee: 0,
+                };
                 let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
                 asset_debt.margin_pending_debt -= amount_in.0;
                 self.internal_set_asset(&mt.debt_asset, asset_debt);
                 account.deposit_supply_shares(&mt.margin_asset.clone(), &mt.margin_shares.clone());
                 account.margin_positions.remove(&pos_id);
+                events::emit::margin_open_failed(event);
+                
             } else if op == "decrease" {
                 let mut mt = account.margin_positions.get_mut(&pos_id).unwrap();
                 let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
@@ -609,6 +613,7 @@ impl Contract {
                 self.internal_set_asset(&mt.position_asset, asset_position);
                 mt.is_locking = false;
                 mt.position_amount = pre_position_amount;
+                events::emit::margin_decrease_failed(&account_id, &pos_id);
                 // Note: hashmap item got from a get_mut doesn't need to insert back
                 // account.margin_positions.insert(pos_id, mt.clone());
             }

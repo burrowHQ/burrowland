@@ -25,6 +25,9 @@ pub struct AssetDetailedView {
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
     pub prot_fee: Balance,
+    /// The amount of global unit accumulated holding-position interest.
+    #[serde(with = "u128_dec_format")]
+    pub uahpi: Balance,
     /// When the asset was last updated. It's always going to be the current block timestamp.
     #[serde(with = "u64_dec_format")]
     pub last_update_timestamp: Timestamp,
@@ -83,6 +86,7 @@ impl Contract {
             margin_position,
             reserved,
             prot_fee,
+            uahpi: unit_acc_hp_interest,
             last_update_timestamp,
             config,
             supply_apr,

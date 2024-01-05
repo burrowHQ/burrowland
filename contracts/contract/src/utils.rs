@@ -46,5 +46,6 @@ pub(crate) fn is_min_amount_out_reasonable(
     let value_in =
         BigDecimal::from_balance_price(amount_in, price_in, asset_in.config.extra_decimals);
     let amount_out = value_in.to_balance_in_price(price_out, asset_out.config.extra_decimals);
-    min_amount_out >= amount_out * max_slippage_rate as u128 / MAX_RATIO as u128 
+    min_amount_out
+        >= amount_out - u128_ratio(amount_out, max_slippage_rate as u128, MAX_RATIO as u128)
 }
