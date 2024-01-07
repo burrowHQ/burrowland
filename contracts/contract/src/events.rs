@@ -251,41 +251,57 @@ pub mod emit {
 
     #[derive(Serialize)]
     #[serde(crate = "near_sdk::serde")]
-    pub struct EventMarginOpen {
+    pub struct EventDataMarginOpen {
         pub account_id: AccountId,
         pub pos_id: String,
-        pub collateral_token_id: TokenId,
+        pub token_c_id: TokenId,
         #[serde(with = "u128_dec_format")]
-        pub collateral_amount: Balance,
-        pub collateral_shares: U128,
-        pub debt_token_id: TokenId,
+        pub token_c_amount: Balance,
+        pub token_c_shares: U128,
+        pub token_d_id: TokenId,
         #[serde(with = "u128_dec_format")]
-        pub debt_amount: Balance,
-        pub debt_shares: U128,
-        pub position_token_id: TokenId,
+        pub token_d_amount: Balance,
+        pub token_p_id: TokenId,
         #[serde(with = "u128_dec_format")]
-        pub position_amount: Balance,
-        #[serde(with = "u128_dec_format")]
-        pub open_fee: Balance,
-        #[serde(with = "u128_dec_format")]
-        pub holding_fee: Balance,
+        pub token_p_amount: Balance,
     }
 
-    pub fn margin_open_started(data: EventMarginOpen) {
+    pub fn margin_open_started(data: EventDataMarginOpen) {
         log_event(
             "margin_open_started",
             data,
         );
     }
 
-    pub fn margin_open_failed(data: EventMarginOpen) {
+    pub fn margin_open_failed(account_id: &AccountId, pos_id: &String) {
         log_event(
             "margin_open_failed",
-            data,
+            json!({
+                "account_id": account_id,
+                "pos_id": pos_id,
+            }),
         );
     }
 
-    pub fn margin_open_succeeded(data: EventMarginOpen) {
+    #[derive(Serialize)]
+    #[serde(crate = "near_sdk::serde")]
+    pub struct EventDataMarginOpenResult {
+        pub account_id: AccountId,
+        pub pos_id: String,
+        pub token_c_id: TokenId,
+        pub token_c_shares: U128,
+        pub token_d_id: TokenId,
+        #[serde(with = "u128_dec_format")]
+        pub token_d_amount: Balance,
+        pub token_d_shares: U128,
+        pub token_p_id: TokenId,
+        #[serde(with = "u128_dec_format")]
+        pub token_p_amount: Balance,
+        #[serde(with = "u128_dec_format")]
+        pub open_fee: Balance,
+    }
+
+    pub fn margin_open_succeeded(data: EventDataMarginOpenResult) {
         log_event(
             "margin_open_succeeded",
             data,
@@ -294,19 +310,19 @@ pub mod emit {
 
     #[derive(Serialize)]
     #[serde(crate = "near_sdk::serde")]
-    pub struct EventMarginClose {
+    pub struct EventDataMarginDecrease {
         pub account_id: AccountId,
         pub pos_id: String,
         pub liquidator_id: Option<AccountId>,
-        pub position_token_id: TokenId,
+        pub token_p_id: TokenId,
         #[serde(with = "u128_dec_format")]
-        pub position_amount: Balance,
-        pub debt_token_id: TokenId,
+        pub token_p_amount: Balance,
+        pub token_d_id: TokenId,
         #[serde(with = "u128_dec_format")]
-        pub debt_amount: Balance,
+        pub token_d_amount: Balance,
     }
 
-    pub fn margin_decrease_started(event_id: &str, data: EventMarginClose) {
+    pub fn margin_decrease_started(event_id: &str, data: EventDataMarginDecrease) {
         log_event(
             event_id,
             data,
@@ -325,22 +341,22 @@ pub mod emit {
 
     #[derive(Serialize)]
     #[serde(crate = "near_sdk::serde")]
-    pub struct EventMarginDecreaseResult {
+    pub struct EventDataMarginDecreaseResult {
         pub account_id: AccountId,
         pub pos_id: String,
         pub liquidator_id: Option<AccountId>,
-        pub collateral_token_id: TokenId,
-        pub collateral_shares: U128,
-        pub debt_token_id: TokenId,
-        pub debt_shares: U128,
-        pub position_token_id: TokenId,
+        pub token_c_id: TokenId,
+        pub token_c_shares: U128,
+        pub token_d_id: TokenId,
+        pub token_d_shares: U128,
+        pub token_p_id: TokenId,
         #[serde(with = "u128_dec_format")]
-        pub position_amount: Balance,
+        pub token_p_amount: Balance,
         #[serde(with = "u128_dec_format")]
         pub holding_fee: Balance,
     }
 
-    pub fn margin_decrease_succeeded(op_id: &str, data: EventMarginDecreaseResult) {
+    pub fn margin_decrease_succeeded(op_id: &str, data: EventDataMarginDecreaseResult) {
         let event_id: &str = if op_id == "decrease" {
             "margin_decrease_succeeded"
         } else if op_id == "close" {

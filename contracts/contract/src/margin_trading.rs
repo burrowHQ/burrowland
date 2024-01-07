@@ -1,4 +1,4 @@
-use crate::{*, events::emit::{EventMarginOpen,EventMarginDecreaseResult}};
+use crate::{*, events::emit::{EventDataMarginOpenResult,EventDataMarginDecreaseResult}};
 use near_sdk::serde_json;
 
 /// clients use this to indicate how to trading
@@ -293,8 +293,8 @@ impl Contract {
     ) {
         let margin_config = self.internal_margin_config();
         let mut mt = account.margin_positions.get(&sr.pos_id).unwrap().clone();
-        let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
-        let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
+        let mut asset_debt = self.internal_unwrap_asset(&mt.token_d_id);
+        let mut asset_position = self.internal_unwrap_asset(&mt.token_p_id);
 
         asset_debt.margin_pending_debt -= sr.amount_in.0;
         let debt_shares = asset_debt
@@ -304,11 +304,11 @@ impl Contract {
         asset_position.margin_position += amount;
 
         let open_fee_shares = u128_ratio(
-            mt.margin_shares.0,
+            mt.token_c_shares.0,
             margin_config.open_position_fee_rate as u128,
             MAX_RATIO as u128,
         );
-        let open_fee_amount = if mt.margin_asset == mt.debt_asset {
+        let open_fee_amount = if mt.token_c_id == mt.token_d_id {
             let open_fee_amount = asset_debt
                 .supplied
                 .shares_to_amount(open_fee_shares.into(), false);
@@ -328,32 +328,30 @@ impl Contract {
             open_fee_amount
         };
 
-        mt.margin_shares.0 -= open_fee_shares;
+        mt.token_c_shares.0 -= open_fee_shares;
         mt.debt_cap = sr.amount_in.0;
         mt.uahpi_at_open = asset_debt.unit_acc_hp_interest;
-        mt.debt_shares.0 += debt_shares.0;
-        mt.position_amount += amount;
+        mt.token_d_shares.0 += debt_shares.0;
+        mt.token_p_amount += amount;
         mt.is_locking = false;
         account
             .margin_positions
             .insert(sr.pos_id.clone(), mt.clone());
 
-        self.internal_set_asset(&mt.debt_asset, asset_debt);
-        self.internal_set_asset(&mt.position_asset, asset_position);
+        self.internal_set_asset(&mt.token_d_id, asset_debt);
+        self.internal_set_asset(&mt.token_p_id, asset_position);
 
-        let event = EventMarginOpen {
+        let event = EventDataMarginOpenResult {
             account_id: account.account_id.clone(),
             pos_id: sr.pos_id.clone(),
-            collateral_token_id: mt.margin_asset.clone(),
-            collateral_amount: 0,
-            collateral_shares: mt.margin_shares,
-            debt_token_id: mt.debt_asset.clone(),
-            debt_amount: 0,
-            debt_shares: mt.debt_shares,
-            position_token_id: mt.position_asset.clone(),
-            position_amount: mt.position_amount,
+            token_c_id: mt.token_c_id.clone(),
+            token_c_shares: mt.token_c_shares,
+            token_d_id: mt.token_d_id.clone(),
+            token_d_amount: sr.amount_in.0,
+            token_d_shares: mt.token_d_shares,
+            token_p_id: mt.token_p_id.clone(),
+            token_p_amount: mt.token_p_amount,
             open_fee: open_fee_amount,
-            holding_fee: 0,
         };
         events::emit::margin_open_succeeded(event);
     }
@@ -363,10 +361,10 @@ impl Contract {
         account: &mut MarginAccount,
         amount: Balance,
         sr: &SwapReference,
-    ) -> EventMarginDecreaseResult {
+    ) -> EventDataMarginDecreaseResult {
         let mut mt = account.margin_positions.get(&sr.pos_id).unwrap().clone();
-        let mut asset_debt = self.internal_unwrap_asset(&mt.debt_asset);
-        let mut asset_position = self.internal_unwrap_asset(&mt.position_asset);
+        let mut asset_debt = self.internal_unwrap_asset(&mt.token_d_id);
+        let mut asset_position = self.internal_unwrap_asset(&mt.token_p_id);
         let (mut benefit_m_shares, mut benefit_d_shares, mut benefit_p_shares) =
             (0_u128, 0_u128, 0_u128);
 
@@ -374,7 +372,7 @@ impl Contract {
         // figure out how many debt_cap been repaid, and charge corresponding holding-position fee from repayment.
         let debt_amount = asset_debt
             .margin_debt
-            .shares_to_amount(mt.debt_shares, true);
+            .shares_to_amount(mt.token_d_shares, true);
         let hp_fee = u128_ratio(
             mt.debt_cap,
             asset_debt.unit_acc_hp_interest - mt.uahpi_at_open,
@@ -383,7 +381,7 @@ impl Contract {
         let repay_cap = u128_ratio(mt.debt_cap, amount, debt_amount + hp_fee);
 
         let (repay_amount, repay_shares, left_amount, repay_hp_fee) = if repay_cap >= mt.debt_cap {
-            (debt_amount, mt.debt_shares, amount - debt_amount - hp_fee, hp_fee)
+            (debt_amount, mt.token_d_shares, amount - debt_amount - hp_fee, hp_fee)
         } else {
             let repay_hp_fee = u128_ratio(hp_fee, repay_cap, mt.debt_cap);
             (
@@ -396,7 +394,7 @@ impl Contract {
             )
         };
         asset_debt.margin_debt.withdraw(repay_shares, repay_amount);
-        mt.debt_shares.0 -= repay_shares.0;
+        mt.token_d_shares.0 -= repay_shares.0;
         mt.debt_cap = if repay_cap >= mt.debt_cap {
             0
         } else {
@@ -416,25 +414,25 @@ impl Contract {
 
         if sr.op != "decrease" {
             // try to repay remaining debt from margin
-            if mt.debt_shares.0 > 0 && mt.debt_asset == mt.margin_asset {
+            if mt.token_d_shares.0 > 0 && mt.token_d_id == mt.token_c_id {
                 let remain_debt_balance = asset_debt
                     .margin_debt
-                    .shares_to_amount(mt.debt_shares, true);
+                    .shares_to_amount(mt.token_d_shares, true);
                 let margin_shares_to_repay = asset_debt
                     .supplied
                     .amount_to_shares(remain_debt_balance, true);
                 let (repay_debt_share, used_supply_share, repay_amount) =
-                    if margin_shares_to_repay <= mt.margin_shares {
-                        (mt.debt_shares, margin_shares_to_repay, remain_debt_balance)
+                    if margin_shares_to_repay <= mt.token_c_shares {
+                        (mt.token_d_shares, margin_shares_to_repay, remain_debt_balance)
                     } else {
                         // use all margin balance to repay
                         let margin_balance = asset_debt
                             .supplied
-                            .shares_to_amount(mt.margin_shares, false);
+                            .shares_to_amount(mt.token_c_shares, false);
                         let repay_debt_shares = asset_debt
                             .margin_debt
                             .amount_to_shares(margin_balance, false);
-                        (repay_debt_shares, mt.margin_shares, margin_balance)
+                        (repay_debt_shares, mt.token_c_shares, margin_balance)
                     };
                 asset_debt
                     .supplied
@@ -442,23 +440,23 @@ impl Contract {
                 asset_debt
                     .margin_debt
                     .withdraw(repay_debt_share, repay_amount);
-                mt.debt_shares.0 -= repay_debt_share.0;
-                mt.margin_shares.0 -= used_supply_share.0;
+                mt.token_d_shares.0 -= repay_debt_share.0;
+                mt.token_c_shares.0 -= used_supply_share.0;
             }
         }
 
         if sr.op == "forceclose" {
             // try to use protocol reserve to repay remaining debt
-            if mt.debt_shares.0 > 0 {
+            if mt.token_d_shares.0 > 0 {
                 let remain_debt_balance = asset_debt
                     .margin_debt
-                    .shares_to_amount(mt.debt_shares, true);
+                    .shares_to_amount(mt.token_d_shares, true);
                 if asset_debt.reserved > remain_debt_balance {
                     asset_debt.reserved -= remain_debt_balance;
                     asset_debt
                         .margin_debt
-                        .withdraw(mt.debt_shares, remain_debt_balance);
-                    mt.debt_shares.0 = 0;
+                        .withdraw(mt.token_d_shares, remain_debt_balance);
+                    mt.token_d_shares.0 = 0;
                 }
             }
         }
@@ -468,34 +466,34 @@ impl Contract {
             .margin_positions
             .insert(sr.pos_id.clone(), mt.clone());
 
-        let event = EventMarginDecreaseResult {
+        let event = EventDataMarginDecreaseResult {
             account_id: account.account_id.clone(),
             pos_id: sr.pos_id.clone(),
             liquidator_id: sr.liquidator_id.clone(),
-            collateral_token_id: mt.margin_asset.clone(),
-            collateral_shares: mt.margin_shares,
-            debt_token_id: mt.debt_asset.clone(),
-            debt_shares: mt.debt_shares,
-            position_token_id: mt.position_asset.clone(),
-            position_amount: mt.position_amount,
+            token_c_id: mt.token_c_id.clone(),
+            token_c_shares: mt.token_c_shares,
+            token_d_id: mt.token_d_id.clone(),
+            token_d_shares: mt.token_d_shares,
+            token_p_id: mt.token_p_id.clone(),
+            token_p_amount: mt.token_p_amount,
             holding_fee: repay_hp_fee,
         };
         
         // try to settle this position
-        if mt.debt_shares.0 == 0 {
+        if mt.token_d_shares.0 == 0 {
             // close this position and remaining asset goes back to user's inner account
             // TODO: change to directly send assets back to user
-            if mt.margin_shares.0 > 0 {
-                benefit_m_shares = mt.margin_shares.0;
+            if mt.token_c_shares.0 > 0 {
+                benefit_m_shares = mt.token_c_shares.0;
             }
-            if mt.position_amount > 0 {
+            if mt.token_p_amount > 0 {
                 let position_shares = asset_position
                     .supplied
-                    .amount_to_shares(mt.position_amount, false);
+                    .amount_to_shares(mt.token_p_amount, false);
                 asset_position
                     .supplied
-                    .deposit(position_shares, mt.position_amount);
-                asset_position.margin_position -= mt.position_amount;
+                    .deposit(position_shares, mt.token_p_amount);
+                asset_position.margin_position -= mt.token_p_amount;
                 benefit_p_shares = position_shares.0;
             }
             account.margin_positions.remove(&sr.pos_id);
@@ -525,15 +523,15 @@ impl Contract {
                     };
                 if benefit_d_shares > 0 {
                     liquidator_account
-                        .deposit_supply_shares(&mt.debt_asset, &U128(benefit_d_shares));
+                        .deposit_supply_shares(&mt.token_d_id, &U128(benefit_d_shares));
                 }
                 if benefit_m_shares > 0 {
                     liquidator_account
-                        .deposit_supply_shares(&mt.margin_asset, &U128(benefit_m_shares));
+                        .deposit_supply_shares(&mt.token_c_id, &U128(benefit_m_shares));
                 }
                 if benefit_p_shares > 0 {
                     liquidator_account
-                        .deposit_supply_shares(&mt.position_asset, &U128(benefit_p_shares));
+                        .deposit_supply_shares(&mt.token_p_id, &U128(benefit_p_shares));
                 }
                 self.internal_set_margin_account(
                     &liquidator_account.account_id.clone(),
@@ -541,19 +539,19 @@ impl Contract {
                 );
             } else {
                 if benefit_d_shares > 0 {
-                    account.deposit_supply_shares(&mt.debt_asset, &U128(benefit_d_shares));
+                    account.deposit_supply_shares(&mt.token_d_id, &U128(benefit_d_shares));
                 }
                 if benefit_m_shares > 0 {
-                    account.deposit_supply_shares(&mt.margin_asset, &U128(benefit_m_shares));
+                    account.deposit_supply_shares(&mt.token_c_id, &U128(benefit_m_shares));
                 }
                 if benefit_p_shares > 0 {
-                    account.deposit_supply_shares(&mt.position_asset, &U128(benefit_p_shares));
+                    account.deposit_supply_shares(&mt.token_p_id, &U128(benefit_p_shares));
                 }
             }
         }
 
-        self.internal_set_asset(&mt.debt_asset, asset_debt);
-        self.internal_set_asset(&mt.position_asset, asset_position);
+        self.internal_set_asset(&mt.token_d_id, asset_debt);
+        self.internal_set_asset(&mt.token_p_id, asset_position);
 
         event
     }

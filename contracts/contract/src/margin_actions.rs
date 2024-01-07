@@ -17,38 +17,38 @@ pub enum MarginAction {
         amount: U128,
     },
     OpenPosition {
-        margin_asset_id: AccountId,
-        margin_amount: U128,
-        debt_asset_id: AccountId,
-        debt_amount: U128,
-        position_asset_id: AccountId,
-        min_position_amount: U128,
+        token_c_id: AccountId,
+        token_c_amount: U128,
+        token_d_id: AccountId,
+        token_d_amount: U128,
+        token_p_id: AccountId,
+        min_token_p_amount: U128,
         swap_indication: SwapIndication,
     },
     DecreaseMTPosition {
         pos_id: PosId,
-        position_amount: U128,
-        min_debt_amount: U128,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
         swap_indication: SwapIndication,
     },
     CloseMTPosition {
         pos_id: PosId,
-        position_amount: U128,
-        min_debt_amount: U128,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
         swap_indication: SwapIndication,
     },
     LiquidateMTPosition {
         pos_owner_id: AccountId,
         pos_id: PosId,
-        position_amount: U128,
-        min_debt_amount: U128,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
         swap_indication: SwapIndication,
     },
     ForceCloseMTPosition {
         pos_owner_id: AccountId,
         pos_id: PosId,
-        position_amount: U128,
-        min_debt_amount: U128,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
         swap_indication: SwapIndication,
     },
 }
@@ -66,12 +66,12 @@ impl Contract {
         for action in actions {
             match action {
                 MarginAction::OpenPosition {
-                    margin_asset_id,
-                    margin_amount,
-                    debt_asset_id,
-                    debt_amount,
-                    position_asset_id,
-                    min_position_amount,
+                    token_c_id: margin_asset_id,
+                    token_c_amount: margin_amount,
+                    token_d_id: debt_asset_id,
+                    token_d_amount: debt_amount,
+                    token_p_id: position_asset_id,
+                    min_token_p_amount: min_position_amount,
                     swap_indication,
                 } => {
                     let event = self.internal_margin_open_position(
@@ -103,68 +103,77 @@ impl Contract {
                 }
                 MarginAction::DecreaseMTPosition {
                     pos_id,
-                    position_amount,
-                    min_debt_amount,
+                    token_p_amount: position_amount,
+                    min_token_d_amount: min_debt_amount,
                     swap_indication,
                 } => {
-                    let event = self.internal_margin_decrease_position(
+                    let event = self.process_decrease_margin_position(
                         account,
                         &pos_id,
                         position_amount.into(),
                         min_debt_amount.into(),
                         &swap_indication,
                         &prices,
+                        "decrease".to_string(),
+                        None,
                     );
                     events::emit::margin_decrease_started("margin_decrease_started", event);
                 }
                 MarginAction::CloseMTPosition {
                     pos_id,
-                    position_amount,
-                    min_debt_amount,
+                    token_p_amount: position_amount,
+                    min_token_d_amount: min_debt_amount,
                     swap_indication,
                 } => {
-                    let event = self.internal_margin_close_position(
+                    let event = self.process_decrease_margin_position(
                         account,
                         &pos_id,
                         position_amount.into(),
                         min_debt_amount.into(),
                         &swap_indication,
                         &prices,
+                        "close".to_string(),
+                        None,
                     );
                     events::emit::margin_decrease_started("margin_close_started", event);
                 }
                 MarginAction::LiquidateMTPosition {
                     pos_owner_id,
                     pos_id,
-                    position_amount,
-                    min_debt_amount,
+                    token_p_amount: position_amount,
+                    min_token_d_amount: min_debt_amount,
                     swap_indication,
                 } => {
-                    let event = self.internal_margin_liquidate_position(
-                        account_id,
-                        &pos_owner_id,
+                    let mut pos_owner = self.internal_unwrap_margin_account(&pos_owner_id);
+                    let event = self.process_decrease_margin_position(
+                        &mut pos_owner,
                         &pos_id,
                         position_amount.into(),
                         min_debt_amount.into(),
                         &swap_indication,
                         &prices,
+                        "liquidate".to_string(),
+                        Some(account_id.clone()),
                     );
                     events::emit::margin_decrease_started("margin_liquidate_started", event);
                 }
                 MarginAction::ForceCloseMTPosition {
                     pos_owner_id,
                     pos_id,
-                    position_amount,
-                    min_debt_amount,
+                    token_p_amount: position_amount,
+                    min_token_d_amount: min_debt_amount,
                     swap_indication,
                 } => {
-                    let event = self.internal_margin_forceclose_position(
-                        &pos_owner_id,
+                    let mut pos_owner = self.internal_unwrap_margin_account(&pos_owner_id);
+                    let event = self.process_decrease_margin_position(
+                        &mut pos_owner,
                         &pos_id,
                         position_amount.into(),
                         min_debt_amount.into(),
                         &swap_indication,
                         &prices,
+                        "forceclose".to_string(),
+                        None,
                     );
                     events::emit::margin_decrease_started("margin_forceclose_started", event);
                 }
@@ -192,12 +201,12 @@ impl Contract {
             .get(pos_id)
             .expect("Position not exist")
             .clone();
-        let asset_id = mt.margin_asset.clone();
-        let asset = self.internal_unwrap_asset(&mt.margin_asset);
+        let asset_id = mt.token_c_id.clone();
+        let asset = self.internal_unwrap_asset(&mt.token_c_id);
         let shares = asset.supplied.amount_to_shares(amount, false);
         let actual_amount = asset.supplied.shares_to_amount(shares, false);
-        account.withdraw_supply_shares(&mt.margin_asset, &shares);
-        mt.margin_shares.0 += shares.0;
+        account.withdraw_supply_shares(&mt.token_c_id, &shares);
+        mt.token_c_shares.0 += shares.0;
         account.margin_positions.insert(pos_id.clone(), mt);
         (asset_id, actual_amount)
     }
@@ -215,25 +224,21 @@ impl Contract {
             .get(pos_id)
             .expect("Position not exist")
             .clone();
-        let token_id = mt.margin_asset.clone();
-        let mut asset = self.internal_unwrap_asset(&mt.margin_asset);
+        let token_id = mt.token_c_id.clone();
+        let mut asset = self.internal_unwrap_asset(&mt.token_c_id);
         let shares = asset.supplied.amount_to_shares(amount, true);
 
         asset.supplied.withdraw(shares, amount);
 
         // collateral can NOT decrease to 0
         assert!(
-            mt.margin_shares.0 > shares.0,
+            mt.token_c_shares.0 > shares.0,
             "Not enough collateral to decrease"
         );
-        mt.margin_shares.0 -= shares.0;
+        mt.token_c_shares.0 -= shares.0;
 
-        let total_cap =
-            self.get_mtp_margin_value(&mt, prices) + self.get_mtp_position_value(&mt, prices);
-        let total_debt = self.get_mtp_debt_value(&mt, prices);
-        let tbd_safty_buffer = 1000_u32;
         assert!(
-            total_cap.mul_ratio(tbd_safty_buffer) + total_cap > total_debt,
+            !self.is_mt_liquidatable(&mt, prices, margin_config.min_safty_buffer),
             "Margin position would be below liquidation line"
         );
 
@@ -243,7 +248,7 @@ impl Contract {
             "Leverage rate is too high"
         );
 
-        self.internal_set_asset(&mt.margin_asset, asset);
+        self.internal_set_asset(&mt.token_c_id, asset);
         account.margin_positions.insert(pos_id.clone(), mt);
 
         token_id
