@@ -1,5 +1,5 @@
 
-use mock_ref_exchange::{ContractMetadata, StablePoolInfo, ShadowRecordInfo, RefStorageState, ShadowActions, AccountBaseInfo};
+use mock_ref_exchange::{ContractMetadata, StablePoolInfo, ShadowRecordInfo, RefStorageState, ShadowActions, AccountBaseInfo, UnitShareCumulativeInfoView};
 
 use crate::*;
 
@@ -150,6 +150,37 @@ impl RefExchange {
             }))
             .max_gas()
             .deposit(1)
+            .transact()
+            .await
+    }
+
+    pub async fn modify_cumulative_info_record_interval_sec (
+        &self,
+        caller: &Account,
+        record_interval_sec: u32
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "modify_cumulative_info_record_interval_sec")
+            .args_json(json!({
+                "record_interval_sec": record_interval_sec,
+            }))
+            .deposit(1)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn sync_pool_twap_record(
+        &self,
+        caller: &Account,
+        pool_id: u64,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "sync_pool_twap_record")
+            .args_json(json!({
+                "pool_id": pool_id,
+            }))
+            .max_gas()
             .transact()
             .await
     }
@@ -354,5 +385,19 @@ impl RefExchange {
             .view()
             .await?
             .json::<Option<AccountBaseInfo>>()
+    }
+
+    pub async fn get_pool_twap_info_view(
+        &self,
+        pool_id: u64
+    ) -> Result<Option<UnitShareCumulativeInfoView>> {
+        self.0
+            .call("get_pool_twap_info_view")
+            .args_json(json!({
+                "pool_id": pool_id
+            }))
+            .view()
+            .await?
+            .json::<Option<UnitShareCumulativeInfoView>>()
     }
 }

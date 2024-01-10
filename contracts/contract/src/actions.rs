@@ -166,6 +166,7 @@ impl Contract {
                         account_id, &liquidation_account_id,
                         "Can't liquidate yourself"
                     );
+                    assert!(!self.internal_unwrap_account(&liquidation_account_id).is_locked, "Liquidation account is locked!");
                     let position = position.unwrap_or(REGULAR_POSITION.to_string());
                     if position == REGULAR_POSITION {
                         assert!(!in_assets.is_empty() && !out_assets.is_empty());
@@ -211,6 +212,7 @@ impl Contract {
                         account_id, &liquidation_account_id,
                         "Can't liquidate yourself"
                     );
+                    assert!(!self.internal_unwrap_account(&liquidation_account_id).is_locked, "Liquidation account is locked!");
                     let position = position.unwrap_or(REGULAR_POSITION.to_string());
                     if position == REGULAR_POSITION {
                         assert!(min_token_amounts.is_none());
