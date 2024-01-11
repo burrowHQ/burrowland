@@ -1,4 +1,10 @@
 # Release Notes
+Version 0.9.0
+```bssh=
+# codehash: BRWbY6q5WARwDJyxBBVsh7kwC8fcNp7szitCMrhvigdQ
+```
+- lp as collateral.
+
 Version 0.8.0
 ```bash=
 # codehash: 7b2DjxtjCHJA5wDRgpMEQVRp2qUTZrL8eZWLkE9wrxXh
