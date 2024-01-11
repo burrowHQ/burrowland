@@ -16,6 +16,7 @@ const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 20);
 #[serde(crate = "near_sdk::serde")]
 pub enum TokenReceiverMsg {
     Execute { actions: Vec<Action> },
+    ExecuteWithPyth { actions: Vec<Action> },
     DepositToReserve,
 }
 
@@ -42,13 +43,14 @@ impl FungibleTokenReceiver for Contract {
 
         // TODO: We need to be careful that only whitelisted tokens can call this method with a
         //     given set of actions. Or verify which actions are possible to do.
-        let actions: Vec<Action> = if msg.is_empty() {
-            vec![]
+        let (actions, with_pyth) = if msg.is_empty() {
+            (vec![], false)
         } else {
             let token_receiver_msg: TokenReceiverMsg =
                 serde_json::from_str(&msg).expect("Can't parse TokenReceiverMsg");
             match token_receiver_msg {
-                TokenReceiverMsg::Execute { actions } => actions,
+                TokenReceiverMsg::Execute { actions } => (actions, false),
+                TokenReceiverMsg::ExecuteWithPyth { actions } => (actions, true),
                 TokenReceiverMsg::DepositToReserve => {
                     asset.reserved += amount;
                     self.internal_set_asset(&token_id, asset);
@@ -61,7 +63,11 @@ impl FungibleTokenReceiver for Contract {
         let mut account = self.internal_unwrap_account(&sender_id);
         self.internal_deposit(&mut account, &token_id, amount);
         events::emit::deposit(&sender_id, amount, &token_id);
-        self.internal_execute(&sender_id, &mut account, actions, Prices::new());
+        if with_pyth {
+            self.internal_execute_with_pyth(&sender_id, &mut account, actions);
+        } else {
+            self.internal_execute(&sender_id, &mut account, actions, Prices::new());
+        }
         self.internal_set_account(&sender_id, account);
 
         PromiseOrValue::Value(U128(0))

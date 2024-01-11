@@ -38,6 +38,7 @@ pub struct UnitShareTokens {
 #[serde(crate = "near_sdk::serde")]
 pub enum ShadowReceiverMsg {
     Execute { actions: Vec<Action> },
+    ExecuteWithPyth { actions: Vec<Action> },
 }
 
 #[near_bindgen]
@@ -67,12 +68,13 @@ impl Contract {
         let config = self.internal_config();
         assert!(env::predecessor_account_id() == config.ref_exchange_id);
 
-        let actions = if !msg.is_empty() {
+        let (actions, with_pyth) = if !msg.is_empty() {
             match near_sdk::serde_json::from_str(&msg).expect("Can't parse ShadowReceiverMsg") {
-                ShadowReceiverMsg::Execute { actions } => actions,
+                ShadowReceiverMsg::Execute { actions } => (actions, false),
+                ShadowReceiverMsg::ExecuteWithPyth { actions } => (actions, true),
             }
         } else {
-            vec![]
+            (vec![], false)
         };
 
         let token_id = AccountId::new_unchecked(shadow_id);
@@ -82,7 +84,11 @@ impl Contract {
         let mut account = self.internal_unwrap_account(&account_id);
         self.internal_deposit(&mut account, &token_id, amount);
         events::emit::deposit(&account_id, amount, &token_id);
-        self.internal_execute(&account_id, &mut account, actions, Prices::new());
+        if with_pyth {
+            self.internal_execute_with_pyth(&account_id, &mut account, actions);
+        } else {
+            self.internal_execute(&account_id, &mut account, actions, Prices::new());
+        }
         self.internal_set_account(&account_id, account);
     }
 
@@ -95,6 +101,7 @@ impl Contract {
         if !msg.is_empty() {
             let actions = match near_sdk::serde_json::from_str(&msg).expect("Can't parse ShadowReceiverMsg") {
                 ShadowReceiverMsg::Execute { actions } => actions,
+                ShadowReceiverMsg::ExecuteWithPyth { .. } => unimplemented!()
             };
             self.internal_execute(&account_id, &mut account, actions, Prices::new());
         } 

@@ -1,8 +1,10 @@
 use crate::*;
 use std::convert::TryFrom;
 
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
 pub struct Prices {
-    prices: HashMap<TokenId, Price>,
+    pub prices: HashMap<TokenId, Price>,
 }
 
 impl Prices {

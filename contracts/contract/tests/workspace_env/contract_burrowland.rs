@@ -21,6 +21,22 @@ impl Burrowland {
             .await
     }
 
+    pub async fn enable_price_oracle(
+        &self,
+        caller: &Account,
+        enable: bool
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "enable_price_oracle")
+            .args_json(json!({
+                "enable": enable
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
+
     pub async fn update_config(
         &self,
         caller: &Account,
@@ -100,6 +116,16 @@ impl Burrowland {
         token_contract.ft_transfer_call(caller, self.0.id(), amount, "".to_string()).await
     }
 
+    pub async fn deposit_rated(
+        &self,
+        token_contract: &RatedTokenContract,
+        caller: &Account,
+        amount: u128,
+    ) -> Result<ExecutionFinalResult> {
+        token_contract.ft_transfer_call(caller, self.0.id(), amount, "".to_string()).await
+    }
+
+
     pub async fn deposit_to_reserve(
         &self,
         token_contract: &FtContract,
@@ -160,6 +186,42 @@ impl Burrowland {
         }).await
     }
 
+    pub async fn deposit_increase_collateral_borrow_withdraw_with_pyth (
+        &self,
+        token_contract: &FtContract,
+        caller: &Account,
+        amount: u128,
+        borrow_token_id: &AccountId,
+        borrow_amount: u128 
+    ) -> Result<ExecutionFinalResult> {
+        token_contract.ft_transfer_call(caller, self.0.id(), amount, serde_json::to_string(&TokenReceiverMsg::ExecuteWithPyth {
+            actions: vec![
+                Action::IncreaseCollateral(asset_amount(token_contract.0.id(), 0)),
+                Action::Borrow(asset_amount(borrow_token_id, borrow_amount)),
+                Action::Withdraw(asset_amount(borrow_token_id, 0)),
+            ]
+        }).unwrap()).await
+    }
+    
+    pub async fn deposit_repay_decrease_collateral_withdraw_with_pyth (
+        &self,
+        token_contract: &FtContract,
+        caller: &Account,
+        amount: u128,
+        repay_token_id: &AccountId,
+        repay_amount: u128,
+        decrease_token_id: &AccountId,
+        decrease_amount: u128 
+    ) -> Result<ExecutionFinalResult> {
+        token_contract.ft_transfer_call(caller, self.0.id(), amount, serde_json::to_string(&TokenReceiverMsg::ExecuteWithPyth {
+            actions: vec![
+                Action::Repay(asset_amount(repay_token_id, repay_amount)),
+                Action::DecreaseCollateral(asset_amount(decrease_token_id, decrease_amount)),
+                Action::Withdraw(asset_amount(decrease_token_id, 0)),
+            ]
+        }).unwrap()).await
+    }
+
     pub async fn supply_to_collateral(
         &self,
         token_contract: &FtContract,
@@ -181,6 +243,25 @@ impl Burrowland {
     ) -> Result<ExecutionFinalResult> {
         caller
             .call(self.0.id(), "execute")
+            .args_json(json!({
+                "actions": vec![
+                    Action::IncreaseCollateral(asset_amount(token_id, amount)),
+                ],
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
+
+    pub async fn increase_collateral_with_pyth(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        amount: u128
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "execute_with_pyth")
             .args_json(json!({
                 "actions": vec![
                     Action::IncreaseCollateral(asset_amount(token_id, amount)),
@@ -258,6 +339,31 @@ impl Burrowland {
         }).await
     }
 
+    pub async fn liquidate_with_pyth(
+        &self,
+        caller: &Account,
+        liquidation_account_id: &AccountId,
+        in_assets: Vec<AssetAmount>,
+        out_assets: Vec<AssetAmount>,
+        position: Option<String>,
+        min_token_amounts: Option<Vec<U128>>
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "execute_with_pyth")
+            .args_json(json!({
+                "actions": vec![
+                    Action::Liquidate { 
+                        account_id: near_sdk::AccountId::new_unchecked(liquidation_account_id.to_string()), 
+                        in_assets, out_assets, position, min_token_amounts
+                    },
+                ],
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
+
     pub async fn force_close(
         &self,
         caller: &Account,
@@ -275,6 +381,29 @@ impl Burrowland {
                 },
             ],
         }).await
+    }
+
+    pub async fn force_close_with_pyth(
+        &self,
+        caller: &Account,
+        force_close_account_id: &AccountId,
+        position: Option<String>,
+        min_token_amounts: Option<Vec<U128>>
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "execute_with_pyth")
+            .args_json(json!({
+                "actions": vec![
+                    Action::ForceClose { 
+                        account_id: near_sdk::AccountId::new_unchecked(force_close_account_id.to_string()),
+                        position, min_token_amounts
+                    },
+                ],
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
     }
     
     pub async fn claim_prot_fee(
@@ -458,6 +587,48 @@ impl Burrowland {
             .transact()
             .await
     }
+
+    pub async fn add_token_pyth_info(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        decimals: u8,
+        fraction_digits: u8,
+        price_identifier: &str,
+        extra_call: Option<String>
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "add_token_pyth_info")
+            .args_json(json!({
+                "token_id": token_id,
+                "token_pyth_info": {
+                    "decimals": decimals,
+                    "fraction_digits": fraction_digits,
+                    "price_identifier": price_identifier,
+                    "extra_call": extra_call
+                }
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
+
+    pub async fn execute_with_pyth(
+        &self,
+        caller: &Account,
+        actions: Vec<Action>,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "execute_with_pyth")
+            .args_json(json!({
+                "actions": actions,
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
 }
 
 impl Burrowland {
@@ -567,6 +738,48 @@ impl Burrowland {
                 can_borrow: false,
                 net_tvl_multiplier: 10000,
             },
+            "linear.test.near" => AssetConfig {
+                reserve_ratio: 2500,
+                prot_ratio: 0,
+                target_utilization: 8000,
+                target_utilization_rate: U128(1000000000003593629036885046),
+                max_utilization_rate: U128(1000000000039724853136740579),
+                volatility_ratio: 5000,
+                extra_decimals: 0,
+                can_deposit: true,
+                can_withdraw: true,
+                can_use_as_collateral: true,
+                can_borrow: true,
+                net_tvl_multiplier: 2500,
+            },
+            "stnear.test.near" => AssetConfig {
+                reserve_ratio: 2500,
+                prot_ratio: 0,
+                target_utilization: 8000,
+                target_utilization_rate: U128(1000000000003593629036885046),
+                max_utilization_rate: U128(1000000000039724853136740579),
+                volatility_ratio: 7000,
+                extra_decimals: 0,
+                can_deposit: true,
+                can_withdraw: true,
+                can_use_as_collateral: true,
+                can_borrow: true,
+                net_tvl_multiplier: 2500,
+            },
+            "nearx.test.near" => AssetConfig {
+                reserve_ratio: 2500,
+                prot_ratio: 0,
+                target_utilization: 8000,
+                target_utilization_rate: U128(1000000000003593629036885046),
+                max_utilization_rate: U128(1000000000039724853136740579),
+                volatility_ratio: 7000,
+                extra_decimals: 0,
+                can_deposit: true,
+                can_withdraw: true,
+                can_use_as_collateral: true,
+                can_borrow: false,
+                net_tvl_multiplier: 0,
+            },
             "wrap.test.near" => AssetConfig {
                 reserve_ratio: 2500,
                 prot_ratio: 0,
@@ -636,6 +849,62 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 10000,
+            },
+            _ => {
+                panic!("unsupported token: {:?}", token_id);
+            }
+        };
+        self.add_asset(root, token_id, asset_config).await
+    }
+
+    pub async fn add_rated_asset_handler(
+        &self,
+        root: &Account,
+        token: &RatedTokenContract, 
+    ) -> Result<ExecutionFinalResult> {
+        let token_id = token.0.id();
+        let asset_config = match token_id.to_string().as_str() {
+            "linear.test.near" => AssetConfig {
+                reserve_ratio: 2500,
+                prot_ratio: 0,
+                target_utilization: 8000,
+                target_utilization_rate: U128(1000000000003593629036885046),
+                max_utilization_rate: U128(1000000000039724853136740579),
+                volatility_ratio: 5000,
+                extra_decimals: 0,
+                can_deposit: true,
+                can_withdraw: true,
+                can_use_as_collateral: true,
+                can_borrow: true,
+                net_tvl_multiplier: 2500,
+            },
+            "stnear.test.near" => AssetConfig {
+                reserve_ratio: 2500,
+                prot_ratio: 0,
+                target_utilization: 8000,
+                target_utilization_rate: U128(1000000000003593629036885046),
+                max_utilization_rate: U128(1000000000039724853136740579),
+                volatility_ratio: 7000,
+                extra_decimals: 0,
+                can_deposit: true,
+                can_withdraw: true,
+                can_use_as_collateral: true,
+                can_borrow: true,
+                net_tvl_multiplier: 2500,
+            },
+            "nearx.test.near" => AssetConfig {
+                reserve_ratio: 2500,
+                prot_ratio: 0,
+                target_utilization: 8000,
+                target_utilization_rate: U128(1000000000003593629036885046),
+                max_utilization_rate: U128(1000000000039724853136740579),
+                volatility_ratio: 7000,
+                extra_decimals: 0,
+                can_deposit: true,
+                can_withdraw: true,
+                can_use_as_collateral: true,
+                can_borrow: false,
+                net_tvl_multiplier: 0,
             },
             _ => {
                 panic!("unsupported token: {:?}", token_id);

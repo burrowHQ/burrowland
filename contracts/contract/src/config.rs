@@ -10,6 +10,10 @@ pub struct Config {
     /// The account ID of the oracle contract
     pub oracle_account_id: AccountId,
 
+    /// The account ID of the pyth oracle contract
+    pub pyth_oracle_account_id: AccountId,
+
+    /// The account ID of the ref_exchange contract
     pub ref_exchange_id: AccountId,
 
     /// The account ID of the contract owner that allows to modify config, assets and use reserves.
@@ -33,7 +37,11 @@ pub struct Config {
     /// This parameter can be updated in the future by the owner.
     pub maximum_staleness_duration_sec: DurationSec,
 
+    /// The valid duration to lp tokens info in seconds.
     pub lp_tokens_info_valid_duration_sec: DurationSec,
+
+    /// The valid duration to pyth price in seconds.
+    pub pyth_price_valid_duration_sec: DurationSec,
 
     /// The minimum duration to stake booster token in seconds.
     pub minimum_staking_duration_sec: DurationSec,
@@ -49,6 +57,9 @@ pub struct Config {
     /// Whether an account with bad debt can be liquidated using reserves.
     /// The account should have borrowed sum larger than the collateral sum.
     pub force_closing_enabled: bool,
+
+    /// Whether to use the price of price oracle
+    pub enable_price_oracle: bool,
 }
 
 impl Config {
@@ -158,6 +169,18 @@ impl Contract {
         let mut asset = self.internal_unwrap_asset(&token_id);
         asset.config.prot_ratio = prot_ratio;
         self.internal_set_asset(&token_id, asset);
+    }
+
+    /// Enable or disable price oracle
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    pub fn enable_price_oracle(&mut self, enable: bool) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        let mut config = self.internal_config();
+        config.enable_price_oracle = enable;
+        self.config.set(&config);
     }
 
     /// Updates the capacity for the asset with the a given token_id.

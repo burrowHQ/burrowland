@@ -7,26 +7,29 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     pub fn migrate_state() -> Self {
-        let ContractV080 { 
+        let ContractV090 { 
             accounts, 
             storage, 
             assets, 
             asset_farms, 
             asset_ids, 
             config, 
-            last_prices 
+            guardians,
+            last_prices,
+            last_lp_token_infos
         } = env::state_read().unwrap();
-        let config_v0 = config.get().unwrap();
+        let config_v1 = config.get().unwrap();
         Self { 
             accounts, 
             storage, 
             assets, 
             asset_farms, 
             asset_ids, 
-            config: LazyOption::new(StorageKey::Config, Some(&config_v0.into())),
-            guardians: UnorderedSet::new(StorageKey::Guardian),
+            config: LazyOption::new(StorageKey::Config, Some(&config_v1.into())),
+            guardians,
             last_prices, 
-            last_lp_token_infos: HashMap::new()
+            last_lp_token_infos,
+            token_pyth_info: HashMap::new()
         }
     }
 

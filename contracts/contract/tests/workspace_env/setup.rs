@@ -3,6 +3,7 @@ use crate::*;
 use contract::Config;
 
 pub const ORACLE_ID: &str = "oracle.test.near";
+pub const PYTH_ID: &str = "pyth.test.near";
 pub const BOOSTER_TOKEN_ID: &str = "booster.test.near";
 pub const BOOSTER_TOKEN_DECIMALS: u8 = 18;
 
@@ -14,6 +15,8 @@ pub const BOOST_FARMING_WASM: &str = "../../res/mock_boost_farming.wasm";
 // pub const BOOST_FARMING_WASM: &str = "../../res/boost_farming.wasm";
 const ORACLE_WASM: &str = "../../res/test_oracle.wasm";
 const FT_WASM: &str = "../../res/mock_ft.wasm";
+const RATED_TOKEN_WASM: &str = "../../res/mock_rated_token.wasm";
+const PYTH_WASM: &str = "../../res/mock_pyth.wasm";
 
 pub async fn deploy_burrowland(
     root: &Account,
@@ -32,6 +35,7 @@ pub async fn deploy_burrowland(
         .args_json(json!({
             "config": Config {
                 oracle_account_id: near_sdk::AccountId::new_unchecked(ORACLE_ID.to_string()),
+                pyth_oracle_account_id: near_sdk::AccountId::new_unchecked(PYTH_ID.to_string()),
                 ref_exchange_id: near_sdk::AccountId::new_unchecked("ref_exchange.test.near".to_string()),
                 owner_id: near_sdk::AccountId::new_unchecked(root.id().to_string()),
                 booster_token_id: near_sdk::AccountId::new_unchecked(BOOSTER_TOKEN_ID.to_string()),
@@ -40,10 +44,12 @@ pub async fn deploy_burrowland(
                 maximum_recency_duration_sec: 90,
                 maximum_staleness_duration_sec: 15,
                 lp_tokens_info_valid_duration_sec: 600,
+                pyth_price_valid_duration_sec: 60,
                 minimum_staking_duration_sec: 2678400,
                 maximum_staking_duration_sec: 31536000,
                 x_booster_multiplier_at_maximum_staking_duration: 40000,
                 force_closing_enabled: true,
+                enable_price_oracle: true,
             },
         }))
         .max_gas()
@@ -212,3 +218,58 @@ pub async fn deploy_boost_farming(
 //     Ok(BoostFarmingContract(boost_farming))
 // }
 
+pub async fn deploy_mock_rated_token(
+    root: &Account,
+    name: &str,
+    symbol: &str, 
+    decimals: u8, 
+    price: U128
+) -> Result<RatedTokenContract> {
+
+    let mock_rated_token = root
+        .create_subaccount(symbol)
+        .initial_balance(parse_near!("50 N"))
+        .transact()
+        .await?
+        .unwrap();
+    let mock_rated_token = mock_rated_token
+        .deploy(&std::fs::read(RATED_TOKEN_WASM).unwrap())
+        .await?
+        .unwrap();
+    assert!(mock_rated_token
+        .call("new")
+        .args_json(json!({
+            "name": name,
+            "symbol": symbol,
+            "decimals": decimals,
+            "price": price
+        }))
+        .gas(300_000_000_000_000)
+        .transact()
+        .await?
+        .is_success());
+    Ok(RatedTokenContract(mock_rated_token))
+}
+
+
+pub async fn deploy_mock_pyth(
+    root: &Account,
+) -> Result<PythContract> {
+    let mock_pyth = root
+        .create_subaccount("pyth")
+        .initial_balance(parse_near!("50 N"))
+        .transact()
+        .await?
+        .unwrap();
+    let mock_pyth = mock_pyth
+        .deploy(&std::fs::read(PYTH_WASM).unwrap())
+        .await?
+        .unwrap();
+    assert!(mock_pyth
+        .call("new")
+        .gas(300_000_000_000_000)
+        .transact()
+        .await?
+        .is_success());
+    Ok(PythContract(mock_pyth))
+}
