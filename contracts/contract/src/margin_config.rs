@@ -13,8 +13,8 @@ pub struct MarginConfig {
     /// Ensure the slippage in SwapIndication less than this one,
     /// Eg: 1000 means we allow a max slippage of 10%.
     pub max_slippage_rate: u32,
-    /// The position will be liquidated when debt is larger than 
-    ///   (margin + position) * (1 + min_safty_buffer_rate).
+    /// The position will be liquidated when (margin + position) is less than 
+    ///   (debt + hp_fee) * (1 + min_safty_buffer_rate).
     pub min_safty_buffer: u32,
     /// Compare to regular borrowing, margin borrow enjoy a discount.
     /// Eg: 7000 means margin debt equals 70% of regular debt.
