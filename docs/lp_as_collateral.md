@@ -62,7 +62,7 @@ It's something like ft_transfer_call.
 - boost_farm takes it as a lp token unstake
 - ref_dex check the cross contract call result  
 
-### liquidation and forceclose work flow
+### liquidation work flow
 - liquidator finds a liquidatable lp token debt
 - liquidator call Burrow with liquidate sub command
 - Burrow calculate liquidation discount 
