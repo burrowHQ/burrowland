@@ -10,11 +10,11 @@ To enable "double spend", those lp tokens are not really transferred into burrow
 
 Now, there are 2 kinds of shadows available in ref lp token. One is used in burrow as collateral, we can name it B-Shadow. Another is used in boost-farm as staking seed, we can call it F-Shadow. LP token can have mulitiple kinds shadows at the same time.  
 
-Only those lp token without any shadow could be transferred. So, shadow also acts as a special locker.  
+Only those lp token without any shadow could be transferred or burned. So, shadow also acts as a special locker.  
 
 Let's say Alice have 100 lp token. Then, she can have 80 F-Shadow used in boost-farm, and meanwhile have 95 B-Shadow to used in burrow as collateral to borrow Near out. In this case, Alice would have only 5 lp token that can be transfer freely.  
 
-If Alice's debt in burrow encounters a liquidation and the liquidator want to claim 45 lp token from Alice, the protocol will notify ref dex as a trustee entity, to uncast 45 B-Shadow from Alice, and prepare 45 transferrable lp token. So, ref dex would figure out how many other shadow will be uncasted (in this case, 25 F-Shadow from the boost-farm contract), and do the uncast action. After liquidation, the liquidator would got 45 lp token without any shadow, and Alice has 55 lp token with the same amount of F-Shadow in boost-farm contract and 50 B-Shadow in the burrow contract as collateral.  
+If Alice's debt in burrow encounters a liquidation and the liquidator want to burn 45 lp token from Alice (to acquire the backend assets of those burned lp token), the protocol will notify ref dex as a trustee entity, to uncast 45 B-Shadow from Alice, and prepare 45 burnable lp token. So, ref dex would figure out how many other shadow will be uncasted (in this case, 25 F-Shadow from the boost-farm contract), and do the uncast action. After liquidation, the liquidator would got the backend assets represented by that 45 lp token, and Alice has 55 lp token with the same amount of F-Shadow in boost-farm contract and 50 B-Shadow in the burrow contract as collateral.  
 
 Another issue we need to take care of is the lp token value. The core idea is to breakdown the lp token into 2 or more backend assets, use values of those assets to evaluate lp token value, of coure with a fluctuation rate. So, the lp token contract, that is ref dex in this case, would act as a kind of Oracle, to provide lp token real-time inside tokens portion information on chain. 
 
@@ -62,10 +62,21 @@ It's something like ft_transfer_call.
 - boost_farm takes it as a lp token unstake
 - ref_dex check the cross contract call result  
 
-### liquidation and forceclose work flow
+### liquidation work flow
 - liquidator finds a liquidatable lp token debt
 - liquidator call Burrow with liquidate sub command
-- Burrow execute liquidation logic 
+- Burrow calculate liquidation discount 
 - Burrow call ref_dex::on_burrow_liquidation to claim debt collateral
-- ref_dex uncast shadows to ensure enough free lp token and transfer to liquidator
+- ref_dex uncast shadows to ensure enough free lp token to burn
+= ref_dex burn lp token and transfer backend assets to inner account of liquidator
 - Burrow check the cross contract call result
+- Burrow execute liquidation logic, modify debt
+
+### forceclose work flow
+- forceclose bot finds a forceclose-able lp token debt
+- bot call Burrow with forceclose sub command
+- Burrow call ref_dex::on_burrow_liquidation to claim debt collateral
+- ref_dex uncast shadows to ensure enough free lp token to burn
+= ref_dex burn lp token and transfer backend assets to inner account of Burrow
+- Burrow check the cross contract call result
+- Burrow execute forceclose logic, remove the debt
