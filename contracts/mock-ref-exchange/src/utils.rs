@@ -120,6 +120,10 @@ pub trait FungibleToken {
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
 }
 
+pub fn nano_to_sec(nano: u64) -> u32 {
+    (nano / 10u64.pow(9)) as u32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -27,6 +27,7 @@ pub use crate::custom_keys::*;
 pub use crate::views::{PoolInfo, ShadowRecordInfo, RatedPoolInfo, StablePoolInfo, ContractMetadata, RatedTokenInfo, AddLiquidityPrediction, RefStorageState, AccountBaseInfo};
 pub use crate::token_receiver::AddLiquidityInfo;
 pub use crate::shadow_actions::*;
+pub use crate::unit_lpt_cumulative_infos::*;
 
 mod account_deposit;
 mod action;
@@ -45,6 +46,7 @@ mod utils;
 mod views;
 mod custom_keys;
 mod shadow_actions;
+mod unit_lpt_cumulative_infos;
 
 #[derive(BorshStorageKey, BorshSerialize)]
 pub(crate) enum StorageKey {
@@ -57,6 +59,7 @@ pub(crate) enum StorageKey {
     Frozenlist,
     Referral,
     ShadowRecord {account_id: AccountId},
+    UnitShareCumulativeInfo
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Eq, PartialEq, Clone)]
@@ -105,6 +108,9 @@ pub struct Contract {
     frozen_tokens: UnorderedSet<AccountId>,
     /// Map of referrals
     referrals: UnorderedMap<AccountId, u32>,
+
+    cumulative_info_record_interval_sec: u32,
+    unit_share_cumulative_infos: UnorderedMap<u64, VUnitShareCumulativeInfo>,
 }
 
 #[near_bindgen]
@@ -123,6 +129,8 @@ impl Contract {
             state: RunningState::Running,
             frozen_tokens: UnorderedSet::new(StorageKey::Frozenlist),
             referrals: UnorderedMap::new(StorageKey::Referral),
+            cumulative_info_record_interval_sec: 12 * 60, // 12 min
+            unit_share_cumulative_infos: UnorderedMap::new(StorageKey::UnitShareCumulativeInfo),
         }
     }
 
@@ -255,6 +263,7 @@ impl Contract {
             env::attached_deposit() > 0,
             "{}", ERR35_AT_LEAST_ONE_YOCTO
         );
+        self.internal_update_unit_share_cumulative_info(pool_id);
         let prev_storage = env::storage_usage();
         let sender_id = env::predecessor_account_id();
         let mut amounts: Vec<u128> = amounts.into_iter().map(|amount| amount.into()).collect();
@@ -283,7 +292,6 @@ impl Contract {
         self.internal_save_account(&sender_id, deposits);
         self.pools.replace(pool_id, &pool);
         self.internal_check_storage(prev_storage);
-
         U128(shares)
     }
 
@@ -304,6 +312,7 @@ impl Contract {
             env::attached_deposit() > 0,
             "{}", ERR35_AT_LEAST_ONE_YOCTO
         );
+        self.internal_update_unit_share_cumulative_info(pool_id);
         let prev_storage = env::storage_usage();
         let sender_id = env::predecessor_account_id();
         let amounts: Vec<u128> = amounts.into_iter().map(|amount| amount.into()).collect();
@@ -328,7 +337,6 @@ impl Contract {
         self.internal_save_account(&sender_id, deposits);
         self.pools.replace(pool_id, &pool);
         self.internal_check_storage(prev_storage);
-
         mint_shares.into()
     }
 
@@ -347,7 +355,7 @@ impl Contract {
     pub fn remove_liquidity(&mut self, pool_id: u64, shares: U128, min_amounts: Vec<U128>) -> Vec<U128> {
         assert_one_yocto();
         self.assert_contract_running();
-        let prev_storage = env::storage_usage();
+        self.internal_update_unit_share_cumulative_info(pool_id);
         let sender_id = env::predecessor_account_id();
         let mut pool = self.pools.get(pool_id).expect(ERR85_NO_POOL);
         let mut deposits = self.internal_unwrap_account(&sender_id);
@@ -370,11 +378,6 @@ impl Contract {
         for i in 0..tokens.len() {
             deposits.deposit(&tokens[i], amounts[i]);
         }
-        // Freed up storage balance from LP tokens will be returned to near_balance.
-        if prev_storage > env::storage_usage() {
-            deposits.near_amount +=
-                (prev_storage - env::storage_usage()) as Balance * env::storage_byte_cost();
-        }
         self.internal_save_account(&sender_id, deposits);
 
         amounts
@@ -395,7 +398,7 @@ impl Contract {
     ) -> U128 {
         assert_one_yocto();
         self.assert_contract_running();
-        let prev_storage = env::storage_usage();
+        self.internal_update_unit_share_cumulative_info(pool_id);
         let sender_id = env::predecessor_account_id();
         let mut pool = self.pools.get(pool_id).expect(ERR85_NO_POOL);
         // feature frozenlist
@@ -421,13 +424,7 @@ impl Contract {
         for i in 0..tokens.len() {
             deposits.deposit(&tokens[i], amounts[i].into());
         }
-        // Freed up storage balance from LP tokens will be returned to near_balance.
-        if prev_storage > env::storage_usage() {
-            deposits.near_amount +=
-                (prev_storage - env::storage_usage()) as Balance * env::storage_byte_cost();
-        }
         self.internal_save_account(&sender_id, deposits);
-
         burn_shares.into()
     }
 
@@ -590,6 +587,7 @@ impl Contract {
         min_amount_out: u128,
         referral_info: &Option<(AccountId, u32)>,
     ) -> u128 {
+        self.internal_update_unit_share_cumulative_info(pool_id);
         let mut pool = self.pools.get(pool_id).expect(ERR85_NO_POOL);
         let amount_out = pool.swap(
             token_in,

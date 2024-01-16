@@ -385,7 +385,9 @@ impl Contract {
             guardians,
             state,
             frozen_tokens,
-            referrals
+            referrals,
+            cumulative_info_record_interval_sec: 12 * 60, // 12 min
+            unit_share_cumulative_infos: UnorderedMap::new(StorageKey::UnitShareCumulativeInfo),
         }
     }
 }

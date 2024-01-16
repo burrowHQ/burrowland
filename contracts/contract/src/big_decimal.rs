@@ -233,6 +233,10 @@ impl BigDecimal {
         ((self.0 + U384::from(HALF_DIVISOR)) / U384::from(BIG_DIVISOR)).as_u128()
     }
 
+    pub fn round_down_u128(&self) -> u128 {
+        ((self.0) / U384::from(BIG_DIVISOR)).as_u128()
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn f64(&self) -> f64 {
         let base = (self.0 / U384::from(BIG_DIVISOR)).as_u128();

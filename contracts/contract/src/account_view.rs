@@ -55,32 +55,9 @@ pub struct AccountFarmRewardView {
 #[derive(Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
 #[serde(crate = "near_sdk::serde")]
-pub enum EPositionView {
-    RegularPosition(PositionView),
-    LPTokenPosition(PositionView),
-    MarginTradingPosition(MTPositionView),
-}
-
-#[derive(Serialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
-#[serde(crate = "near_sdk::serde")]
 pub struct PositionView {
     pub collateral: Vec<AssetView>,
     pub borrowed: Vec<AssetView>,
-}
-
-#[derive(Serialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
-#[serde(crate = "near_sdk::serde")]
-pub struct MTPositionView {
-    pub margin_token_id: TokenId,
-    pub margin_shares: Shares,
-    pub debt_token_id: TokenId,
-    pub debt_shares: Shares,
-    pub position_token_id: TokenId,
-    #[serde(with = "u128_dec_format")]
-    pub position_balance: Balance,
-    pub stat: u8,
 }
 
 #[derive(Serialize)]
@@ -90,7 +67,7 @@ pub struct AccountAllPositionsDetailedView {
     pub account_id: AccountId,
     /// A list of assets that are supplied by the account (but not used a collateral).
     pub supplied: Vec<AssetView>,
-    pub positions: HashMap<String, EPositionView>,
+    pub positions: HashMap<String, PositionView>,
     /// Account farms
     pub farms: Vec<AccountFarmView>,
     /// Whether the account has assets, that can be farmed.
@@ -248,34 +225,30 @@ impl Contract {
                 .map(|(position, position_info)| {
                     let position_view = match position_info {
                         Position::RegularPosition(regular_position) => {
-                            EPositionView::RegularPosition(
-                                PositionView {
-                                    collateral: regular_position
-                                        .collateral
-                                        .into_iter()
-                                        .map(|(token_id, shares)| self.get_asset_view(token_id, shares, false))
-                                        .collect(),
-                                    borrowed: regular_position
-                                        .borrowed
-                                        .into_iter()
-                                        .map(|(token_id, shares)| self.get_asset_view(token_id, shares, true))
-                                        .collect()
-                                }
-                            ) 
+                            PositionView {
+                                collateral: regular_position
+                                    .collateral
+                                    .into_iter()
+                                    .map(|(token_id, shares)| self.get_asset_view(token_id, shares, false))
+                                    .collect(),
+                                borrowed: regular_position
+                                    .borrowed
+                                    .into_iter()
+                                    .map(|(token_id, shares)| self.get_asset_view(token_id, shares, true))
+                                    .collect()
+                            }
                         }
                         Position::LPTokenPosition(lp_token_position) => {
-                            EPositionView::LPTokenPosition(
-                                PositionView {
-                                    collateral: vec![
-                                        self.get_asset_view(AccountId::new_unchecked(lp_token_position.lpt_id), lp_token_position.collateral, false)
-                                    ],
-                                    borrowed: lp_token_position
-                                        .borrowed
-                                        .into_iter()
-                                        .map(|(token_id, shares)| self.get_asset_view(token_id, shares, true))
-                                        .collect()
-                                }
-                            )
+                            PositionView {
+                                collateral: vec![
+                                    self.get_asset_view(AccountId::new_unchecked(lp_token_position.lpt_id), lp_token_position.collateral, false)
+                                ],
+                                borrowed: lp_token_position
+                                    .borrowed
+                                    .into_iter()
+                                    .map(|(token_id, shares)| self.get_asset_view(token_id, shares, true))
+                                    .collect()
+                            }
                         }
                     };
                     (position, position_view)

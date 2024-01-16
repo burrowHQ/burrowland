@@ -2,9 +2,10 @@
 use crate::*;
 use near_sdk::{is_promise_success, Timestamp};
 
-pub const GAS_FOR_ON_CAST_SHADOW: Gas = Gas(Gas::ONE_TERA.0 * 50);
+pub const GAS_FOR_ON_CAST_SHADOW: Gas = Gas(Gas::ONE_TERA.0 * 200);
 pub const GAS_FOR_ON_CAST_SHADOW_CALLBACK: Gas = Gas(Gas::ONE_TERA.0 * 20);
-pub const GAS_FOR_ON_BURROW_LIQUIDATION_CALLBACK: Gas = Gas(Gas::ONE_TERA.0 * 20);
+pub const GAS_FOR_ON_BURROW_LIQUIDATION: Gas = Gas(Gas::ONE_TERA.0 * 40);
+pub const GAS_FOR_ON_BURROW_LIQUIDATION_CALLBACK: Gas = Gas(Gas::ONE_TERA.0 * 5);
 
 #[ext_contract(ext_shadow_receiver)]
 pub trait ShadowReceiver {
@@ -47,15 +48,16 @@ impl Contract {
         let current_timestamp = env::block_timestamp();
         for pool_id in pool_ids {
             let shadow_id = pool_id_to_shadow_id(pool_id);
-            let mut pool = self.pools.get(pool_id).expect(ERR85_NO_POOL);
-            let share_decimals = pool.get_share_decimal();
-            let amounts: Vec<U128> = pool.remove_liquidity(&AccountId::new_unchecked("@view".to_string()), 10u128.pow(share_decimals as u32), vec![0; pool.tokens().len()], true).into_iter().map(|x| U128(x)).collect();
-            let tokens = pool.tokens().iter().zip(amounts.into_iter()).map(|(token_id, amount)| TokenAmount { token_id: token_id.clone(), amount }).collect();
-            result.insert(shadow_id, UnitShareTokens{
-                timestamp: current_timestamp,
-                decimals: share_decimals,
-                tokens
-            });
+            if let Some(amounts) = self.get_unit_share_twap_token_amounts(pool_id) {
+                let pool = self.pools.get(pool_id).expect(ERR85_NO_POOL);
+                let share_decimals = pool.get_share_decimal();
+                let tokens = pool.tokens().iter().zip(amounts.into_iter()).map(|(token_id, amount)| TokenAmount { token_id: token_id.clone(), amount }).collect();
+                result.insert(shadow_id, UnitShareTokens{
+                    timestamp: current_timestamp,
+                    decimals: share_decimals,
+                    tokens
+                });
+            }
         }
         result
     }
@@ -106,9 +108,6 @@ impl Contract {
         assert!(amount > 0, "amount must be greater than zero");
         assert!(amount <= max_amount, "amount must be less than or equal to {}", max_amount);
 
-        account.update_shadow_record(pool_id, &action, amount);
-        self.internal_save_account(&sender_id, account);
-
         let contract_id = match action {
             ShadowActions::FromBurrowland | ShadowActions::ToBurrowland => {
                 self.burrowland_id.clone()
@@ -120,6 +119,8 @@ impl Contract {
 
         match action {
             ShadowActions::ToFarming | ShadowActions::ToBurrowland => {
+                account.update_shadow_record(pool_id, &action, amount);
+                self.internal_save_account(&sender_id, account);
                 let storage_fee = self.internal_check_storage(prev_storage);
                 ext_shadow_receiver::ext(contract_id)
                     .with_static_gas(GAS_FOR_ON_CAST_SHADOW)
@@ -143,11 +144,6 @@ impl Contract {
                     .into()
             }
             ShadowActions::FromFarming | ShadowActions::FromBurrowland => {
-                let storage_fee = if prev_storage > env::storage_usage() {
-                    (prev_storage - env::storage_usage()) as Balance * env::storage_byte_cost()
-                } else {
-                    0
-                };
                 ext_shadow_receiver::ext(contract_id)
                     .with_static_gas(GAS_FOR_ON_CAST_SHADOW)
                     .on_remove_shadow(
@@ -164,7 +160,7 @@ impl Contract {
                                 sender_id,
                                 pool_id,
                                 U128(amount),
-                                U128(storage_fee)
+                                U128(0)
                             )
                     )
                     .into()
@@ -203,7 +199,6 @@ impl Contract {
         self.internal_save_account(&liquidation_account_id, liquidation_account);
         
         let mut liquidator_account = self.internal_unwrap_account(&liquidator_account_id);
-        let prev_storage = env::storage_usage();
         let amounts = pool.remove_liquidity(
             &liquidation_account_id,
             liquidate_share_amount.0,
@@ -218,15 +213,11 @@ impl Contract {
         for i in 0..tokens.len() {
             liquidator_account.deposit(&tokens[i], amounts[i]);
         }
-        if prev_storage > env::storage_usage() {
-            liquidator_account.near_amount +=
-                (prev_storage - env::storage_usage()) as Balance * env::storage_byte_cost();
-        }
         self.internal_save_account(&liquidator_account_id, liquidator_account);
 
         if withdraw_seed_amount > 0 {
             ext_shadow_receiver::ext(self.boost_farm_id.clone())
-                .with_static_gas(GAS_FOR_ON_CAST_SHADOW)
+                .with_static_gas(GAS_FOR_ON_BURROW_LIQUIDATION)
                 .on_remove_shadow(
                     liquidation_account_id.clone(),
                     shadow_id,
@@ -274,23 +265,20 @@ impl Contract {
                         Promise::new(sender_id.clone()).transfer(storage_fee.0);
                     }
                 }
-                ShadowActions::FromFarming => {
-                    account.update_shadow_record(pool_id, &ShadowActions::ToFarming, amount.0);
-                }
-                ShadowActions::FromBurrowland => {
-                    account.update_shadow_record(pool_id, &ShadowActions::ToBurrowland, amount.0);
-                }
+                _ => {}
             }
             self.internal_save_account(&sender_id, account);
             false
         } else {
             match action {
                 ShadowActions::FromFarming | ShadowActions::FromBurrowland => {
-                    if storage_fee.0 > 0 {
-                        let mut account = self.internal_unwrap_account(&sender_id); 
-                        account.near_amount += storage_fee.0;
-                        self.internal_save_account(&sender_id, account);
+                    let prev_storage = env::storage_usage();
+                    let mut account = self.internal_unwrap_account(&sender_id); 
+                    account.update_shadow_record(pool_id, &action, amount.0);
+                    if prev_storage > env::storage_usage() {
+                        account.near_amount += (prev_storage - env::storage_usage()) as Balance * env::storage_byte_cost()
                     }
+                    self.internal_save_account(&sender_id, account);
                 }
                 _ => {}
             }

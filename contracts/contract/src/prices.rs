@@ -1,8 +1,10 @@
 use crate::*;
 use std::convert::TryFrom;
 
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
 pub struct Prices {
-    prices: HashMap<TokenId, Price>,
+    pub prices: HashMap<TokenId, Price>,
 }
 
 impl Prices {
@@ -13,7 +15,7 @@ impl Prices {
     }
 
     pub fn get_unwrap(&self, token_id: &TokenId) -> &Price {
-        self.prices.get(token_id).expect("Asset price is missing")
+        self.prices.get(token_id).expect(format!("Asset {} price is missing", token_id).as_str())
     }
 }
 

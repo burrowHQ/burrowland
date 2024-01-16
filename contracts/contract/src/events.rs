@@ -173,6 +173,21 @@ pub mod emit {
         );
     }
 
+    pub fn force_close_remain_borrowed(
+        liquidation_account_id: &AccountId,
+        remain_borrowed: &HashMap<TokenId, Shares>,
+        position: &String
+    ) {
+        log_event(
+            "force_close_remain_borrowed",
+            json!({
+                "liquidation_account_id": liquidation_account_id,
+                "remain_borrowed": remain_borrowed,
+                "position": position,
+            }),
+        );
+    }
+
     pub fn booster_stake(
         account_id: &AccountId,
         amount: Balance,

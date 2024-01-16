@@ -27,6 +27,7 @@ mod margin_accounts;
 mod margin_actions;
 mod margin_trading;
 mod margin_config;
+mod pyth;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -55,12 +56,13 @@ pub use crate::margin_accounts::*;
 pub use crate::margin_actions::*;
 pub use crate::margin_trading::*;
 pub use crate::margin_config::*;
+pub use crate::pyth::*;
 
 use common::*;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{I64, U64, U128};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     assert_one_yocto, env, ext_contract, log, near_bindgen, AccountId, Balance, BorshStorageKey,
@@ -102,6 +104,7 @@ pub struct Contract {
     pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
     pub margin_accounts: UnorderedMap<AccountId, VMarginAccount>,
     pub margin_config: LazyOption<MarginConfig>,
+    pub token_pyth_info: HashMap<TokenId, TokenPythInfo>
 }
 
 #[near_bindgen]
@@ -131,6 +134,7 @@ impl Contract {
                 registered_dexes: HashMap::new(),
                 registered_tokens: HashMap::new(),
             })),
+            token_pyth_info: HashMap::new(),
         }
     }
 
@@ -157,6 +161,25 @@ impl Contract {
 
     pub fn get_guardians(&self) -> Vec<AccountId> {
         self.guardians.to_vec()
+    }
+
+    #[payable]
+    pub fn add_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        self.token_pyth_info.insert(token_id, token_pyth_info);
+    }
+
+    #[payable]
+    pub fn remove_token_pyth_info(&mut self, token_id: TokenId) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        let is_success = self.token_pyth_info.remove(&token_id).is_some();
+        assert!(is_success, "Invalid token id");
+    }
+
+    pub fn get_token_pyth_info(&mut self) -> HashMap<TokenId, TokenPythInfo> {
+        self.token_pyth_info.clone()
     }
 }
 
@@ -373,7 +396,8 @@ mod unit_env {
                     account_id: liquidation_user,
                     in_assets,
                     out_assets,
-                    position: None
+                    position: None,
+                    min_token_amounts: None
                 }],
             }).unwrap();
             self.contract_oracle_call(sender_id, price_data, msg);
@@ -382,7 +406,7 @@ mod unit_env {
         pub fn force_close(&mut self, sender_id: AccountId, force_close_user: AccountId, price_data: PriceData) {
             let msg = serde_json::to_string(&PriceReceiverMsg::Execute {
                 actions: vec![
-                    Action::ForceClose { account_id: force_close_user, position: None }],
+                    Action::ForceClose { account_id: force_close_user, position: None, min_token_amounts: None }],
             }).unwrap();
             self.contract_oracle_call(sender_id, price_data, msg);
         }
@@ -498,6 +522,9 @@ mod unit_env {
     pub fn oracle_id() -> AccountId {
         AccountId::new_unchecked("oracle_id".to_string())
     }
+    pub fn pyth_oracle_id() -> AccountId {
+        AccountId::new_unchecked("pyth".to_string())
+    }
     pub fn ref_exchange_id() -> AccountId {
         AccountId::new_unchecked("ref_exchange_id".to_string())
     }
@@ -540,6 +567,7 @@ mod unit_env {
         testing_env!(context.predecessor_account_id(owner_id()).build());
         let contract = Contract::new(Config {
             oracle_account_id: oracle_id(),
+            pyth_oracle_account_id: pyth_oracle_id(),
             ref_exchange_id: ref_exchange_id(),
             owner_id: owner_id(),
             booster_token_id: booster_token_id(),
@@ -548,10 +576,12 @@ mod unit_env {
             maximum_recency_duration_sec: 90,
             maximum_staleness_duration_sec: 15,
             lp_tokens_info_valid_duration_sec: 600,
+            pyth_price_valid_duration_sec: 60,
             minimum_staking_duration_sec: 2678400,
             maximum_staking_duration_sec: 31536000,
             x_booster_multiplier_at_maximum_staking_duration: 40000,
             force_closing_enabled: true,
+            enable_price_oracle: true,
         });
         let mut test_env = UnitEnv{
             contract,

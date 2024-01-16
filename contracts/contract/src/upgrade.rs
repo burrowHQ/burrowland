@@ -7,27 +7,28 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     pub fn migrate_state() -> Self {
-        let ContractV090 { 
-            accounts, 
-            storage, 
-            assets, 
-            asset_farms, 
-            asset_ids, 
-            config, 
-            guardians,
-            last_prices ,
-            last_lp_token_infos,
-        } = env::state_read().unwrap();
-        // let config_v0 = config.get().unwrap();
-        Self { 
-            accounts, 
-            storage, 
-            assets, 
-            asset_farms, 
-            asset_ids, 
+        let ContractV0100 {
+            accounts,
+            storage,
+            assets,
+            asset_farms,
+            asset_ids,
             config,
             guardians,
-            last_prices, 
+            last_prices,
+            last_lp_token_infos,
+            token_pyth_info
+        } = env::state_read().unwrap();
+
+        Self {
+            accounts,
+            storage,
+            assets,
+            asset_farms,
+            asset_ids,
+            config,
+            guardians,
+            last_prices,
             last_lp_token_infos,
             margin_accounts: UnorderedMap::new(StorageKey::MarginAccounts),
             margin_config: LazyOption::new(StorageKey::MarginConfig, Some(&MarginConfig {
@@ -40,6 +41,7 @@ impl Contract {
                 registered_dexes: HashMap::new(),
                 registered_tokens: HashMap::new(),
             })),
+            token_pyth_info
         }
     }
 

@@ -1,5 +1,5 @@
 
-use mock_ref_exchange::{ContractMetadata, StablePoolInfo, ShadowRecordInfo, RefStorageState, ShadowActions, AccountBaseInfo};
+use mock_ref_exchange::{ContractMetadata, StablePoolInfo, ShadowRecordInfo, RefStorageState, ShadowActions, AccountBaseInfo, UnitShareCumulativeInfoView};
 
 use crate::*;
 
@@ -53,6 +53,19 @@ impl RefExchange {
         token_contract.ft_transfer_call(caller, self.0.id(), amount, "".to_string()).await
     }
 
+    pub async fn swap(
+        &self,
+        token_contract: &FtContract,
+        caller: &Account,
+        amount: u128,
+        pool_id: u64,
+        token_out_id: &AccountId
+    ) -> Result<ExecutionFinalResult> {
+        token_contract.ft_transfer_call(caller, self.0.id(), amount,
+        format!("{{\"actions\": [{{\"pool_id\": {}, \"token_in\": \"{}\", \"token_out\": \"{}\", \"min_amount_out\": \"1\"}}]}}", pool_id, token_contract.0.id().to_string(), token_out_id.to_string())
+        ).await
+    }
+
     pub async fn extend_whitelisted_tokens(
         &self,
         caller: &Account,
@@ -83,6 +96,91 @@ impl RefExchange {
             }))
             .max_gas()
             .deposit(parse_near!("1 N"))
+            .transact()
+            .await
+    }
+
+    pub async fn add_simple_swap_pool(
+        &self,
+        caller: &Account,
+        tokens: Vec<&AccountId>,
+        fee: u32,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "add_simple_pool")
+            .args_json(json!({
+                "tokens": tokens,
+                "fee": fee,
+            }))
+            .max_gas()
+            .deposit(parse_near!("0.01 N"))
+            .transact()
+            .await
+    }
+
+    pub async fn add_simple_liquidity(
+        &self,
+        caller: &Account,
+        pool_id: u64,
+        amounts: Vec<U128>,
+        min_amounts: Option<Vec<U128>>,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "add_liquidity")
+            .args_json(json!({
+                "pool_id": pool_id,
+                "amounts": amounts,
+                "min_amounts": min_amounts,
+            }))
+            .max_gas()
+            .deposit(parse_near!("0.01 N"))
+            .transact()
+            .await
+    }
+
+    pub async fn register_pool_twap_record(
+        &self,
+        caller: &Account,
+        pool_id: u64,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "register_pool_twap_record")
+            .args_json(json!({
+                "pool_id": pool_id,
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
+
+    pub async fn modify_cumulative_info_record_interval_sec (
+        &self,
+        caller: &Account,
+        record_interval_sec: u32
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "modify_cumulative_info_record_interval_sec")
+            .args_json(json!({
+                "record_interval_sec": record_interval_sec,
+            }))
+            .deposit(1)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn sync_pool_twap_record(
+        &self,
+        caller: &Account,
+        pool_id: u64,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "sync_pool_twap_record")
+            .args_json(json!({
+                "pool_id": pool_id,
+            }))
+            .max_gas()
             .transact()
             .await
     }
@@ -287,5 +385,19 @@ impl RefExchange {
             .view()
             .await?
             .json::<Option<AccountBaseInfo>>()
+    }
+
+    pub async fn get_pool_twap_info_view(
+        &self,
+        pool_id: u64
+    ) -> Result<Option<UnitShareCumulativeInfoView>> {
+        self.0
+            .call("get_pool_twap_info_view")
+            .args_json(json!({
+                "pool_id": pool_id
+            }))
+            .view()
+            .await?
+            .json::<Option<UnitShareCumulativeInfoView>>()
     }
 }

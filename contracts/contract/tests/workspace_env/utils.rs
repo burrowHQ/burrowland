@@ -80,6 +80,13 @@ pub fn price_data(
                 decimals: 10,
             }),
         },
+        AssetOptionalPrice {
+            asset_id: "ref.test.near".to_string(),
+            price: Some(Price {
+                multiplier: 10000,
+                decimals: 22,
+            }),
+        },
     ];
     if let Some(wnear_mul) = wnear_mul {
         prices.push(AssetOptionalPrice {
