@@ -10,6 +10,8 @@ pub const EXTRA_CALL_GET_ST_NEAR_PRICE: &str = "get_st_near_price";
 pub const EXTRA_CALL_GET_NEARX_PRICE: &str = "get_nearx_price";
 pub const EXTRA_CALL_FT_PRICE: &str = "ft_price";
 
+pub const GET_PRICE_PROMISES_LIMIT: usize = 10;
+
 pub const FLAG_PARTITION: &str = "@";
 
 pub const ONE_NEAR: u128 = 10u128.pow(24);
@@ -157,6 +159,7 @@ impl Contract {
         let pyth_oracle_account_id = self.internal_config().pyth_oracle_account_id;
         let involved_tokens = self.involved_tokens(&account, &actions);
         if involved_tokens.len() > 0 {
+            assert!(self.internal_config().enable_pyth_oracle, "Pyth oracle disabled");
             let (mut all_promise_flags, mut promise) = token_involved_promises(
                     &pyth_oracle_account_id, &self.get_pyth_info_by_token(&involved_tokens[0]), &involved_tokens[0]);
             for token in involved_tokens[1..].iter() {
@@ -165,6 +168,7 @@ impl Contract {
                 all_promise_flags.extend(token_promise_flags);
                 promise = promise.and(token_promise);
             }
+            assert!(all_promise_flags.len() <= GET_PRICE_PROMISES_LIMIT, "Too many promises to get prices");
             promise.then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_CALLBACK_EXECUTE_WITH_PYTH)

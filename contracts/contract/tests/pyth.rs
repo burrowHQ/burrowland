@@ -173,17 +173,6 @@ async fn test_pyth() -> Result<()> {
     check!(view pyth_contract.get_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588"));
 
 
-    // usdt
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, usdt_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None));
-    check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
-        price: I64(99980647),
-        conf: U64(103853),
-        expo: -8,
-        publish_time: nano_to_sec(current_timestamp) as i64,
-    }));
-    check!(view pyth_contract.get_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588"));
-
     // usdc
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(burrowland_contract.add_token_pyth_info(&root, usdc_token_contract.0.id(), 6, 4, "41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", None));
@@ -1073,6 +1062,8 @@ async fn test_switch_price_oracle() -> Result<()> {
     let worker = workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
+    let pyth_contract = deploy_mock_pyth(&root).await?;
+
     let nusdc_token_contract = deploy_mock_ft(&root, "nusdc", 18).await?;
     let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
     let wrap_reserve_amount = d(10000, 24);
@@ -1090,22 +1081,46 @@ async fn test_switch_price_oracle() -> Result<()> {
     check!(burrowland_contract.storage_deposit(&alice));
     let supply_amount = d(1000, 18);
     let extra_decimals_mult = d(1, 12);
-    check!(nusdc_token_contract.ft_mint(&root, &alice, supply_amount));
+    check!(nusdc_token_contract.ft_mint(&root, &alice, supply_amount * 10));
     check!(wrap_token_contract.ft_storage_deposit(alice.id()));
 
     check!(burrowland_contract.supply_to_collateral(&nusdc_token_contract, &alice, (supply_amount / extra_decimals_mult).into()));
     
     assert!(burrowland_contract.get_config().await?.enable_price_oracle);
-    check!(burrowland_contract.enable_price_oracle(&root, false));
+    check!(burrowland_contract.enable_oracle(&root, false, false));
     assert!(!burrowland_contract.get_config().await?.enable_price_oracle);
+
+    // near
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None));
+    check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
+        price: I64(278100000),
+        conf: U64(278100),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(view pyth_contract.get_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4"));
+
+    // usdc
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(burrowland_contract.add_token_pyth_info(&root, nusdc_token_contract.0.id(), 6, 4, "41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", None));
+    check!(pyth_contract.set_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", PythPrice{
+        price: I64(99980647),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(view pyth_contract.get_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722"));
 
     let borrow_amount = d(50, 24);
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(view burrowland_contract.get_account_all_positions(&alice));
     check!(burrowland_contract.borrow_and_withdraw(&alice, &oracle_contract, burrowland_contract.0.id(), price_data(current_timestamp, Some(100000)), wrap_token_contract.0.id(), borrow_amount), "Price oracle disabled");
-    check!(burrowland_contract.enable_price_oracle(&root, true));
+    check!(burrowland_contract.deposit_increase_collateral_borrow_withdraw_with_pyth(&nusdc_token_contract, &alice, (supply_amount / extra_decimals_mult).into(), wrap_token_contract.0.id(), borrow_amount), "Pyth oracle disabled");
+    check!(burrowland_contract.enable_oracle(&root, true, true));
     check!(view burrowland_contract.get_account_all_positions(&alice));
     check!(burrowland_contract.borrow_and_withdraw(&alice, &oracle_contract, burrowland_contract.0.id(), price_data(current_timestamp, Some(100000)), wrap_token_contract.0.id(), borrow_amount));
+    check!(burrowland_contract.deposit_increase_collateral_borrow_withdraw_with_pyth(&nusdc_token_contract, &alice, (supply_amount / extra_decimals_mult).into(), wrap_token_contract.0.id(), borrow_amount));
     check!(view burrowland_contract.get_account_all_positions(&alice));
     Ok(())
 }

@@ -142,6 +142,15 @@ impl Contract {
     pub fn add_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
         assert_one_yocto();
         self.assert_owner_or_guardians();
+        assert!(!self.token_pyth_info.contains_key(&token_id), "Already exist");
+        self.token_pyth_info.insert(token_id, token_pyth_info);
+    }
+
+    #[payable]
+    pub fn update_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        assert!(self.token_pyth_info.contains_key(&token_id), "Invalid token_id");
         self.token_pyth_info.insert(token_id, token_pyth_info);
     }
 
@@ -551,6 +560,7 @@ mod unit_env {
             x_booster_multiplier_at_maximum_staking_duration: 40000,
             force_closing_enabled: true,
             enable_price_oracle: true,
+            enable_pyth_oracle: true
         });
         let mut test_env = UnitEnv{
             contract,

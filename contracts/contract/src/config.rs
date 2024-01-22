@@ -60,6 +60,8 @@ pub struct Config {
 
     /// Whether to use the price of price oracle
     pub enable_price_oracle: bool,
+    /// Whether to use the price of pyth oracle
+    pub enable_pyth_oracle: bool,
 }
 
 impl Config {
@@ -171,15 +173,16 @@ impl Contract {
         self.internal_set_asset(&token_id, asset);
     }
 
-    /// Enable or disable price oracle
+    /// Enable or disable oracle
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner or guardians.
     #[payable]
-    pub fn enable_price_oracle(&mut self, enable: bool) {
+    pub fn enable_oracle(&mut self, enable_price_oracle: bool, enable_pyth_oracle: bool) {
         assert_one_yocto();
         self.assert_owner_or_guardians();
         let mut config = self.internal_config();
-        config.enable_price_oracle = enable;
+        config.enable_price_oracle = enable_price_oracle;
+        config.enable_pyth_oracle = enable_pyth_oracle;
         self.config.set(&config);
     }
 

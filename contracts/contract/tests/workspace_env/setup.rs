@@ -50,6 +50,7 @@ pub async fn deploy_burrowland(
                 x_booster_multiplier_at_maximum_staking_duration: 40000,
                 force_closing_enabled: true,
                 enable_price_oracle: true,
+                enable_pyth_oracle: true
             },
         }))
         .max_gas()

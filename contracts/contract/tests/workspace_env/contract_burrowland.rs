@@ -21,15 +21,17 @@ impl Burrowland {
             .await
     }
 
-    pub async fn enable_price_oracle(
+    pub async fn enable_oracle(
         &self,
         caller: &Account,
-        enable: bool
+        enable_price_oracle: bool,
+        enable_pyth_oracle: bool
     ) -> Result<ExecutionFinalResult> {
         caller
-            .call(self.0.id(), "enable_price_oracle")
+            .call(self.0.id(), "enable_oracle")
             .args_json(json!({
-                "enable": enable
+                "enable_price_oracle": enable_price_oracle,
+                "enable_pyth_oracle": enable_pyth_oracle
             }))
             .max_gas()
             .deposit(1)
