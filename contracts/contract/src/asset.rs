@@ -32,6 +32,7 @@ pub struct Asset {
 pub enum VAsset {
     V0(AssetV0),
     V1(AssetV1),
+    V2(AssetV2),
     Current(Asset),
 }
 
@@ -40,6 +41,7 @@ impl From<VAsset> for Asset {
         match v {
             VAsset::V0(v) => v.into(),
             VAsset::V1(v) => v.into(),
+            VAsset::V2(v) => v.into(),
             VAsset::Current(c) => c,
         }
     }
@@ -153,6 +155,28 @@ impl Contract {
     }
 
     pub fn internal_set_asset(&mut self, token_id: &TokenId, mut asset: Asset) {
+        assert!(asset.supplied.shares.0 == 0 ||
+            asset.supplied.shares.0 >= asset.config.min_reserve_shares.0, "Asset {} supply shares cannot be less than {}", token_id, asset.config.min_reserve_shares.0);
+        assert!(asset.borrowed.shares.0 == 0 || 
+            asset.borrowed.shares.0 >= asset.config.min_reserve_shares.0, "Asset {} borrow shares cannot be less than {}", token_id, asset.config.min_reserve_shares.0);
+        if asset.supplied.shares.0 == 0 && asset.supplied.balance > 0 {
+            asset.reserved += asset.supplied.balance;
+            asset.supplied.balance = 0;
+        }
+        assert!(
+            asset.borrowed.shares.0 > 0 || asset.borrowed.balance == 0,
+            "Borrowed invariant broken"
+        );
+        asset.supplied.assert_invariant();
+        asset.borrowed.assert_invariant();
+        ASSETS
+            .lock()
+            .unwrap()
+            .insert(token_id.clone(), Some(asset.clone()));
+        self.assets.insert(token_id, &asset.into());
+    }
+
+    pub fn internal_set_asset_without_check_min_reserve_shares(&mut self, token_id: &TokenId, mut asset: Asset) {
         if asset.supplied.shares.0 == 0 && asset.supplied.balance > 0 {
             asset.reserved += asset.supplied.balance;
             asset.supplied.balance = 0;

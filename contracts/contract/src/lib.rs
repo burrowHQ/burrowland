@@ -184,6 +184,7 @@ mod unit_env {
                     can_use_as_collateral: false,
                     can_borrow: false,
                     net_tvl_multiplier: 10000,
+                    min_reserve_shares: 0u128.into()
                 });
             self.deposit_to_reserve(booster_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -202,6 +203,7 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    min_reserve_shares: 0u128.into()
                 });
             self.deposit_to_reserve(neth_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -220,6 +222,7 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    min_reserve_shares: 0u128.into()
                 });
             self.deposit_to_reserve(ndai_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -238,6 +241,7 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    min_reserve_shares: 0u128.into()
                 });
             self.deposit_to_reserve(nusdt_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -256,6 +260,7 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    min_reserve_shares: 0u128.into()
                 });
             self.deposit_to_reserve(nusdc_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -274,6 +279,7 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    min_reserve_shares: 0u128.into()
                 });
             self.deposit_to_reserve(wnear_token_id(), owner_id(), d(10000, 24));
         }
@@ -2012,6 +2018,7 @@ mod farms {
             can_use_as_collateral: true,
             can_borrow: true,
             net_tvl_multiplier: 8000,
+            min_reserve_shares: 0u128.into()
         });
 
         let amount = d(100, 18);

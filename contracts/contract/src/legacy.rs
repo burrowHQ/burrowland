@@ -228,6 +228,7 @@ impl From<AssetConfigV0> for AssetConfig {
             can_use_as_collateral,
             can_borrow,
             net_tvl_multiplier: DEFAULT_NET_TVL_MULTIPLIER,
+            min_reserve_shares: 0u128.into()
         }
     }
 }
@@ -338,6 +339,7 @@ impl From<AssetConfigV1> for AssetConfig {
             can_use_as_collateral,
             can_borrow,
             net_tvl_multiplier,
+            min_reserve_shares: 0u128.into()
         }
     }
 }
@@ -371,6 +373,126 @@ impl From<AssetV1> for Asset {
             borrowed,
             reserved,
             prot_fee: 0,
+            last_update_timestamp,
+            config: config.into(),
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AssetConfigV2 {
+    /// The ratio of interest that is reserved by the protocol (multiplied by 10000).
+    /// E.g. 2500 means 25% from borrowed interests goes to the reserve.
+    pub reserve_ratio: u32,
+    /// The ratio of reserved interest that belongs to the protocol (multiplied by 10000).
+    /// E.g. 2500 means 25% from reserved interests goes to the prot.
+    pub prot_ratio: u32,
+    /// Target utilization ratio (multiplied by 10000).
+    /// E.g. 8000 means the protocol targets 80% of assets are borrowed.
+    pub target_utilization: u32,
+    /// The compounding rate at target utilization ratio.
+    /// Use `apr_to_rate.py` script to compute the value for a given APR.
+    /// Given as a decimal string. E.g. "1000000000003593629036885046" for 12% APR.
+    pub target_utilization_rate: LowU128,
+    /// The compounding rate at 100% utilization.
+    /// Use `apr_to_rate.py` script to compute the value for a given APR.
+    /// Given as a decimal string. E.g. "1000000000039724853136740579" for 250% APR.
+    pub max_utilization_rate: LowU128,
+    /// Volatility ratio (multiplied by 10000).
+    /// It defines which percentage collateral that covers borrowing as well as which percentage of
+    /// borrowed asset can be taken.
+    /// E.g. 6000 means 60%. If an account has 100 $ABC in collateral and $ABC is at 10$ per token,
+    /// the collateral value is 1000$, but the borrowing power is 60% or $600.
+    /// Now if you're trying to borrow $XYZ and it's volatility ratio is 80%, then you can only
+    /// borrow less than 80% of $600 = $480 of XYZ before liquidation can begin.
+    pub volatility_ratio: u32,
+    /// The amount of extra decimals to use for the fungible token. For example, if the asset like
+    /// USDT has `6` decimals in the metadata, the `extra_decimals` can be set to `12`, to make the
+    /// inner balance of USDT at `18` decimals.
+    pub extra_decimals: u8,
+    /// Whether the deposits of this assets are enabled.
+    pub can_deposit: bool,
+    /// Whether the withdrawals of this assets are enabled.
+    pub can_withdraw: bool,
+    /// Whether this assets can be used as collateral.
+    pub can_use_as_collateral: bool,
+    /// Whether this assets can be borrowed.
+    pub can_borrow: bool,
+    /// NetTvl asset multiplier (multiplied by 10000).
+    /// Default multiplier is 10000, means the asset weight shouldn't be changed.
+    /// Example: a multiplier of 5000 means the asset in TVL should only counted as 50%, e.g. if an
+    /// asset is not useful for borrowing, but only useful as a collateral.
+    pub net_tvl_multiplier: u32,
+}
+
+impl From<AssetConfigV2> for AssetConfig {
+    fn from(a: AssetConfigV2) -> Self {
+        let AssetConfigV2 {
+            reserve_ratio,
+            prot_ratio,
+            target_utilization,
+            target_utilization_rate,
+            max_utilization_rate,
+            volatility_ratio,
+            extra_decimals,
+            can_deposit,
+            can_withdraw,
+            can_use_as_collateral,
+            can_borrow,
+            net_tvl_multiplier,
+
+        } = a;
+        Self {
+            reserve_ratio,
+            prot_ratio,
+            target_utilization,
+            target_utilization_rate,
+            max_utilization_rate,
+            volatility_ratio,
+            extra_decimals,
+            can_deposit,
+            can_withdraw,
+            can_use_as_collateral,
+            can_borrow,
+            net_tvl_multiplier,
+            min_reserve_shares: 0u128.into()
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AssetV2 {
+    /// Total supplied including collateral, but excluding reserved.
+    pub supplied: Pool,
+    /// Total borrowed.
+    pub borrowed: Pool,
+    /// The amount reserved for the stability. This amount can also be borrowed and affects
+    /// borrowing rate.
+    pub reserved: Balance,
+    /// The amount belongs to the protocol. This amount can also be borrowed and affects
+    /// borrowing rate.
+    pub prot_fee: Balance,
+    /// When the asset was last updated. It's always going to be the current block timestamp.
+    pub last_update_timestamp: Timestamp,
+    /// The asset config.
+    pub config: AssetConfigV2,
+}
+
+impl From<AssetV2> for Asset {
+    fn from(a: AssetV2) -> Self {
+        let AssetV2 {
+            supplied,
+            borrowed,
+            reserved,
+            prot_fee,
+            last_update_timestamp,
+            config,
+        } = a;
+        Self {
+            supplied,
+            borrowed,
+            reserved,
+            prot_fee,
             last_update_timestamp,
             config: config.into(),
         }

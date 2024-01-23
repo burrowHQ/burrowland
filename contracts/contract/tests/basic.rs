@@ -174,6 +174,7 @@ async fn test_modify_config() -> Result<()> {
         can_use_as_collateral: true,
         can_borrow: false,
         net_tvl_multiplier: 10000,
+        min_reserve_shares: 0u128.into()
     }));
 
     let asset = burrowland_contract.get_asset(&token_id).await?;

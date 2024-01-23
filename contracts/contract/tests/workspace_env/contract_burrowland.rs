@@ -55,6 +55,24 @@ impl Burrowland {
             .await
     }
 
+    pub async fn update_asset_config_min_reserve_shares(
+        &self,
+        caller: &Account,
+        token_id: &AccountId, 
+        min_reserve_shares: u128
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "update_asset_config_min_reserve_shares")
+            .args_json(json!({
+                "token_id": token_id, 
+                "min_reserve_shares": U128(min_reserve_shares)
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
+
     pub async fn add_asset(
         &self,
         caller: &Account,
@@ -566,6 +584,7 @@ impl Burrowland {
                 can_use_as_collateral: false,
                 can_borrow: false,
                 net_tvl_multiplier: 10000,
+                min_reserve_shares: 0u128.into()
             },
             "wrap.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -580,6 +599,7 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 10000,
+                min_reserve_shares: 0u128.into()
             },
             "neth.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -594,6 +614,7 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 10000,
+                min_reserve_shares: 0u128.into()
             },
             "ndai.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -608,6 +629,7 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 10000,
+                min_reserve_shares: 0u128.into()
             },
             "nusdt.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -622,6 +644,7 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 10000,
+                min_reserve_shares: 0u128.into()
             },
             "nusdc.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -636,6 +659,7 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 10000,
+                min_reserve_shares: 0u128.into()
             },
             _ => {
                 panic!("unsupported token: {:?}", token_id);

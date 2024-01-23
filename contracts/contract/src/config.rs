@@ -145,6 +145,19 @@ impl Contract {
         self.internal_set_asset(&token_id, asset);
     }
 
+    /// Updates the min_reserve_shares for the asset_config with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    pub fn update_asset_config_min_reserve_shares(&mut self, token_id: AccountId, min_reserve_shares: U128) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        asset.config.min_reserve_shares = min_reserve_shares;
+        self.internal_set_asset(&token_id, asset);
+    }
+
     /// Updates the prot_ratio for the asset with the a given token_id.
     /// - Panics if the prot_ratio is invalid.
     /// - Panics if an asset with the given token_id doesn't exist.

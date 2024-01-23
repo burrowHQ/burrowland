@@ -194,11 +194,12 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
             max_utilization_rate: 1000000000039724853136740579u128.into(),
             volatility_ratio: 9999,
             extra_decimals: 0,
-            can_deposit: false,
-            can_withdraw: false,
+            can_deposit: true,
+            can_withdraw: true,
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            min_reserve_shares: 0u128.into()
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -344,6 +345,7 @@ async fn test_position_liquidate() -> Result<()> {
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            min_reserve_shares: 0u128.into()
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -513,6 +515,7 @@ async fn test_position_force_close() -> Result<()> {
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            min_reserve_shares: 0u128.into()
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -668,6 +671,7 @@ async fn test_position_farming_with_force_close() -> Result<()> {
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            min_reserve_shares: 0u128.into()
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -787,6 +791,7 @@ async fn test_position_farming_liquidate() -> Result<()> {
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            min_reserve_shares: 0u128.into()
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -908,6 +913,7 @@ async fn test_twap() -> Result<()> {
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            min_reserve_shares: 0u128.into()
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -971,5 +977,106 @@ async fn test_twap() -> Result<()> {
 
     check!(burrowland_contract.sync_ref_exchange_lp_token_infos(&root, Some(vec![token_id.to_string().clone()])));
     check!(view "sync 3" burrowland_contract.get_last_lp_token_infos());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_asset_config_min_shares() -> Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let root = worker.root_account()?;
+
+    let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
+    let usdt_token_contract = deploy_mock_ft(&root, "nusdt", 6).await?;
+    let usdc_token_contract = deploy_mock_ft(&root, "nusdc", 6).await?;
+    let dai_token_contract = deploy_mock_ft(&root, "ndai", 18).await?;
+    let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
+    
+    let ref_exchange_contract = deploy_ref_exchange(&root).await?;
+    {
+        check!(usdt_token_contract.ft_storage_deposit(ref_exchange_contract.0.id()));
+        check!(usdc_token_contract.ft_storage_deposit(ref_exchange_contract.0.id()));
+        check!(dai_token_contract.ft_storage_deposit(ref_exchange_contract.0.id()));
+        check!(ref_exchange_contract.storage_deposit(&root));
+        check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()]));
+    }
+    let burrowland_contract = deploy_burrowland(&root).await?;
+    {
+        check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
+        check!(burrowland_contract.add_asset_handler(&root, &usdt_token_contract));
+        check!(burrowland_contract.add_asset_handler(&root, &usdc_token_contract));
+        check!(burrowland_contract.add_asset_handler(&root, &dai_token_contract));
+        check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
+
+        check!(burrowland_contract.add_asset(&root, &token_id, AssetConfig{
+            reserve_ratio: 2500,
+            prot_ratio: 0,
+            target_utilization: 8000,
+            target_utilization_rate: 1000000000003593629036885046u128.into(),
+            max_utilization_rate: 1000000000039724853136740579u128.into(),
+            volatility_ratio: 9999,
+            extra_decimals: 0,
+            can_deposit: true,
+            can_withdraw: true,
+            can_use_as_collateral: true,
+            can_borrow: false,
+            net_tvl_multiplier: 10000,
+            min_reserve_shares: d(10,18).into()
+        }));
+        check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
+        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
+        check!(burrowland_contract.storage_deposit(&root));
+    }
+    let oralce_contract = deploy_oralce(&root).await?;
+
+    let alice = tool_create_account(&root, "alice", None).await;
+    check!(ref_exchange_contract.storage_deposit(&alice));
+    check!(burrowland_contract.storage_deposit(&alice));
+    let bob = tool_create_account(&root, "bob", None).await;
+    check!(ref_exchange_contract.storage_deposit(&bob));
+    check!(burrowland_contract.storage_deposit(&bob));
+    
+    assert!(usdt_token_contract.ft_mint(&root, &alice, 10000 * 10u128.pow(6)).await?.is_success());
+    assert!(usdc_token_contract.ft_mint(&root, &alice, 10000 * 10u128.pow(6)).await?.is_success());
+    assert!(dai_token_contract.ft_mint(&root, &alice, 10000 * 10u128.pow(18)).await?.is_success());
+    assert!(usdt_token_contract.ft_mint(&root, &root, 10000 * 10u128.pow(6)).await?.is_success());
+    assert!(usdc_token_contract.ft_mint(&root, &root, 10000 * 10u128.pow(6)).await?.is_success());
+    assert!(dai_token_contract.ft_mint(&root, &root, 10000 * 10u128.pow(18)).await?.is_success());
+
+    assert!(wrap_token_contract.ft_mint(&root, &alice, 10000 * 10u128.pow(6)).await?.is_success());
+
+    check!(ref_exchange_contract.deposit(&usdt_token_contract, &alice, 10000 * 10u128.pow(6)));
+    check!(ref_exchange_contract.deposit(&usdc_token_contract, &alice, 10000 * 10u128.pow(6)));
+    check!(ref_exchange_contract.deposit(&dai_token_contract, &alice, 10000 * 10u128.pow(18)));
+    check!(ref_exchange_contract.deposit(&usdt_token_contract, &root, 10000 * 10u128.pow(6)));
+    check!(ref_exchange_contract.deposit(&usdc_token_contract, &root, 10000 * 10u128.pow(6)));
+    check!(ref_exchange_contract.deposit(&dai_token_contract, &root, 10000 * 10u128.pow(18)));
+    
+    check!(ref_exchange_contract.add_stable_swap_pool(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()], vec![6, 6, 18], 5, 240));
+    check!(ref_exchange_contract.add_stable_liquidity(&alice, 0, vec![U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(18))], U128(1)));
+    check!(ref_exchange_contract.add_stable_liquidity(&root, 0, vec![U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(6)), U128(10000 * 10u128.pow(18))], U128(1)));
+    check!(ref_exchange_contract.register_pool_twap_record(&root, 0));
+    check!(ref_exchange_contract.modify_cumulative_info_record_interval_sec(&root, 0));
+
+    let mut twap_info = ref_exchange_contract.get_pool_twap_info_view(0).await?.unwrap();
+    while twap_info.records.len() < RECORD_COUNT_LIMIT {
+        check!(ref_exchange_contract.sync_pool_twap_record(&root, 0));
+        twap_info = ref_exchange_contract.get_pool_twap_info_view(0).await?.unwrap();
+    }
+    
+    check!(ref_exchange_contract.shadow_burrowland_deposit(&alice, 0, Some(d(2,18).into()), None), "Asset shadow_ref_v1-0 supply shares cannot be less than 10000000000000000000");
+    check!(burrowland_contract.update_asset_config_min_reserve_shares(&root, &token_id, d(20,18)));
+    check!(ref_exchange_contract.shadow_burrowland_deposit(&alice, 0, Some(d(2,18).into()), None), "Asset shadow_ref_v1-0 supply shares cannot be less than 20000000000000000000");
+    check!(ref_exchange_contract.shadow_burrowland_deposit(&alice, 0, Some(d(20,18).into()), None));
+
+    check!(burrowland_contract.sync_ref_exchange_lp_token_infos(&root, Some(vec![token_id.to_string().clone()])));
+    check!(burrowland_contract.position_increase_collateral(&alice, &token_id, 0));
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(burrowland_contract.update_asset_config_min_reserve_shares(&root, wrap_token_contract.0.id(), d(5,24)));
+    check!(burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
+    price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("1 N"), 0), "Asset wrap.test.near supply shares cannot be less than 5000000000000000000000000");
+    check!(burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
+    price_data(current_timestamp, Some(1000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("5 N"), 0));
+    check!(view burrowland_contract.get_account_all_positions(&alice));
+
     Ok(())
 }

@@ -69,6 +69,8 @@ pub struct AssetConfig {
     /// Example: a multiplier of 5000 means the asset in TVL should only counted as 50%, e.g. if an
     /// asset is not useful for borrowing, but only useful as a collateral.
     pub net_tvl_multiplier: u32,
+
+    pub min_reserve_shares: U128,
 }
 
 impl AssetConfig {
@@ -127,6 +129,7 @@ mod tests {
             can_use_as_collateral: true,
             can_borrow: true,
             net_tvl_multiplier: 10000,
+            min_reserve_shares: 0u128.into()
         }
     }
 
