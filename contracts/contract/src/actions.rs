@@ -71,6 +71,7 @@ impl Contract {
             assert!(!account.is_locked, "Account is locked!");
             match action {
                 Action::Withdraw(asset_amount) => {
+                    assert!(!asset_amount.token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
                     let amount = self.internal_withdraw(account, &asset_amount);
                     self.internal_ft_transfer(account_id, &asset_amount.token_id, amount);
                     events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
@@ -256,6 +257,26 @@ impl Contract {
 
         asset.supplied.deposit(shares, amount);
         self.internal_set_asset(token_id, asset);
+
+        shares
+    }
+
+    pub fn internal_deposit_without_check_min_reserve_shares(
+        &mut self,
+        account: &mut Account,
+        token_id: &TokenId,
+        amount: Balance,
+    ) -> Shares {
+        let mut asset = self.internal_unwrap_asset(token_id);
+        let mut account_asset = account.internal_get_asset_or_default(token_id);
+
+        let shares: Shares = asset.supplied.amount_to_shares(amount, false);
+
+        account_asset.deposit_shares(shares);
+        account.internal_set_asset(&token_id, account_asset);
+
+        asset.supplied.deposit(shares, amount);
+        self.internal_set_asset_without_check_min_reserve_shares(token_id, asset);
 
         shares
     }
