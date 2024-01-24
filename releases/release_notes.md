@@ -1,7 +1,7 @@
 # Release Notes
 Version 0.9.0
 ```bssh=
-# codehash: BRWbY6q5WARwDJyxBBVsh7kwC8fcNp7szitCMrhvigdQ
+# codehash: DUBWfFT1h3NNtvngw22SenyDpeUGN5PRLcNxaopMUpNe 
 ```
 - lp as collateral.
 
