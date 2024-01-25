@@ -555,8 +555,8 @@ mod unit_env {
             maximum_staking_duration_sec: 31536000,
             x_booster_multiplier_at_maximum_staking_duration: 40000,
             force_closing_enabled: true,
-            enable_price_oracle: false,
-            enable_pyth_oracle: true
+            enable_price_oracle: true,
+            enable_pyth_oracle: false
         });
         let mut test_env = UnitEnv{
             contract,
