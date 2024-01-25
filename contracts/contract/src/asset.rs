@@ -2,6 +2,8 @@ use crate::*;
 
 pub const MS_PER_YEAR: u64 = 31536000000;
 
+pub const MIN_RESERVE_SHARES: u128 = 10u128.pow(6);
+
 static ASSETS: Lazy<Mutex<HashMap<TokenId, Option<Asset>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
@@ -153,6 +155,28 @@ impl Contract {
     }
 
     pub fn internal_set_asset(&mut self, token_id: &TokenId, mut asset: Asset) {
+        assert!(asset.supplied.shares.0 == 0 ||
+            asset.supplied.shares.0 >= MIN_RESERVE_SHARES, "Asset {} supply shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
+        assert!(asset.borrowed.shares.0 == 0 || 
+            asset.borrowed.shares.0 >= MIN_RESERVE_SHARES, "Asset {} borrow shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
+        if asset.supplied.shares.0 == 0 && asset.supplied.balance > 0 {
+            asset.reserved += asset.supplied.balance;
+            asset.supplied.balance = 0;
+        }
+        assert!(
+            asset.borrowed.shares.0 > 0 || asset.borrowed.balance == 0,
+            "Borrowed invariant broken"
+        );
+        asset.supplied.assert_invariant();
+        asset.borrowed.assert_invariant();
+        ASSETS
+            .lock()
+            .unwrap()
+            .insert(token_id.clone(), Some(asset.clone()));
+        self.assets.insert(token_id, &asset.into());
+    }
+
+    pub fn internal_set_asset_without_check_min_reserve_shares(&mut self, token_id: &TokenId, mut asset: Asset) {
         if asset.supplied.shares.0 == 0 && asset.supplied.balance > 0 {
             asset.reserved += asset.supplied.balance;
             asset.supplied.balance = 0;
