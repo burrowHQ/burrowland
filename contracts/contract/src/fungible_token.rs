@@ -121,7 +121,7 @@ impl ExtSelf for Contract {
         let promise_success = is_promise_success();
         if !promise_success {
             let mut account = self.internal_unwrap_account(&account_id);
-            self.internal_deposit(&mut account, &token_id, amount.0);
+            self.internal_deposit_without_check_min_reserve_shares(&mut account, &token_id, amount.0);
             events::emit::withdraw_failed(&account_id, amount.0, &token_id);
             self.internal_set_account(&account_id, account);
         } else {

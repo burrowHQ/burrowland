@@ -79,6 +79,10 @@ impl Contract {
 
         let token_id = AccountId::new_unchecked(shadow_id);
         let asset = self.internal_unwrap_asset(&token_id);
+        assert!(
+            asset.config.can_deposit,
+            "Deposits for this asset are not enabled"
+        );
         let amount = amount.0 * 10u128.pow(asset.config.extra_decimals as u32);
         
         let mut account = self.internal_unwrap_account(&account_id);
@@ -108,6 +112,10 @@ impl Contract {
 
         let token_id = AccountId::new_unchecked(shadow_id);
         let mut asset = self.internal_unwrap_asset(&token_id);
+        assert!(
+            asset.config.can_withdraw,
+            "Withdrawals for this asset are not enabled"
+        );
         let withdraw_asset_amount = AssetAmount {
             token_id,
             amount: Some(U128(amount.0 * 10u128.pow(asset.config.extra_decimals as u32))),
@@ -392,7 +400,7 @@ impl Contract {
                 asset_amount_to_shares(&collateral_asset.supplied, collateral_shares, &out_assets[0], false);
             liquidation_account.decrease_collateral(&position, &out_assets[0].token_id, shares);
             collateral_asset.supplied.withdraw(shares, amount);
-            self.internal_set_asset(&out_assets[0].token_id, collateral_asset);
+            self.internal_set_asset_without_check_min_reserve_shares(&out_assets[0].token_id, collateral_asset);
 
             self.internal_account_apply_affected_farms(&mut account);
             self.internal_account_apply_affected_farms(&mut liquidation_account);
@@ -430,7 +438,7 @@ impl Contract {
                     if asset.reserved >= amount {
                         asset.reserved -= amount;
                         asset.borrowed.withdraw(shares, amount);
-                        self.internal_set_asset(&token_id, asset);
+                        self.internal_set_asset_without_check_min_reserve_shares(&token_id, asset);
                         liquidation_account.add_affected_farm(FarmId::Borrowed(token_id));
                     } else {
                         remain_borrowed.insert(token_id, shares);
