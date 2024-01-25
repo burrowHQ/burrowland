@@ -180,6 +180,7 @@ impl Contract {
     pub fn enable_oracle(&mut self, enable_price_oracle: bool, enable_pyth_oracle: bool) {
         assert_one_yocto();
         self.assert_owner_or_guardians();
+        assert!(enable_price_oracle == !enable_pyth_oracle, "Only one oracle can be started at a time");
         let mut config = self.internal_config();
         config.enable_price_oracle = enable_price_oracle;
         config.enable_pyth_oracle = enable_pyth_oracle;

@@ -452,7 +452,7 @@ impl From<ConfigV0> for Config {
             maximum_staking_duration_sec, 
             x_booster_multiplier_at_maximum_staking_duration, 
             force_closing_enabled,
-            enable_price_oracle: true,
+            enable_price_oracle: false,
             enable_pyth_oracle: true
         }
     }
@@ -539,7 +539,7 @@ impl From<ConfigV1> for Config {
             maximum_staking_duration_sec, 
             x_booster_multiplier_at_maximum_staking_duration, 
             force_closing_enabled,
-            enable_price_oracle: true,
+            enable_price_oracle: false,
             enable_pyth_oracle: true
         }
     }

@@ -597,7 +597,8 @@ impl Burrowland {
         decimals: u8,
         fraction_digits: u8,
         price_identifier: &str,
-        extra_call: Option<String>
+        extra_call: Option<String>,
+        default_price: Option<Price>
     ) -> Result<ExecutionFinalResult> {
         caller
             .call(self.0.id(), "add_token_pyth_info")
@@ -607,7 +608,36 @@ impl Burrowland {
                     "decimals": decimals,
                     "fraction_digits": fraction_digits,
                     "price_identifier": price_identifier,
-                    "extra_call": extra_call
+                    "extra_call": extra_call,
+                    "default_price": default_price
+                }
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
+
+    pub async fn update_token_pyth_info(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        decimals: u8,
+        fraction_digits: u8,
+        price_identifier: &str,
+        extra_call: Option<String>,
+        default_price: Option<Price>
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "update_token_pyth_info")
+            .args_json(json!({
+                "token_id": token_id,
+                "token_pyth_info": {
+                    "decimals": decimals,
+                    "fraction_digits": fraction_digits,
+                    "price_identifier": price_identifier,
+                    "extra_call": extra_call,
+                    "default_price": default_price
                 }
             }))
             .max_gas()
@@ -714,6 +744,20 @@ impl Burrowland {
             .view()
             .await?
             .json::<HashMap<String, UnitShareTokens>>()
+    }
+    
+    pub async fn get_token_pyth_info(
+        &self,
+        token_id: &AccountId
+    ) -> Result<TokenPythInfo> {
+        self.0
+            .call("get_token_pyth_info")
+            .args_json(json!({
+                "token_id": token_id
+            }))
+            .view()
+            .await?
+            .json::<TokenPythInfo>()
     }
 }
 

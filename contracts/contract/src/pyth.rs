@@ -29,12 +29,14 @@ pub trait PriceExtraCall {
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Clone)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenPythInfo {
     pub decimals: u8,
     pub fraction_digits: u8,
     pub price_identifier: PriceIdentifier,
-    pub extra_call: Option<String>
+    pub extra_call: Option<String>,
+    pub default_price: Option<Price>
 }
 
 
@@ -103,6 +105,18 @@ impl near_sdk::serde::Serialize for PriceIdentifier {
     }
 }
 
+impl std::string::ToString for PriceIdentifier {
+    fn to_string(&self) -> String {
+        hex::encode(&self.0)
+    }
+}
+
+impl std::fmt::Debug for PriceIdentifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", hex::encode(&self.0))
+    }
+}
+
 #[near_bindgen]
 impl Contract {
 
@@ -116,11 +130,11 @@ impl Contract {
     }
 
     #[private]
-    pub fn callback_execute_with_pyth(&mut self, account_id: AccountId, all_promise_flags: Vec<String>, actions: Vec<Action>) {
+    pub fn callback_execute_with_pyth(&mut self, account_id: AccountId, all_promise_flags: Vec<String>, actions: Vec<Action>, default_prices: HashMap<TokenId, Price>) {
         assert!(env::promise_results_count() == all_promise_flags.len() as u64, "Invalid promise count");
         let mut account = self.internal_unwrap_account(&account_id);
         let config = self.internal_config();
-        let mut all_prices = Prices::new();
+        let mut all_prices = Prices::from_prices(default_prices);
         for (index, flag) in all_promise_flags.into_iter().enumerate() {
             if flag.contains(FLAG_PARTITION){
                 let token_id = AccountId::try_from(flag.split(FLAG_PARTITION).collect::<Vec<&str>>()[0].to_string()).unwrap();
@@ -160,20 +174,34 @@ impl Contract {
         let involved_tokens = self.involved_tokens(&account, &actions);
         if involved_tokens.len() > 0 {
             assert!(self.internal_config().enable_pyth_oracle, "Pyth oracle disabled");
-            let (mut all_promise_flags, mut promise) = token_involved_promises(
-                    &pyth_oracle_account_id, &self.get_pyth_info_by_token(&involved_tokens[0]), &involved_tokens[0]);
-            for token in involved_tokens[1..].iter() {
-                let (token_promise_flags, token_promise) = token_involved_promises(
-                    &pyth_oracle_account_id, &self.get_pyth_info_by_token(token), token);
-                all_promise_flags.extend(token_promise_flags);
-                promise = promise.and(token_promise);
+            let mut default_prices: HashMap<TokenId, Price> = HashMap::new();
+            let mut promise_token_ids = vec![];
+            for token_id in involved_tokens {
+                let token_pyth_info = self.get_pyth_info_by_token(&token_id);
+                if token_pyth_info.default_price.is_some() {
+                    default_prices.insert(token_id, token_pyth_info.default_price.unwrap());
+                } else {
+                    promise_token_ids.push(token_id);
+                }
             }
-            assert!(all_promise_flags.len() <= GET_PRICE_PROMISES_LIMIT, "Too many promises to get prices");
-            promise.then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_FOR_CALLBACK_EXECUTE_WITH_PYTH)
-                    .callback_execute_with_pyth(account_id.clone(), all_promise_flags, actions)
-            );
+            if promise_token_ids.len() > 0 {
+                let (mut all_promise_flags, mut promise) = token_involved_promises(
+                    &pyth_oracle_account_id, &self.get_pyth_info_by_token(&promise_token_ids[0]), &promise_token_ids[0]);
+                for token_id in promise_token_ids[1..].iter() {
+                    let (token_promise_flags, token_promise) = token_involved_promises(
+                        &pyth_oracle_account_id, self.get_pyth_info_by_token(&token_id), token_id);
+                    all_promise_flags.extend(token_promise_flags);
+                    promise = promise.and(token_promise);
+                }
+                assert!(all_promise_flags.len() <= GET_PRICE_PROMISES_LIMIT, "Too many promises to get prices");
+                promise.then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_FOR_CALLBACK_EXECUTE_WITH_PYTH)
+                        .callback_execute_with_pyth(account_id.clone(), all_promise_flags, actions, default_prices)
+                );
+            } else {
+                self.internal_execute(account_id, account, actions, Prices::from_prices(default_prices));
+            }
         } else {
             self.internal_execute(account_id, account, actions, Prices::new());
         }

@@ -154,16 +154,12 @@ impl Contract {
         self.token_pyth_info.insert(token_id, token_pyth_info);
     }
 
-    #[payable]
-    pub fn remove_token_pyth_info(&mut self, token_id: TokenId) {
-        assert_one_yocto();
-        self.assert_owner_or_guardians();
-        let is_success = self.token_pyth_info.remove(&token_id).is_some();
-        assert!(is_success, "Invalid token id");
+    pub fn get_all_token_pyth_infos(&self) -> HashMap<TokenId, TokenPythInfo> {
+        self.token_pyth_info.clone()
     }
 
-    pub fn get_token_pyth_info(&mut self) -> HashMap<TokenId, TokenPythInfo> {
-        self.token_pyth_info.clone()
+    pub fn get_token_pyth_info(&self, token_id: TokenId) -> Option<TokenPythInfo> {
+        self.token_pyth_info.get(&token_id).cloned()
     }
 }
 
@@ -559,7 +555,7 @@ mod unit_env {
             maximum_staking_duration_sec: 31536000,
             x_booster_multiplier_at_maximum_staking_duration: 40000,
             force_closing_enabled: true,
-            enable_price_oracle: true,
+            enable_price_oracle: false,
             enable_pyth_oracle: true
         });
         let mut test_env = UnitEnv{
