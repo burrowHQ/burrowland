@@ -167,19 +167,24 @@ impl Contract {
     pub fn add_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
         assert_one_yocto();
         self.assert_owner_or_guardians();
+        assert!(!self.token_pyth_info.contains_key(&token_id), "Already exist");
         self.token_pyth_info.insert(token_id, token_pyth_info);
     }
 
     #[payable]
-    pub fn remove_token_pyth_info(&mut self, token_id: TokenId) {
+    pub fn update_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
         assert_one_yocto();
         self.assert_owner_or_guardians();
-        let is_success = self.token_pyth_info.remove(&token_id).is_some();
-        assert!(is_success, "Invalid token id");
+        assert!(self.token_pyth_info.contains_key(&token_id), "Invalid token_id");
+        self.token_pyth_info.insert(token_id, token_pyth_info);
     }
 
-    pub fn get_token_pyth_info(&mut self) -> HashMap<TokenId, TokenPythInfo> {
+    pub fn get_all_token_pyth_infos(&self) -> HashMap<TokenId, TokenPythInfo> {
         self.token_pyth_info.clone()
+    }
+
+    pub fn get_token_pyth_info(&self, token_id: TokenId) -> Option<TokenPythInfo> {
+        self.token_pyth_info.get(&token_id).cloned()
     }
 }
 
@@ -582,6 +587,7 @@ mod unit_env {
             x_booster_multiplier_at_maximum_staking_duration: 40000,
             force_closing_enabled: true,
             enable_price_oracle: true,
+            enable_pyth_oracle: false
         });
         let mut test_env = UnitEnv{
             contract,

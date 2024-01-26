@@ -14,6 +14,12 @@ impl Prices {
         }
     }
 
+    pub fn from_prices(prices: HashMap<TokenId, Price>) -> Self {
+        Self {
+            prices,
+        }
+    }
+
     pub fn get_unwrap(&self, token_id: &TokenId) -> &Price {
         self.prices.get(token_id).expect(format!("Asset {} price is missing", token_id).as_str())
     }
