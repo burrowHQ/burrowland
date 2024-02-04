@@ -289,7 +289,7 @@ pub fn pyth_price_to_price_oracle_price(token_info: &TokenPythInfo, pyth_price: 
     }
 }
 
-fn token_involved_promises(pyth_oracle_account_id: &AccountId, token_pyth_info: &TokenPythInfo, token_id: &TokenId) -> (Vec<String>, Promise) {
+pub fn token_involved_promises(pyth_oracle_account_id: &AccountId, token_pyth_info: &TokenPythInfo, token_id: &TokenId) -> (Vec<String>, Promise) {
     let mut promise_flags = vec![];
     let mut promise = ext_pyth::ext(pyth_oracle_account_id.clone())
         .get_price(token_pyth_info.price_identifier.clone());

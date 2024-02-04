@@ -11,8 +11,8 @@ pub trait FungibleToken {
 const GAS_FOR_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
 const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 20);
 
-#[derive(Deserialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Serialize))]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum TokenReceiverMsg {
     Execute { actions: Vec<Action> },
@@ -64,14 +64,14 @@ impl FungibleTokenReceiver for Contract {
                     // keep this independent deposit to support price oracle flow
                     let mut account = self.internal_unwrap_margin_account(&sender_id);
                     self.internal_margin_deposit(&mut account, &token_id, amount);
-                    // events::emit::deposit(&sender_id, amount, &token_id);
+                    events::emit::margin_deposit(&sender_id, amount, &token_id);
                     self.internal_set_margin_account(&sender_id, account);
                     return PromiseOrValue::Value(U128(0));
                 }
                 TokenReceiverMsg::MarginExecute { actions } => {
                     let mut account = self.internal_unwrap_margin_account(&sender_id);
                     self.internal_margin_deposit(&mut account, &token_id, amount);
-                    // events::emit::deposit(&sender_id, amount, &token_id);
+                    events::emit::margin_deposit(&sender_id, amount, &token_id);
                     self.internal_margin_execute(&sender_id, &mut account, actions, Prices::new());
                     self.internal_set_margin_account(&sender_id, account);
                     return PromiseOrValue::Value(U128(0));
@@ -79,7 +79,6 @@ impl FungibleTokenReceiver for Contract {
                 TokenReceiverMsg::SwapReference { swap_ref } => {
                     let mut account = self.internal_unwrap_margin_account(&swap_ref.account_id);
                     if swap_ref.op == "open" {
-                        // self.internal_margin_deposit(&mut account, &token_id, amount);
                         self.on_open_trade_return(&mut account, amount, &swap_ref);
                     } else if swap_ref.op == "decrease"
                         || swap_ref.op == "close"

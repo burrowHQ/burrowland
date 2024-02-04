@@ -6,6 +6,7 @@ use near_sdk::serde_json;
 #[serde(crate = "near_sdk::serde")]
 pub enum PriceReceiverMsg {
     Execute { actions: Vec<Action> },
+    MarginExecute { actions: Vec<MarginAction> },
 }
 
 impl Contract {
@@ -37,13 +38,19 @@ impl OraclePriceReceiver for Contract {
 
         assert!(self.get_config().enable_price_oracle, "Price oracle disabled");
 
-        let actions = match serde_json::from_str(&msg).expect("Can't parse PriceReceiverMsg") {
-            PriceReceiverMsg::Execute { actions } => actions,
+        match serde_json::from_str(&msg).expect("Can't parse PriceReceiverMsg") {
+            PriceReceiverMsg::Execute { actions } => {
+                let mut account = self.internal_unwrap_account(&sender_id);
+                self.validate_price_data(&data);
+                self.internal_execute(&sender_id, &mut account, actions, data.into());
+                self.internal_set_account(&sender_id, account);
+            },
+            PriceReceiverMsg::MarginExecute { actions } => {
+                let mut account = self.internal_unwrap_margin_account(&sender_id);
+                self.validate_price_data(&data);
+                self.internal_margin_execute(&sender_id, &mut account, actions, data.into());
+                self.internal_set_margin_account(&sender_id, account);
+            }
         };
-
-        let mut account = self.internal_unwrap_account(&sender_id);
-        self.validate_price_data(&data);
-        self.internal_execute(&sender_id, &mut account, actions, data.into());
-        self.internal_set_account(&sender_id, account);
     }
 }

@@ -2,8 +2,8 @@ mod workspace_env;
 
 use crate::workspace_env::*;
 
-const PREVIOUS_VERSION: &'static str = "0.9.0";
-const LATEST_VERSION: &'static str = "0.10.0";
+const PREVIOUS_VERSION: &'static str = "0.10.0";
+const LATEST_VERSION: &'static str = "0.11.0";
 
 #[tokio::test]
 async fn test_upgrade() -> Result<()> {
@@ -16,6 +16,30 @@ async fn test_upgrade() -> Result<()> {
 
     check!(view previous_burrowland_contract.get_config_v0());
 
+    let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
+    check!(root
+        .call(previous_burrowland_contract.0.id(), "add_asset")
+        .args_json(json!({
+            "token_id": token_id.clone(),
+            "asset_config": {
+                "reserve_ratio": 2500,
+                "prot_ratio": 0,
+                "target_utilization": 8000,
+                "target_utilization_rate": "1000000000003593629036885046",
+                "max_utilization_rate": "1000000000039724853136740579",
+                "volatility_ratio": 6000,
+                "extra_decimals": 0,
+                "can_deposit": true,
+                "can_withdraw": true,
+                "can_use_as_collateral": true,
+                "can_borrow": true,
+                "net_tvl_multiplier": 10000,
+            }
+        }))
+        .max_gas()
+        .deposit(1)
+        .transact());
+
     assert!(root
         .call(previous_burrowland_contract.0.id(), "upgrade")
         .args(std::fs::read(BURROWLAND_WASM).unwrap())
@@ -25,5 +49,6 @@ async fn test_upgrade() -> Result<()> {
     let version = previous_burrowland_contract.get_version().await?;
     assert_eq!(version, LATEST_VERSION);
     check!(view previous_burrowland_contract.get_config());
+    check!(view previous_burrowland_contract.get_asset(&token_id));
     Ok(())
 }

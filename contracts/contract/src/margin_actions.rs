@@ -144,6 +144,10 @@ impl Contract {
                     min_token_d_amount: min_debt_amount,
                     swap_indication,
                 } => {
+                    assert_ne!(
+                        account_id, &pos_owner_id,
+                        "Can't liquidate yourself"
+                    );
                     let mut pos_owner = self.internal_unwrap_margin_account(&pos_owner_id);
                     let event = self.process_decrease_margin_position(
                         &mut pos_owner,
@@ -155,6 +159,7 @@ impl Contract {
                         "liquidate".to_string(),
                         Some(account_id.clone()),
                     );
+                    self.internal_set_margin_account(&pos_owner_id, pos_owner);
                     events::emit::margin_decrease_started("margin_liquidate_started", event);
                 }
                 MarginAction::ForceCloseMTPosition {
@@ -164,6 +169,10 @@ impl Contract {
                     min_token_d_amount: min_debt_amount,
                     swap_indication,
                 } => {
+                    assert_ne!(
+                        account_id, &pos_owner_id,
+                        "Can't liquidate yourself"
+                    );
                     let mut pos_owner = self.internal_unwrap_margin_account(&pos_owner_id);
                     let event = self.process_decrease_margin_position(
                         &mut pos_owner,
@@ -175,6 +184,7 @@ impl Contract {
                         "forceclose".to_string(),
                         None,
                     );
+                    self.internal_set_margin_account(&pos_owner_id, pos_owner);
                     events::emit::margin_decrease_started("margin_forceclose_started", event);
                 }
                 MarginAction::Withdraw { token_id, amount } => {
@@ -225,10 +235,8 @@ impl Contract {
             .expect("Position not exist")
             .clone();
         let token_id = mt.token_c_id.clone();
-        let mut asset = self.internal_unwrap_asset(&mt.token_c_id);
+        let asset = self.internal_unwrap_asset(&mt.token_c_id);
         let shares = asset.supplied.amount_to_shares(amount, true);
-
-        asset.supplied.withdraw(shares, amount);
 
         // collateral can NOT decrease to 0
         assert!(
@@ -241,6 +249,10 @@ impl Contract {
             !self.is_mt_liquidatable(&mt, prices, margin_config.min_safty_buffer),
             "Margin position would be below liquidation line"
         );
+        assert!(
+            !self.is_mt_forcecloseable(&mt, prices),
+            "Margin position would be below forceclose line"
+        );
 
         assert!(
             self.get_mtp_lr(&mt, prices).unwrap()
@@ -248,7 +260,7 @@ impl Contract {
             "Leverage rate is too high"
         );
 
-        self.internal_set_asset(&mt.token_c_id, asset);
+        account.deposit_supply_shares(&mt.token_c_id, &shares);
         account.margin_positions.insert(pos_id.clone(), mt);
 
         token_id

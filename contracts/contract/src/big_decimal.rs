@@ -215,14 +215,11 @@ impl BigDecimal {
         }
     }
 
-    pub fn to_balance_in_price(&self, price: &Price, extra_decimals: u8)  -> Balance {
-        // TODO: need peer review this func
+    pub fn to_balance_in_price(&self, price: &Price, extra_decimals: u8) -> Balance {
         let denominator_decimals = price.decimals + extra_decimals;
         let num = if denominator_decimals > NUM_DECIMALS {
-            // Self(num / U384::exp10((denominator_decimals - NUM_DECIMALS) as usize))
             self.0 * U384::exp10((denominator_decimals - NUM_DECIMALS) as usize)
         } else {
-            // Self(num * U384::exp10((NUM_DECIMALS - denominator_decimals) as usize))
             self.0 / U384::exp10((NUM_DECIMALS - denominator_decimals) as usize)
         };
         let b = num / U384::from(price.multiplier);

@@ -118,6 +118,7 @@ impl From<TokenCache> for HashMap<AccountId, U128> {
 #[ext_contract(ext_fungible_token)]
 pub trait FungibleToken {
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
+    fn ft_transfer_call(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>, msg: String);
 }
 
 pub fn nano_to_sec(nano: u64) -> u32 {

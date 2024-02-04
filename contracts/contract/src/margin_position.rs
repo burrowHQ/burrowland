@@ -141,7 +141,20 @@ impl Contract {
             self.get_mtp_collateral_value(&mt, prices) + self.get_mtp_position_value(&mt, prices);
         let total_debt = self.get_mtp_debt_value(&mt, prices);
         let total_hp_fee = self.get_mtp_hp_fee_value(&mt, prices);
-        total_cap.mul_ratio(safty_buffer_rate) + total_cap < total_debt + total_hp_fee
+        total_cap >= total_debt + total_hp_fee && 
+            total_cap - total_cap.mul_ratio(safty_buffer_rate) < total_debt + total_hp_fee
+    }
+
+    pub(crate) fn is_mt_forcecloseable(
+        &self,
+        mt: &MarginTradingPosition,
+        prices: &Prices,
+    ) -> bool {
+        let total_cap =
+            self.get_mtp_collateral_value(&mt, prices) + self.get_mtp_position_value(&mt, prices);
+        let total_debt = self.get_mtp_debt_value(&mt, prices);
+        let total_hp_fee = self.get_mtp_hp_fee_value(&mt, prices);
+        total_cap < total_debt + total_hp_fee
     }
 
     pub(crate) fn get_mtp_lr(
@@ -205,7 +218,7 @@ impl Contract {
                 &asset_d,
                 prices.get_unwrap(&token_d_id),
                 &asset_p,
-                prices.get_unwrap(&token_d_id),
+                prices.get_unwrap(&token_p_id),
                 min_token_p_amount,
                 margin_config.max_slippage_rate,
             ),
@@ -223,6 +236,10 @@ impl Contract {
         mt.token_p_amount = min_token_p_amount;
         assert!(
             !self.is_mt_liquidatable(&mt, prices, margin_config.min_safty_buffer),
+            "Debt is too much"
+        );
+        assert!(
+            !self.is_mt_forcecloseable(&mt, prices),
             "Debt is too much"
         );
         //   leverage rate less than max leverage rate
@@ -263,6 +280,7 @@ impl Contract {
         };
         swap_detail.set_client_echo(&swap_ref.to_msg_string());
         let swap_msg = swap_detail.to_msg_string();
+        assert!(env::prepaid_gas() - env::used_gas() >= Gas(100 * Gas::ONE_TERA.0), "Not enough gas");
         ext_fungible_token::ext(token_d_id.clone())
             .with_attached_deposit(1)
             .with_static_gas(GAS_FOR_FT_TRANSFER_CALL)
@@ -339,30 +357,6 @@ impl Contract {
             "min_debt_amount is too low"
         );
 
-        //   ensure enough position token to trade
-        if token_p_amount > mt.token_p_amount {
-            // try to add some of margin asset into trading
-            assert_eq!(
-                mt.token_c_id, mt.token_p_id,
-                "Not enough position asset balance"
-            );
-            let gap_shares = asset_p
-                .supplied
-                .amount_to_shares(token_p_amount - mt.token_p_amount, true);
-            mt.token_c_shares
-                .0
-                .checked_sub(gap_shares.0)
-                .expect("Not enough position asset balance");
-            asset_p
-                .supplied
-                .withdraw(gap_shares, token_p_amount - mt.token_p_amount);
-            asset_p.margin_position -= mt.token_p_amount;
-            mt.token_p_amount = 0;
-        } else {
-            asset_p.margin_position -= token_p_amount;
-            mt.token_p_amount -= token_p_amount;
-        }
-
         if op == "close" || op == "liquidate" {
             //   ensure all debt would be repaid
             //   and take holding-position fee into account
@@ -396,9 +390,33 @@ impl Contract {
             );
         } else if op == "forceclose" {
             assert!(
-                self.is_mt_liquidatable(&mt, prices, 0),
+                self.is_mt_forcecloseable(&mt, prices),
                 "Margin position is not forceclose-able"
             );
+        }
+
+        //   ensure enough position token to trade
+        if token_p_amount > mt.token_p_amount {
+            // try to add some of margin asset into trading
+            assert_eq!(
+                mt.token_c_id, mt.token_p_id,
+                "Not enough position asset balance"
+            );
+            let gap_shares = asset_p
+                .supplied
+                .amount_to_shares(token_p_amount - mt.token_p_amount, true);
+            mt.token_c_shares
+                .0
+                .checked_sub(gap_shares.0)
+                .expect("Not enough position asset balance");
+            asset_p
+                .supplied
+                .withdraw(gap_shares, token_p_amount - mt.token_p_amount);
+            asset_p.margin_position -= mt.token_p_amount;
+            mt.token_p_amount = 0;
+        } else {
+            asset_p.margin_position -= token_p_amount;
+            mt.token_p_amount -= token_p_amount;
         }
 
         // prepare to close
@@ -427,12 +445,13 @@ impl Contract {
         };
         swap_detail.set_client_echo(&swap_ref.to_msg_string());
         let swap_msg = swap_detail.to_msg_string();
+        assert!(env::prepaid_gas() - env::used_gas() >= Gas(100 * Gas::ONE_TERA.0), "Not enough gas");
         ext_fungible_token::ext(mt.token_p_id.clone())
             .with_attached_deposit(1)
             .with_static_gas(GAS_FOR_FT_TRANSFER_CALL)
             .ft_transfer_call(
                 swap_indication.dex_id.clone(),
-                U128(token_p_amount),
+                U128(ft_p_amount),
                 None,
                 swap_msg,
             )

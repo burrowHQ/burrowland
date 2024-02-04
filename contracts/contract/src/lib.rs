@@ -27,6 +27,7 @@ mod margin_accounts;
 mod margin_actions;
 mod margin_trading;
 mod margin_config;
+mod margin_pyth;
 mod pyth;
 
 pub use crate::account::*;
@@ -56,6 +57,7 @@ pub use crate::margin_accounts::*;
 pub use crate::margin_actions::*;
 pub use crate::margin_trading::*;
 pub use crate::margin_config::*;
+pub use crate::margin_pyth::*;
 pub use crate::pyth::*;
 
 use common::*;

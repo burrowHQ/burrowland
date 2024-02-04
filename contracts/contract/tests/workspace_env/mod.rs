@@ -24,6 +24,7 @@ mod contract_boost_farming;
 mod contract_mock_ref_exchange;
 mod contract_mock_rated_token;
 mod contract_mock_pyth;
+mod contract_mock_dcl;
 mod utils;
 
 pub use setup::*;
@@ -34,4 +35,5 @@ pub use contract_boost_farming::*;
 pub use contract_mock_ref_exchange::*;
 pub use contract_mock_rated_token::*;
 pub use contract_mock_pyth::*;
+pub use contract_mock_dcl::*;
 pub use utils::*;

@@ -55,8 +55,11 @@ impl MarginAccount {
     }
 
     pub(crate) fn deposit_supply_shares(&mut self, token_id: &AccountId, shares: &Shares) {
-        let supply_shares = self.supplied.get_mut(token_id).unwrap();
-        supply_shares.0 += shares.0;
+        if let Some(supply_shares) = self.supplied.get_mut(token_id) {
+            supply_shares.0 += shares.0;
+        } else {
+            self.supplied.insert(token_id.clone(), shares.clone());
+        }
     }
 }
 
@@ -89,5 +92,100 @@ impl Contract {
         self.margin_accounts.insert(account_id, &account.into());
         storage.storage_tracker.stop();
         self.internal_set_storage(account_id, storage);
+    }
+}
+
+#[derive(Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
+#[serde(crate = "near_sdk::serde")]
+pub struct MarginAccountDetailedView {
+    pub account_id: AccountId,
+    /// A list of assets that are supplied by the account (but not used a collateral).
+    pub supplied: Vec<AssetView>,
+    pub margin_positions: HashMap<PosId, MarginTradingPositionView>,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
+#[serde(crate = "near_sdk::serde")]
+pub struct MarginTradingPositionView {
+    /// Used for convenient view
+    pub open_ts: Timestamp,
+    /// Record the unit accumulated holding-position interest when open
+    pub uahpi_at_open: Balance,
+    /// The capital of debt, used for calculate holding position fee
+    pub debt_cap: Balance,
+
+    pub token_c_info: AssetView,
+
+    pub token_d_info: AssetView,
+
+    pub token_p_id: TokenId,
+    pub token_p_amount: Balance,
+
+    pub is_locking: bool,
+}
+
+impl Contract {
+    pub fn margin_account_into_detailed_view(&self, account: MarginAccount) -> MarginAccountDetailedView {
+        MarginAccountDetailedView {
+            account_id: account.account_id.clone(),
+            supplied: account
+                .supplied
+                .into_iter()
+                .map(|(token_id, shares)| self.get_asset_view(token_id, shares, false))
+                .collect(),
+            margin_positions: account
+                .margin_positions
+                .into_iter()
+                .map(|(pos_id, mtp)| (pos_id, self.margin_trading_position_into_view(mtp)))
+                .collect()
+        }
+    }
+
+    fn margin_trading_position_into_view(&self, mtp: MarginTradingPosition) -> MarginTradingPositionView{
+        MarginTradingPositionView {
+            open_ts: mtp.open_ts,
+            uahpi_at_open: mtp.uahpi_at_open,
+            debt_cap: mtp.debt_cap,
+            token_c_info: self.get_asset_view(mtp.token_c_id, mtp.token_c_shares, false),
+            token_d_info: self.get_margin_debt_asset_view(mtp.token_d_id, mtp.token_d_shares),
+            token_p_id: mtp.token_p_id,
+            token_p_amount: mtp.token_p_amount,
+            is_locking: mtp.is_locking
+        }
+    }
+
+    fn get_margin_debt_asset_view(&self, token_id: TokenId, shares: Shares) -> AssetView {
+        let asset = self.internal_unwrap_asset(&token_id);
+        let apr = asset.get_margin_debt_apr(self.internal_margin_config().margin_debt_discount_rate);
+        let balance = asset.margin_debt.shares_to_amount(shares, true);
+        AssetView {
+            token_id,
+            balance,
+            shares,
+            apr,
+        }
+    }
+}
+
+#[near_bindgen]
+impl Contract {
+    pub fn get_margin_account(&self, account_id: AccountId) -> Option<MarginAccountDetailedView> {
+        self.internal_get_margin_account(&account_id)
+            .map(|ma| self.margin_account_into_detailed_view(ma))
+    }
+
+    pub fn get_margin_accounts_paged(&self, from_index: Option<u64>, limit: Option<u64>) -> Vec<MarginAccountDetailedView> {
+        let values = self.margin_accounts.values_as_vector();
+        let from_index = from_index.unwrap_or(0);
+        let limit = limit.unwrap_or(values.len());
+        (from_index..std::cmp::min(values.len(), from_index + limit))
+            .map(|index| self.margin_account_into_detailed_view(values.get(index).unwrap().into()))
+            .collect()
+    }
+
+    pub fn get_num_margin_accounts(&self) -> u32 {
+        self.margin_accounts.len() as _
     }
 }

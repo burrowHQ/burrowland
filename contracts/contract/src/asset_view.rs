@@ -63,7 +63,7 @@ impl Contract {
                 rewards: asset_farm.rewards,
             })
             .collect();
-        let supply_apr = asset.get_supply_apr();
+        let supply_apr = asset.get_supply_apr(self.internal_margin_config().margin_debt_discount_rate);
         let borrow_apr = asset.get_borrow_apr();
         let Asset {
             supplied,

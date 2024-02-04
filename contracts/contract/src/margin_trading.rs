@@ -72,7 +72,7 @@ impl RefV1TokenReceiverMessage {
         } = self;
         let action = actions.last().unwrap();
         let RefV1Action::Swap(sa) = action;
-        (sa.token_in.clone(), sa.amount_in.unwrap().0)
+        (sa.token_out.clone(), sa.min_amount_out.0)
     }
 
     pub fn get_client_echo(&self) -> Option<String> {

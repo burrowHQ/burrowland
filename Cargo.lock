@@ -543,6 +543,7 @@ dependencies = [
  "common",
  "hex 0.4.3",
  "mock-boost-farming",
+ "mock-dcl",
  "mock-ft",
  "mock-pyth",
  "mock-rated-token",
@@ -1444,6 +1445,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "mock-dcl"
+version = "2.3.3"
+dependencies = [
+ "near-contract-standards",
+ "near-sdk",
+ "near-sys",
+ "num-bigint 0.4.4",
+ "once_cell",
+ "uint",
+]
+
+[[package]]
 name = "mock-ft"
 version = "0.0.1"
 dependencies = [
@@ -1932,6 +1945,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-bigint"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "608e7659b5c3d7cba262d894801b9ec9d00de989e8a82bd4bef91d08da45cdc0"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "num-format"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1958,7 +1982,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12ac428b1cb17fce6f731001d307d351ec70a6d202fc2e60f7d4c5e42d8f4f07"
 dependencies = [
  "autocfg",
- "num-bigint",
+ "num-bigint 0.3.3",
  "num-integer",
  "num-traits",
  "serde",

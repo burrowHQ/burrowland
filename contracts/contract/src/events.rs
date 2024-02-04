@@ -56,6 +56,17 @@ pub mod emit {
         );
     }
 
+    pub fn margin_deposit(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "margin_deposit",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
     pub fn withdraw_started(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
         log_event(
             "withdraw_started",

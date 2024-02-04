@@ -29,3 +29,4 @@ mock-ref-exchange = { path = "../mock-ref-exchange" }
 mock-boost-farming = { path = "../mock-boost-farming" }
 mock-pyth = { path = "../mock-pyth" }
 mock-rated-token = { path = "../mock-rated-token" }
+mock-dcl = { path = "../mock-dcl" }

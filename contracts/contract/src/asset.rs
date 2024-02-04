@@ -90,7 +90,12 @@ impl Asset {
     }
 
     pub fn get_margin_debt_rate(&self, margin_debt_discount_rate: u32) -> BigDecimal {
-        self.get_rate() * BigDecimal::from_ratio(margin_debt_discount_rate)
+        (self.get_rate() - BigDecimal::one()) * BigDecimal::from_ratio(margin_debt_discount_rate) + BigDecimal::one()
+    }
+
+    pub fn get_margin_debt_apr(&self, margin_debt_discount_rate: u32) -> BigDecimal {
+        let rate = self.get_margin_debt_rate(margin_debt_discount_rate);
+        rate.pow(MS_PER_YEAR) - BigDecimal::one()
     }
 
     pub fn get_borrow_apr(&self) -> BigDecimal {
@@ -98,19 +103,24 @@ impl Asset {
         rate.pow(MS_PER_YEAR) - BigDecimal::one()
     }
 
-    pub fn get_supply_apr(&self) -> BigDecimal {
-        if self.supplied.balance == 0 || self.borrowed.balance == 0 {
+    pub fn get_supply_apr(&self, margin_debt_discount_rate: u32) -> BigDecimal {
+        if self.supplied.balance == 0 || (self.borrowed.balance == 0 && self.margin_debt.balance == 0) {
             return BigDecimal::zero();
         }
 
         let borrow_apr = self.get_borrow_apr();
-        if borrow_apr == BigDecimal::zero() {
-            return borrow_apr;
+        let margin_debt_apr = self.get_margin_debt_apr(margin_debt_discount_rate);
+        if borrow_apr == BigDecimal::zero() && margin_debt_apr == BigDecimal::zero() {
+            return BigDecimal::zero();
         }
 
-        let interest = borrow_apr.round_mul_u128(self.borrowed.balance);
-        let supply_interest = ratio(interest, MAX_RATIO - self.config.reserve_ratio);
-        BigDecimal::from(supply_interest).div_u128(self.supplied.balance)
+        let borrow_interest = borrow_apr.round_mul_u128(self.borrowed.balance);
+        let supply_interest_borrow_part = ratio(borrow_interest, MAX_RATIO - self.config.reserve_ratio);
+        
+        let margin_debt_interest = margin_debt_apr.round_mul_u128(self.margin_debt.balance);
+        let supply_interest_margin_debt_part = ratio(margin_debt_interest, MAX_RATIO - self.config.reserve_ratio);
+        
+        BigDecimal::from(supply_interest_borrow_part + supply_interest_margin_debt_part).div_u128(self.supplied.balance)
     }
 
     // n = 31536000000 ms in a year (365 days)

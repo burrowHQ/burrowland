@@ -1,6 +1,6 @@
 RFLAGS="-C link-arg=-s"
 
-build: build-burrowland build-testoracle build-mock-ref-exchange build-mock-boost-farming build-mock-ft build-mock-pyth build-mock-rated-token
+build: build-burrowland build-testoracle build-mock-ref-exchange build-mock-boost-farming build-mock-ft build-mock-pyth build-mock-rated-token build-mock-dcl
 
 build-burrowland: contracts/contract
 	rustup target add wasm32-unknown-unknown
@@ -43,6 +43,12 @@ build-mock-rated-token: contracts/mock-rated-token
 	RUSTFLAGS=$(RFLAGS) cargo build -p mock-rated-token --target wasm32-unknown-unknown --release
 	mkdir -p res
 	cp target/wasm32-unknown-unknown/release/mock_rated_token.wasm ./res/mock_rated_token.wasm
+
+build-mock-dcl: contracts/mock-dcl
+	rustup target add wasm32-unknown-unknown
+	RUSTFLAGS=$(RFLAGS) cargo build -p mock-dcl --target wasm32-unknown-unknown --release
+	mkdir -p res
+	cp target/wasm32-unknown-unknown/release/mock_dcl.wasm ./res/mock_dcl.wasm
 
 release:
 	$(call docker_build,_rust_setup.sh)
