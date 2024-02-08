@@ -2,7 +2,7 @@ use crate::{*, events::emit::{EventDataMarginOpen, EventDataMarginDecrease}};
 use near_sdk::{promise_result_as_success, serde_json, PromiseOrValue};
 
 
-pub const GAS_FOR_FT_TRANSFER_CALL: Gas = Gas(20 * Gas::ONE_TERA.0);
+pub const GAS_FOR_FT_TRANSFER_CALL: Gas = Gas(100 * Gas::ONE_TERA.0);
 pub const GAS_FOR_FT_TRANSFER_CALL_CALLBACK: Gas = Gas(20 * Gas::ONE_TERA.0);
 
 #[ext_contract(ext_fungible_token)]
@@ -280,13 +280,12 @@ impl Contract {
         };
         swap_detail.set_client_echo(&swap_ref.to_msg_string());
         let swap_msg = swap_detail.to_msg_string();
-        assert!(env::prepaid_gas() - env::used_gas() >= Gas(100 * Gas::ONE_TERA.0), "Not enough gas");
         ext_fungible_token::ext(token_d_id.clone())
             .with_attached_deposit(1)
             .with_static_gas(GAS_FOR_FT_TRANSFER_CALL)
             .ft_transfer_call(
                 swap_indication.dex_id.clone(),
-                U128(token_d_amount),
+                U128(ft_d_amount),
                 None,
                 swap_msg,
             )
@@ -445,7 +444,6 @@ impl Contract {
         };
         swap_detail.set_client_echo(&swap_ref.to_msg_string());
         let swap_msg = swap_detail.to_msg_string();
-        assert!(env::prepaid_gas() - env::used_gas() >= Gas(100 * Gas::ONE_TERA.0), "Not enough gas");
         ext_fungible_token::ext(mt.token_p_id.clone())
             .with_attached_deposit(1)
             .with_static_gas(GAS_FOR_FT_TRANSFER_CALL)

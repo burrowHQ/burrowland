@@ -112,8 +112,10 @@ pub struct MarginTradingPositionView {
     /// Used for convenient view
     pub open_ts: Timestamp,
     /// Record the unit accumulated holding-position interest when open
+    #[serde(with = "u128_dec_format")]
     pub uahpi_at_open: Balance,
     /// The capital of debt, used for calculate holding position fee
+    #[serde(with = "u128_dec_format")]
     pub debt_cap: Balance,
 
     pub token_c_info: AssetView,
@@ -121,6 +123,7 @@ pub struct MarginTradingPositionView {
     pub token_d_info: AssetView,
 
     pub token_p_id: TokenId,
+    #[serde(with = "u128_dec_format")]
     pub token_p_amount: Balance,
 
     pub is_locking: bool,

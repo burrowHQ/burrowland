@@ -7,6 +7,7 @@ use uint::construct_uint;
 
 pub const TGAS: u64 = 1_000_000_000_000;
 pub const GAS_FOR_ASSET_TRANSFER: Gas = Gas(20 * TGAS);
+pub const GAS_FOR_ASSET_TRANSFER_CALL: Gas = Gas(45 * TGAS);
 pub const GAS_FOR_RESOLVE_ASSET_TRANSFER: Gas = Gas(10 * TGAS);
 pub const GAS_FOR_NEAR_WITHDRAW: Gas = Gas(20 * TGAS);
 pub const GAS_FOR_RESOLVE_NEAR_WITHDRAW: Gas = Gas(10 * TGAS);

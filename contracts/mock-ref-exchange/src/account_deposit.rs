@@ -10,7 +10,7 @@ use near_sdk::{
     AccountId, Balance, PromiseResult, StorageUsage,
 };
 use crate::legacy::{AccountV1, AccountV2};
-use crate::utils::{GAS_FOR_FT_TRANSFER, GAS_FOR_RESOLVE_TRANSFER, ext_fungible_token};
+use crate::utils::{GAS_FOR_FT_TRANSFER, GAS_FOR_RESOLVE_TRANSFER, GAS_FOR_FT_TRANSFER_CALL, ext_fungible_token};
 use crate::*;
 
 // [AUDIT_01]
@@ -560,7 +560,7 @@ impl Contract {
     ) -> Promise {
         ext_fungible_token::ext(token_id.clone())
         .with_attached_deposit(1)
-        .with_static_gas(GAS_FOR_FT_TRANSFER)
+        .with_static_gas(GAS_FOR_FT_TRANSFER_CALL)
         .ft_transfer_call(
             sender_id.clone(),
             U128(amount),
