@@ -85,75 +85,75 @@ async fn test_margin_trading() -> Result<()> {
 
     check!(view burrowland_contract.get_margin_account(&alice));
 
-    // let mut alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
-    // let pos_id = alice_margin_account.margin_positions.keys().collect::<Vec<&String>>()[0].clone();
+    let mut alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
+    let pos_id = alice_margin_account.margin_positions.keys().collect::<Vec<&String>>()[0].clone();
 
-    // check!(burrowland_contract.margin_trading_increase_collateral_by_ft_transfer_call(&nusdt_token_contract, &alice, supply_amount / extra_decimals_mult, &pos_id, supply_amount));
-    // alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
-    // assert_eq!(alice_margin_account.supplied[0].balance, 0);
-    // assert_eq!(alice_margin_account.margin_positions.get(&pos_id).unwrap().token_c_info.balance, d(2000, 18));
+    check!(burrowland_contract.margin_trading_increase_collateral_by_ft_transfer_call(&nusdt_token_contract, &alice, supply_amount / extra_decimals_mult, &pos_id, supply_amount));
+    alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
+    assert!(alice_margin_account.supplied.is_empty());
+    assert_eq!(alice_margin_account.margin_positions.get(&pos_id).unwrap().token_c_info.balance, d(2000, 18));
 
-    // check!(burrowland_contract.margin_trading_decrease_collateral_by_oracle_call(&oracle_contract, price_data(current_timestamp, Some(100000)), &alice, &pos_id, supply_amount));
-    // alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
-    // println!("{:?}", alice_margin_account);
-    // assert_eq!(alice_margin_account.supplied[0].balance, d(1000, 18));
-    // assert_eq!(alice_margin_account.margin_positions.get(&pos_id).unwrap().token_c_info.balance, d(1000, 18));
+    check!(burrowland_contract.margin_trading_decrease_collateral_by_oracle_call(&oracle_contract, price_data(current_timestamp, Some(100000)), &alice, &pos_id, supply_amount));
+    alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
+    println!("{:?}", alice_margin_account);
+    assert_eq!(alice_margin_account.supplied[0].balance, d(1000, 18));
+    assert_eq!(alice_margin_account.margin_positions.get(&pos_id).unwrap().token_c_info.balance, d(1000, 18));
 
-    // let current_timestamp = worker.view_block().await?.timestamp();
-    // check!(logs burrowland_contract.margin_trading_decrease_mtposition_by_oracle_call(
-    //     &oracle_contract, price_data(current_timestamp, Some(100000)), &alice,
-    //     &pos_id, d(100, 18), d(10, 24), 
-    //     SwapIndication {
-    //         dex_id: near_sdk::AccountId::new_unchecked(ref_exchange_contract.0.id().to_string()),
-    //         swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
-    //             referral_id: None,
-    //             client_echo: None,
-    //             actions: vec![
-    //                 RefV1Action::Swap(RefV1SwapAction{
-    //                     pool_id: 0,
-    //                     token_in: near_sdk::AccountId::new_unchecked(nusdt_token_contract.0.id().to_string()),
-    //                     amount_in: Some(U128(d(100, 6))),
-    //                     token_out: near_sdk::AccountId::new_unchecked(wrap_token_contract.0.id().to_string()),
-    //                     min_amount_out: U128(d(10, 24)),
-    //                 })
-    //             ]
-    //         }).unwrap()
-    //     }
-    // ));
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(logs burrowland_contract.margin_trading_decrease_mtposition_by_oracle_call(
+        &oracle_contract, price_data(current_timestamp, Some(100000)), &alice,
+        &pos_id, d(100, 18), d(10, 24), 
+        SwapIndication {
+            dex_id: near_sdk::AccountId::new_unchecked(ref_exchange_contract.0.id().to_string()),
+            swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
+                referral_id: None,
+                client_echo: None,
+                actions: vec![
+                    RefV1Action::Swap(RefV1SwapAction{
+                        pool_id: 0,
+                        token_in: near_sdk::AccountId::new_unchecked(nusdt_token_contract.0.id().to_string()),
+                        amount_in: Some(U128(d(100, 6))),
+                        token_out: near_sdk::AccountId::new_unchecked(wrap_token_contract.0.id().to_string()),
+                        min_amount_out: U128(d(10, 24)),
+                    })
+                ]
+            }).unwrap()
+        }
+    ));
 
-    // check!(view burrowland_contract.get_margin_account(&alice));
+    check!(view burrowland_contract.get_margin_account(&alice));
 
-    // check!(ref_exchange_contract.swap(&wrap_token_contract, &alice, d(100, 24), 0, nusdt_token_contract.0.id()));
+    check!(ref_exchange_contract.swap(&wrap_token_contract, &alice, d(100, 24), 0, nusdt_token_contract.0.id()));
 
-    // alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
+    alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
 
-    // let current_timestamp = worker.view_block().await?.timestamp();
-    // let position_amount = alice_margin_account.margin_positions.get(&pos_id).unwrap().token_p_amount;
-    // let min_out_amount = alice_margin_account.margin_positions.get(&pos_id).unwrap().token_d_info.balance + 10u128.pow(20);
-    // check!(logs burrowland_contract.margin_trading_close_mtposition_by_oracle_call(
-    //     &oracle_contract, price_data(current_timestamp, Some(100000)), &alice,
-    //     &pos_id, position_amount, min_out_amount, 
-    //     SwapIndication {
-    //         dex_id: near_sdk::AccountId::new_unchecked(ref_exchange_contract.0.id().to_string()),
-    //         swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
-    //             referral_id: None,
-    //             client_echo: None,
-    //             actions: vec![
-    //                 RefV1Action::Swap(RefV1SwapAction{
-    //                     pool_id: 0,
-    //                     token_in: near_sdk::AccountId::new_unchecked(nusdt_token_contract.0.id().to_string()),
-    //                     amount_in: Some(U128(position_amount / 10u128.pow(12))),
-    //                     token_out: near_sdk::AccountId::new_unchecked(wrap_token_contract.0.id().to_string()),
-    //                     min_amount_out: U128(min_out_amount),
-    //                 })
-    //             ]
-    //         }).unwrap()
-    //     }
-    // ));
+    let current_timestamp = worker.view_block().await?.timestamp();
+    let position_amount = alice_margin_account.margin_positions.get(&pos_id).unwrap().token_p_amount;
+    let min_out_amount = alice_margin_account.margin_positions.get(&pos_id).unwrap().token_d_info.balance + 10u128.pow(20);
+    check!(logs burrowland_contract.margin_trading_close_mtposition_by_oracle_call(
+        &oracle_contract, price_data(current_timestamp, Some(100000)), &alice,
+        &pos_id, position_amount, min_out_amount, 
+        SwapIndication {
+            dex_id: near_sdk::AccountId::new_unchecked(ref_exchange_contract.0.id().to_string()),
+            swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
+                referral_id: None,
+                client_echo: None,
+                actions: vec![
+                    RefV1Action::Swap(RefV1SwapAction{
+                        pool_id: 0,
+                        token_in: near_sdk::AccountId::new_unchecked(nusdt_token_contract.0.id().to_string()),
+                        amount_in: Some(U128(position_amount / 10u128.pow(12))),
+                        token_out: near_sdk::AccountId::new_unchecked(wrap_token_contract.0.id().to_string()),
+                        min_amount_out: U128(min_out_amount),
+                    })
+                ]
+            }).unwrap()
+        }
+    ));
 
-    // check!(view burrowland_contract.get_margin_account(&alice));
-    // check!(burrowland_contract.margin_trading_withdraw(&alice, nusdt_token_contract.0.id(), None));
-    // check!(view burrowland_contract.get_margin_account(&alice));
+    check!(view burrowland_contract.get_margin_account(&alice));
+    check!(burrowland_contract.margin_trading_withdraw(&alice, nusdt_token_contract.0.id(), None));
+    check!(view burrowland_contract.get_margin_account(&alice));
     Ok(())
 }
 
@@ -263,7 +263,7 @@ async fn test_margin_trading_with_pyth() -> Result<()> {
 
     check!(burrowland_contract.margin_trading_increase_collateral_by_ft_transfer_call(&nusdt_token_contract, &alice, supply_amount / extra_decimals_mult, &pos_id, supply_amount));
     alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
-    assert_eq!(alice_margin_account.supplied[0].balance, 0);
+    assert!(alice_margin_account.supplied.is_empty());
     assert_eq!(alice_margin_account.margin_positions.get(&pos_id).unwrap().token_c_info.balance, d(2000, 18));
 
     check!(burrowland_contract.margin_trading_decrease_collateral_by_pyth(&alice, &pos_id, supply_amount));
@@ -952,7 +952,7 @@ async fn test_margin_trading_dcl() -> Result<()> {
 
     check!(burrowland_contract.margin_trading_increase_collateral_by_ft_transfer_call(&nusdt_token_contract, &alice, supply_amount / extra_decimals_mult, &pos_id, supply_amount));
     alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
-    assert_eq!(alice_margin_account.supplied[0].balance, 0);
+    assert!(alice_margin_account.supplied.is_empty());
     assert_eq!(alice_margin_account.margin_positions.get(&pos_id).unwrap().token_c_info.balance, d(2000, 18));
 
     check!(burrowland_contract.margin_trading_decrease_collateral_by_pyth(&alice, &pos_id, supply_amount));

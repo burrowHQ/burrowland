@@ -46,9 +46,11 @@ impl MarginAccount {
     }
 
     pub(crate) fn withdraw_supply_shares(&mut self, token_id: &AccountId, shares: &Shares) {
-        let supply_shares = self.supplied.get_mut(token_id).unwrap();
+        let supply_shares = self.supplied.remove(token_id).unwrap();
         if let Some(new_balance) = supply_shares.0.checked_sub(shares.0) {
-            supply_shares.0 = new_balance;
+            if new_balance > 0 {
+                self.supplied.insert(token_id.clone(), new_balance.into());
+            }
         } else {
             env::panic_str("Not enough asset balance");
         }
