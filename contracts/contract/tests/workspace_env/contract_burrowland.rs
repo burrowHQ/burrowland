@@ -566,7 +566,7 @@ impl Burrowland {
             .await
     }
 
-    pub async fn update_asset_capacity(
+    pub async fn enable_asset_capacity(
         &self,
         caller: &Account,
         token_id: &AccountId,
@@ -576,7 +576,31 @@ impl Burrowland {
         can_borrow: Option<bool>
     ) -> Result<ExecutionFinalResult> {
         caller
-            .call(self.0.id(), "update_asset_capacity")
+            .call(self.0.id(), "enable_asset_capacity")
+            .args_json(json!({
+                "token_id": token_id,
+                "can_deposit": can_deposit, 
+                "can_withdraw": can_withdraw, 
+                "can_use_as_collateral": can_use_as_collateral, 
+                "can_borrow": can_borrow
+            }))
+            .deposit(1)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn disable_asset_capacity(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        can_deposit: Option<bool>, 
+        can_withdraw: Option<bool>, 
+        can_use_as_collateral: Option<bool>, 
+        can_borrow: Option<bool>
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "disable_asset_capacity")
             .args_json(json!({
                 "token_id": token_id,
                 "can_deposit": can_deposit, 

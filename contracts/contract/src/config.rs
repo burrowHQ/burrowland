@@ -187,28 +187,59 @@ impl Contract {
         self.config.set(&config);
     }
 
-    /// Updates the capacity for the asset with the a given token_id.
+    /// Enable the capacity for the asset with the a given token_id.
     /// - Panics if the capacity is invalid.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
-    /// - The can_withdraw requires to be called by the contract owner.
-    /// - The can_deposit、can_use_as_collateral and can_borrow requires to be called by the contract owner or guardians.
+    /// - Requires to be called by the contract owner.
     #[payable]
-    pub fn update_asset_capacity(&mut self, token_id: AccountId, can_deposit: Option<bool>, can_withdraw: Option<bool>, can_use_as_collateral: Option<bool>, can_borrow: Option<bool>) {
+    pub fn enable_asset_capacity(&mut self, token_id: AccountId, can_deposit: Option<bool>, can_withdraw: Option<bool>, can_use_as_collateral: Option<bool>, can_borrow: Option<bool>) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        if let Some(can_deposit) = can_deposit {
+            assert!(can_deposit, "Invalid can_deposit!");
+            asset.config.can_deposit = can_deposit;
+        }
+        if let Some(can_withdraw) = can_withdraw {
+            assert!(can_withdraw, "Invalid can_withdraw!");
+            asset.config.can_withdraw = can_withdraw;
+        }
+        if let Some(can_use_as_collateral) = can_use_as_collateral {
+            assert!(can_use_as_collateral, "Invalid can_use_as_collateral!");
+            asset.config.can_use_as_collateral = can_use_as_collateral;
+        }
+        if let Some(can_borrow) = can_borrow {
+            assert!(can_borrow, "Invalid can_borrow!");
+            asset.config.can_borrow = can_borrow;
+        }
+        self.internal_set_asset(&token_id, asset);
+    }
+
+    /// Disable the capacity for the asset with the a given token_id.
+    /// - Panics if the capacity is invalid.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    pub fn disable_asset_capacity(&mut self, token_id: AccountId, can_deposit: Option<bool>, can_withdraw: Option<bool>, can_use_as_collateral: Option<bool>, can_borrow: Option<bool>) {
         assert_one_yocto();
         self.assert_owner_or_guardians();
         let mut asset = self.internal_unwrap_asset(&token_id);
         if let Some(can_deposit) = can_deposit {
+            assert!(!can_deposit, "Invalid can_deposit!");
             asset.config.can_deposit = can_deposit;
         }
         if let Some(can_withdraw) = can_withdraw {
-            self.assert_owner();
+            assert!(!can_withdraw, "Invalid can_withdraw!");
             asset.config.can_withdraw = can_withdraw;
         }
         if let Some(can_use_as_collateral) = can_use_as_collateral {
+            assert!(!can_use_as_collateral, "Invalid can_use_as_collateral!");
             asset.config.can_use_as_collateral = can_use_as_collateral;
         }
         if let Some(can_borrow) = can_borrow {
+            assert!(!can_borrow, "Invalid can_borrow!");
             asset.config.can_borrow = can_borrow;
         }
         self.internal_set_asset(&token_id, asset);

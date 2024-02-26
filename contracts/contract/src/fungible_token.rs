@@ -20,6 +20,7 @@ pub enum TokenReceiverMsg {
     DepositToReserve,
     DepositToMargin,
     MarginExecute { actions: Vec<MarginAction> },
+    MarginExecuteWithPyth { actions: Vec<MarginAction> },
     SwapReference { swap_ref: SwapReference },
 }
 
@@ -73,6 +74,14 @@ impl FungibleTokenReceiver for Contract {
                     self.internal_margin_deposit(&mut account, &token_id, amount);
                     events::emit::margin_deposit(&sender_id, amount, &token_id);
                     self.internal_margin_execute(&sender_id, &mut account, actions, Prices::new());
+                    self.internal_set_margin_account(&sender_id, account);
+                    return PromiseOrValue::Value(U128(0));
+                }
+                TokenReceiverMsg::MarginExecuteWithPyth { actions } => {
+                    let mut account = self.internal_unwrap_margin_account(&sender_id);
+                    self.internal_margin_deposit(&mut account, &token_id, amount);
+                    events::emit::margin_deposit(&sender_id, amount, &token_id);
+                    self.internal_margin_execute_with_pyth(&sender_id, &mut account, actions);
                     self.internal_set_margin_account(&sender_id, account);
                     return PromiseOrValue::Value(U128(0));
                 }

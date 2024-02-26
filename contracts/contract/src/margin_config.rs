@@ -66,6 +66,60 @@ impl Contract {
     }
 
     #[payable]
+    pub fn update_max_leverage_rate(&mut self, max_leverage_rate: u8) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut mc = self.internal_margin_config();
+        mc.max_leverage_rate = max_leverage_rate;
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
+    pub fn update_pending_debt_scale(&mut self, pending_debt_scale: u32) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut mc = self.internal_margin_config();
+        mc.pending_debt_scale = pending_debt_scale;
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
+    pub fn update_max_slippage_rate(&mut self, max_slippage_rate: u32) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut mc = self.internal_margin_config();
+        mc.max_slippage_rate = max_slippage_rate;
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
+    pub fn update_min_safty_buffer(&mut self, min_safty_buffer: u32) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut mc = self.internal_margin_config();
+        mc.min_safty_buffer = min_safty_buffer;
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
+    pub fn update_margin_debt_discount_rate(&mut self, margin_debt_discount_rate: u32) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut mc = self.internal_margin_config();
+        mc.margin_debt_discount_rate = margin_debt_discount_rate;
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
+    pub fn update_open_position_fee_rate(&mut self, open_position_fee_rate: u32) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut mc = self.internal_margin_config();
+        mc.open_position_fee_rate = open_position_fee_rate;
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
     pub fn register_margin_dex(&mut self, dex_id: AccountId, dex_version: u8) {
         assert_one_yocto();
         self.assert_owner();
