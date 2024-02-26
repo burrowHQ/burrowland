@@ -490,11 +490,11 @@ impl Contract {
             // trading failed, revert margin operation
             let mut account = self.internal_unwrap_margin_account(&account_id);
             if op == "open" {
-                let mt = account.margin_positions.get(&pos_id).unwrap();
+                let mt = account.margin_positions.get(&pos_id).unwrap().clone();
                 let mut asset_d = self.internal_unwrap_asset(&mt.token_d_id);
                 asset_d.margin_pending_debt -= amount_in.0;
                 self.internal_set_asset(&mt.token_d_id, asset_d);
-                account.deposit_supply_shares(&mt.token_c_id.clone(), &mt.token_c_shares.clone());
+                account.deposit_supply_shares(&mt.token_c_id, &mt.token_c_shares);
                 account.margin_positions.remove(&pos_id);
                 events::emit::margin_open_failed(&account_id, &pos_id);
                 
