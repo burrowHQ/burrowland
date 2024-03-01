@@ -53,7 +53,7 @@ build-mock-dcl: contracts/mock-dcl
 release:
 	$(call docker_build,_rust_setup.sh)
 	mkdir -p res
-	cp target/wasm32-unknown-unknown/release/contract.wasm res/burrowland_release.wasm
+	cp target/wasm32-unknown-unknown/release/contract_by_wasm_opt.wasm res/burrowland_release.wasm
 	cp target/wasm32-unknown-unknown/release/test_oracle.wasm res/test_oracle_release.wasm
 
 unittest: build
