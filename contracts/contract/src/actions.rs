@@ -167,7 +167,7 @@ impl Contract {
                         account_id, &liquidation_account_id,
                         "Can't liquidate yourself"
                     );
-                    assert!(!self.internal_unwrap_account(&liquidation_account_id).is_locked, "Liquidation account is locked!");
+                    assert!(!self.internal_get_account(&liquidation_account_id, true).expect("Account is not registered").is_locked, "Liquidation account is locked!");
                     let position = position.unwrap_or(REGULAR_POSITION.to_string());
                     if position == REGULAR_POSITION {
                         assert!(!in_assets.is_empty() && !out_assets.is_empty());
@@ -188,6 +188,7 @@ impl Contract {
                         let mut in_asset_tokens = HashSet::new();
                         in_assets.iter().for_each(|v| assert!(in_asset_tokens.insert(&v.token_id), "Duplicate assets!"));
                         let mut temp_account = account.clone();
+                        temp_account.storage_tracker.clean();
                         self.internal_shadow_liquidate(
                             &position,
                             account_id,
@@ -213,7 +214,7 @@ impl Contract {
                         account_id, &liquidation_account_id,
                         "Can't liquidate yourself"
                     );
-                    assert!(!self.internal_unwrap_account(&liquidation_account_id).is_locked, "Liquidation account is locked!");
+                    assert!(!self.internal_get_account(&liquidation_account_id, true).expect("Account is not registered").is_locked, "Liquidation account is locked!");
                     let position = position.unwrap_or(REGULAR_POSITION.to_string());
                     if position == REGULAR_POSITION {
                         assert!(min_token_amounts.is_none());
