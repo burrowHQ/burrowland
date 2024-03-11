@@ -2253,4 +2253,78 @@ mod liquidation {
         let asset = test_env.get_asset(wnear_token_id());
         assert_eq!(asset.reserved, wnear_reserve - borrow_amount);
     }
+
+    #[test]
+    fn test_get_old_account_without_set() {
+        let mut test_env = init_unit_env();
+        let mut supplied = UnorderedMap::new(b"a");
+        supplied.insert(&AccountId::new_unchecked("token_id".to_string()), &VAccountAsset::Current(AccountAsset{
+            shares: U128(100000)
+        }));
+        let mut farms = UnorderedMap::new(b"b");
+        farms.insert(&FarmId::NetTvl, &VAccountFarm::Current(AccountFarm{
+            block_timestamp: 12345,
+            rewards: HashMap::new(),
+        }));
+        test_env.contract.accounts.insert(&AccountId::new_unchecked("storage".to_string()), &VAccount::V1(AccountV1{
+            account_id: AccountId::new_unchecked("storage".to_string()),
+            supplied,
+            collateral: vec![],
+            borrowed: vec![],
+            farms,
+            booster_staking: None,
+        }));
+        test_env.contract.internal_get_account(&AccountId::new_unchecked("storage".to_string()), true).expect("Account is not registered");
+    }
+
+    #[test]
+    #[should_panic(expected = "Bug, non-tracked storage change")]
+    fn test_get_old_account_without_set_failed1() {
+        let mut test_env = init_unit_env();
+        let mut supplied = UnorderedMap::new(b"a");
+        supplied.insert(&AccountId::new_unchecked("token_id".to_string()), &VAccountAsset::Current(AccountAsset{
+            shares: U128(100000)
+        }));
+        let mut farms = UnorderedMap::new(b"b");
+        farms.insert(&FarmId::NetTvl, &VAccountFarm::Current(AccountFarm{
+            block_timestamp: 12345,
+            rewards: HashMap::new(),
+        }));
+        test_env.contract.accounts.insert(&AccountId::new_unchecked("storage".to_string()), &VAccount::V1(AccountV1{
+            account_id: AccountId::new_unchecked("storage".to_string()),
+            supplied,
+            collateral: vec![],
+            borrowed: vec![],
+            farms,
+            booster_staking: None,
+        }));
+        test_env.contract.internal_unwrap_account(&AccountId::new_unchecked("storage".to_string()));
+    }
+
+    #[test]
+    #[should_panic(expected = "Bug, non-tracked storage change")]
+    fn test_get_old_account_without_set_failed2() {
+        let mut test_env = init_unit_env();
+        let mut supplied = UnorderedMap::new(b"a");
+        supplied.insert(&AccountId::new_unchecked("token_id".to_string()), &VAccountAsset::Current(AccountAsset{
+            shares: U128(100000)
+        }));
+        let mut farms = UnorderedMap::new(b"b");
+        farms.insert(&FarmId::NetTvl, &VAccountFarm::Current(AccountFarm{
+            block_timestamp: 12345,
+            rewards: HashMap::new(),
+        }));
+        test_env.contract.accounts.insert(&AccountId::new_unchecked("storage".to_string()), &VAccount::V1(AccountV1{
+            account_id: AccountId::new_unchecked("storage".to_string()),
+            supplied,
+            collateral: vec![],
+            borrowed: vec![],
+            farms,
+            booster_staking: None,
+        }));
+        let account = test_env.contract.internal_unwrap_account(&AccountId::new_unchecked("storage".to_string()));
+        test_env.contract.storage.insert(&AccountId::new_unchecked("storage".to_string()), &VStorage::Current(Storage { storage_balance: 10u128.pow(25), used_bytes: 1000, storage_tracker: Default::default() }));
+        let _tmp_account = account.clone();
+        test_env.contract.internal_set_account(&AccountId::new_unchecked("storage".to_string()), account);
+    }
 }
