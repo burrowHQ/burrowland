@@ -1,4 +1,10 @@
 # Release Notes
+Version 0.9.1
+```bssh=
+# codehash: 8wSzoqHRtNXdV1xTwT6JvD7HYXLqKwqJyskeR9BkCdcv 
+```
+- fix an old account auto-upgradation issue in liquidation.
+
 Version 0.9.0
 ```bssh=
 # codehash: DUBWfFT1h3NNtvngw22SenyDpeUGN5PRLcNxaopMUpNe 
