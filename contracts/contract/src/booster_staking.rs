@@ -64,6 +64,8 @@ impl Contract {
         let new_duration_ns = sec_to_nano(duration);
         let new_unlock_timestamp_ns = timestamp + new_duration_ns;
 
+        account.sync_booster_policy(&config);
+        
         let mut booster_staking = account
             .booster_staking
             .take()
@@ -104,6 +106,8 @@ impl Contract {
         self.internal_set_account(&account_id, account);
     }
 
+    /// Unstakes all booster token.
+    /// The current timestamp must be greater than the unlock_timestamp.
     #[payable]
     pub fn account_unstake_booster(&mut self) {
         assert_one_yocto();
@@ -138,7 +142,7 @@ impl Contract {
     }
 }
 
-fn compute_x_booster_amount(config: &Config, amount: u128, duration_ns: Duration) -> u128 {
+pub fn compute_x_booster_amount(config: &Config, amount: u128, duration_ns: Duration) -> u128 {
     amount
         + u128_ratio(
             amount,

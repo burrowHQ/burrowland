@@ -14,15 +14,49 @@ trait Contract {
     #[init]
     fn new(config: Config) -> Self;
 
+    /// Extend guardians. Only can be called by owner.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    fn extend_guardians(&mut self, guardians: Vec<AccountId>);
+
+    /// Remove guardians. Only can be called by owner.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    fn remove_guardians(&mut self, guardians: Vec<AccountId>);
+
+    /// Returns all guardians.
+    fn get_guardians(&self);
+
+    /// Extend farmers to the blacklist. Only can be called by owner or guardians.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    fn extend_blacklist_of_farmers(&mut self, farmers: Vec<AccountId>);
+
+    /// Remove farmers from the blacklist. Only can be called by owner or guardians.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    fn remove_blacklist_of_farmers(&mut self, farmers: Vec<AccountId>);
+
+    /// Returns all farmers in the blacklist.
+    fn get_blacklist_of_farmers(&self) -> Vec<AccountId>;
+
     /// Returns detailed information about an account for a given account_id.
     /// The information includes all supplied assets, collateral and borrowed.
     /// Each asset includes the current balance and the number of shares.
     fn get_account(&self, account_id: ValidAccountId) -> Option<AccountDetailedView>;
 
+    /// Returns detailed information about an account for a given account_id.
+    /// The information includes all positions supplied assets, collateral and borrowed.
+    /// Each asset includes the current balance and the number of shares.
+    fn get_account_all_positions(&self, account_id: AccountId) -> Option<AccountAllPositionsDetailedView>;
+
     /// Returns limited account information for accounts from a given index up to a given limit.
     /// The information includes number of shares for collateral and borrowed assets.
     /// This method can be used to iterate on the accounts for liquidation.
     fn get_accounts_paged(&self, from_index: Option<u64>, limit: Option<u64>) -> Vec<Account>;
+
+    /// Returns the number of accounts
+    fn get_num_accounts(&self) -> u32;
 
     /// Executes a given list actions on behalf of the predecessor account.
     /// - Requires one yoctoNEAR.
@@ -60,6 +94,19 @@ trait Contract {
     #[payable]
     fn update_config(&mut self, config: Config);
 
+    /// Adjust boost staking policy.
+    /// - Panics if minimum_staking_duration_sec >= maximum_staking_duration_sec.
+    /// - Panics if x_booster_multiplier_at_maximum_staking_duration < MIN_BOOSTER_MULTIPLIER.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    fn adjust_boost_staking_policy(&mut self, minimum_staking_duration_sec: DurationSec, maximum_staking_duration_sec: DurationSec, x_booster_multiplier_at_maximum_staking_duration: u32);
+
+    /// Adjust boost suppress factor.
+    /// - Panics if boost_suppress_factor <= 0.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    fn adjust_boost_suppress_factor(&mut self, boost_suppress_factor: u128);
+
     /// Adds an asset with a given token_id and a given asset_config.
     /// - Panics if the asset config is invalid.
     /// - Panics if an asset with the given token_id already exists.
@@ -75,6 +122,59 @@ trait Contract {
     /// - Requires to be called by the contract owner.
     #[payable]
     fn update_asset(&mut self, token_id: ValidAccountId, asset_config: AssetConfig);
+
+    /// Updates the prot_ratio for the asset with the a given token_id.
+    /// - Panics if the prot_ratio is invalid.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    fn update_asset_prot_ratio(&mut self, token_id: AccountId, prot_ratio: u32);
+
+    /// Enable the capacity for the asset with the a given token_id.
+    /// - Panics if the capacity is invalid.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    fn enable_asset_capacity(&mut self, token_id: AccountId, can_deposit: Option<bool>, can_withdraw: Option<bool>, can_use_as_collateral: Option<bool>, can_borrow: Option<bool>);
+
+    /// Disable the capacity for the asset with the a given token_id.
+    /// - Panics if the capacity is invalid.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    fn disable_asset_capacity(&mut self, token_id: AccountId, can_deposit: Option<bool>, can_withdraw: Option<bool>, can_use_as_collateral: Option<bool>, can_borrow: Option<bool>);
+
+    /// Updates the net_tvl_multiplier for the asset with the a given token_id.
+    /// - Panics if the net_tvl_multiplier is invalid.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    fn update_asset_net_tvl_multiplier(&mut self, token_id: AccountId, net_tvl_multiplier: u32);
+
+    /// Claim prot_fee from asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    fn claim_prot_fee(&mut self, token_id: AccountId, stdd_amount: Option<U128>);
+
+    /// Decrease reserved from asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    fn decrease_reserved(&mut self, token_id: AccountId, stdd_amount: Option<U128>);
+
+    /// Increase reserved from asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    fn increase_reserved(&mut self, asset_amount: AssetAmount);
 
     /// Receives the transfer from the fungible token and executes a list of actions given in the
     /// message on behalf of the sender. The actions that can be executed should be limited to a set
@@ -130,6 +230,17 @@ trait Contract {
         new_booster_log_base: WrappedBalance,
         extra_amount: WrappedBalance,
     );
+
+    /// Stakes a given amount (or all supplied) booster token for a given duration in seconds.
+    /// If the previous stake exists, then the new duration should be longer than the previous
+    /// remaining staking duration.
+    #[payable]
+    fn account_stake_booster(&mut self, amount: Option<U128>, duration: DurationSec);
+
+    /// Unstakes all booster token.
+    /// The current timestamp must be greater than the unlock_timestamp.
+    #[payable]
+    fn account_unstake_booster(&mut self);
 }
 ```
 
@@ -149,6 +260,7 @@ pub struct AssetView {
 pub enum FarmId {
     Supplied(TokenId),
     Borrowed(TokenId),
+    NetTvl,
 }
 
 pub struct AccountFarmView {
@@ -175,26 +287,49 @@ pub struct AccountDetailedView {
     pub borrowed: Vec<AssetView>,
     /// Account farms
     pub farms: Vec<AccountFarmView>,
+    /// Whether the account has assets, that can be farmed.
+    pub has_non_farmed_assets: bool,
+    /// Staking of booster token.
+    pub booster_staking: Option<BoosterStaking>,
+}
+
+pub struct AccountAllPositionsDetailedView {
+    pub account_id: AccountId,
+    /// A list of assets that are supplied by the account (but not used a collateral).
+    pub supplied: Vec<AssetView>,
+    pub positions: HashMap<String, PositionView>,
+    /// Account farms
+    pub farms: Vec<AccountFarmView>,
+    /// Whether the account has assets, that can be farmed.
+    pub has_non_farmed_assets: bool,
+    /// Staking of booster token.
+    pub booster_staking: Option<BoosterStaking>,
+    pub is_locked: bool
 }
 
 /// Limited view of the account structure for liquidations
 pub struct Account {
     /// A copy of an account ID. Saves one storage_read when iterating on accounts.
     pub account_id: AccountId,
-    /// A list of collateral assets.
-    pub collateral: Vec<CollateralAsset>,
-    /// A list of borrowed assets.
-    pub borrowed: Vec<BorrowedAsset>,
-}
+    /// A list of assets that are supplied by the account (but not used a collateral).
+    /// It's not returned for account pagination.
+    pub supplied: HashMap<TokenId, Shares>,
+    pub positions: HashMap<String, Position>,
+    /// Keeping track of data required for farms for this account.
+    #[serde(skip_serializing)]
+    pub farms: HashMap<FarmId, AccountFarm>,
+    #[borsh_skip]
+    #[serde(skip_serializing)]
+    pub affected_farms: HashSet<FarmId>,
 
-pub struct CollateralAsset {
-    pub token_id: TokenId,
-    pub shares: Shares,
-}
+    /// Tracks changes in storage usage by persistent collections in this account.
+    #[borsh_skip]
+    #[serde(skip)]
+    pub storage_tracker: StorageTracker,
 
-pub struct BorrowedAsset {
-    pub token_id: TokenId,
-    pub shares: Shares,
+    /// Staking of booster token.
+    pub booster_staking: Option<BoosterStaking>,
+    pub is_locked: bool
 }
 
 pub struct AssetDetailedView {
@@ -249,6 +384,8 @@ pub struct AssetFarmReward {
     /// The total number of boosted shares.
     #[serde(with = "u128_dec_format")]
     pub boosted_shares: Balance,
+    #[serde(skip)]
+    pub reward_per_share: BigDecimal,
 }
 
 pub struct Asset {
@@ -260,6 +397,10 @@ pub struct Asset {
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
     pub reserved: Balance,
+    /// The amount belongs to the protocol. This amount can also be borrowed and affects
+    /// borrowing rate.
+    #[serde(with = "u128_dec_format")]
+    pub prot_fee: Balance,
     /// When the asset was last updated. It's always going to be the current block timestamp.
     #[serde(with = "u64_dec_format")]
     pub last_update_timestamp: Timestamp,
@@ -281,6 +422,7 @@ pub struct Pool {
 /// ```json
 /// {
 ///   "reserve_ratio": 2500,
+///   "release_ratio": 0,
 ///   "target_utilization": 8000,
 ///   "target_utilization_rate": "1000000000003593629036885046",
 ///   "max_utilization_rate": "1000000000039724853136740579",
@@ -289,13 +431,17 @@ pub struct Pool {
 ///   "can_deposit": true,
 ///   "can_withdraw": true,
 ///   "can_use_as_collateral": true,
-///   "can_borrow": true
+///   "can_borrow": true,
+///   "net_tvl_multiplier": 0
 /// }
 /// ```
 pub struct AssetConfig {
     /// The ratio of interest that is reserved by the protocol (multiplied by 10000).
     /// E.g. 2500 means 25% from borrowed interests goes to the reserve.
     pub reserve_ratio: u32,
+    /// The ratio of reserved interest that belongs to the protocol (multiplied by 10000).
+    /// E.g. 2500 means 25% from reserved interests goes to the prot.
+    pub prot_ratio: u32,
     /// Target utilization ratio (multiplied by 10000).
     /// E.g. 8000 means the protocol targets 80% of assets are borrowed.
     pub target_utilization: u32,
@@ -327,6 +473,11 @@ pub struct AssetConfig {
     pub can_use_as_collateral: bool,
     /// Whether this assets can be borrowed.
     pub can_borrow: bool,
+    /// NetTvl asset multiplier (multiplied by 10000).
+    /// Default multiplier is 10000, means the asset weight shouldn't be changed.
+    /// Example: a multiplier of 5000 means the asset in TVL should only counted as 50%, e.g. if an
+    /// asset is not useful for borrowing, but only useful as a collateral.
+    pub net_tvl_multiplier: u32,
 }
 
 pub struct AssetAmount {
@@ -342,28 +493,90 @@ pub struct AssetAmount {
 /// Contract config
 pub struct Config {
     /// The account ID of the oracle contract
-    pub oracle_account_id: ValidAccountId,
+    pub oracle_account_id: AccountId,
+
+    /// The account ID of the ref exchange
+    pub ref_exchange_id: AccountId,
 
     /// The account ID of the contract owner that allows to modify config, assets and use reserves.
-    pub owner_id: ValidAccountId,
+    pub owner_id: AccountId,
 
     /// The account ID of the booster token contract.
     pub booster_token_id: TokenId,
 
     /// The number of decimals of the booster fungible token.
     pub booster_decimals: u8,
+
+    /// The total number of different assets
+    pub max_num_assets: u32,
+
+    /// The maximum number of seconds expected from the oracle price call.
+    pub maximum_recency_duration_sec: DurationSec,
+
+    /// Maximum staleness duration of the price data timestamp.
+    /// Because NEAR protocol doesn't implement the gas auction right now, the only reason to
+    /// delay the price updates are due to the shard congestion.
+    /// This parameter can be updated in the future by the owner.
+    pub maximum_staleness_duration_sec: DurationSec,
+
+    /// The valid duration (in seconds) of lp_tokens_info.
+    pub lp_tokens_info_valid_duration_sec: DurationSec,
+
+    /// The minimum duration to stake booster token in seconds.
+    pub minimum_staking_duration_sec: DurationSec,
+
+    /// The maximum duration to stake booster token in seconds.
+    pub maximum_staking_duration_sec: DurationSec,
+
+    /// The rate of xBooster for the amount of Booster given for the maximum staking duration.
+    /// Assuming the 100% multiplier at the minimum staking duration. Should be no less than 100%.
+    /// E.g. 20000 means 200% multiplier (or 2X).
+    pub x_booster_multiplier_at_maximum_staking_duration: u32,
+
+    /// Whether an account with bad debt can be liquidated using reserves.
+    /// The account should have borrowed sum larger than the collateral sum.
+    pub force_closing_enabled: bool,
+
+    /// The factor that suppresses the effect of boost.
+    /// E.g. 1000 means that in the calculation, the actual boost amount will be divided by 1000.
+    pub boost_suppress_factor: u128,
 }
 
 pub enum Action {
     Withdraw(AssetAmount),
     IncreaseCollateral(AssetAmount),
+    PositionIncreaseCollateral{
+        position: String,
+        asset_amount: AssetAmount
+    },
     DecreaseCollateral(AssetAmount),
+    PositionDecreaseCollateral{
+        position: String,
+        asset_amount: AssetAmount
+    },
     Borrow(AssetAmount),
+    PositionBorrow{
+        position: String,
+        asset_amount: AssetAmount
+    },
     Repay(AssetAmount),
+    PositionRepay{
+        position: String,
+        asset_amount: AssetAmount
+    },
     Liquidate {
-        account_id: ValidAccountId,
+        account_id: AccountId,
         in_assets: Vec<AssetAmount>,
         out_assets: Vec<AssetAmount>,
+        position: Option<String>,
+        min_token_amounts: Option<Vec<U128>>
+    },
+    /// If the sum of burrowed assets exceeds the collateral, the account will be liquidated
+    /// using reserves.
+    ForceClose {
+        account_id: AccountId,
+        position: Option<String>,
+        min_token_amounts: Option<Vec<U128>>
     },
 }
 

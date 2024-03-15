@@ -232,18 +232,23 @@ impl Contract {
         for (token_id, &reward) in &all_rewards {
             self.internal_deposit(account, &token_id, reward);
         }
+        account.sync_booster_policy(&config);
         let booster_balance = account
             .booster_staking
             .as_ref()
             .map(|b| b.x_booster_amount)
             .unwrap_or(0);
-        let booster_base = 10u128.pow(config.booster_decimals as u32);
+        let booster_base = 10u128.pow(config.booster_decimals as u32) * config.boost_suppress_factor;
 
         for (farm_id, mut account_farm, mut asset_farm, inactive_rewards) in farms {
-            let shares = match &farm_id {
-                FarmId::Supplied(token_id) => account.get_supplied_shares(token_id).0,
-                FarmId::Borrowed(token_id) => account.get_borrowed_shares(token_id).0,
-                FarmId::NetTvl => self.get_account_tvl_shares(account)
+            let shares = if self.blacklist_of_farmers.contains(&account.account_id) {
+                0
+            } else {
+                match &farm_id {
+                    FarmId::Supplied(token_id) => account.get_supplied_shares(token_id).0,
+                    FarmId::Borrowed(token_id) => account.get_borrowed_shares(token_id).0,
+                    FarmId::NetTvl => self.get_account_tvl_shares(account)
+                }
             };
             for (token_id, asset_farm_reward) in asset_farm.rewards.iter_mut() {
                 let account_farm_reward = account_farm.rewards.get_mut(token_id).unwrap();
@@ -253,7 +258,7 @@ impl Contract {
                         && booster_balance > booster_base
                     {
                         let log_base =
-                            (asset_farm_reward.booster_log_base as f64) / (booster_base as f64);
+                            (asset_farm_reward.booster_log_base as f64) / 10f64.powi(config.booster_decimals as i32);
                         ((shares as f64)
                             * ((booster_balance as f64) / (booster_base as f64)).log(log_base))
                             as u128

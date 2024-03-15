@@ -10,6 +10,7 @@ pub struct Config {
     /// The account ID of the oracle contract
     pub oracle_account_id: AccountId,
 
+    /// The account ID of the ref exchange
     pub ref_exchange_id: AccountId,
 
     /// The account ID of the contract owner that allows to modify config, assets and use reserves.
@@ -33,6 +34,7 @@ pub struct Config {
     /// This parameter can be updated in the future by the owner.
     pub maximum_staleness_duration_sec: DurationSec,
 
+    /// The valid duration (in seconds) of lp_tokens_info.
     pub lp_tokens_info_valid_duration_sec: DurationSec,
 
     /// The minimum duration to stake booster token in seconds.
@@ -49,6 +51,10 @@ pub struct Config {
     /// Whether an account with bad debt can be liquidated using reserves.
     /// The account should have borrowed sum larger than the collateral sum.
     pub force_closing_enabled: bool,
+
+    /// The factor that suppresses the effect of boost.
+    /// E.g. 1000 means that in the calculation, the actual boost amount will be divided by 1000.
+    pub boost_suppress_factor: u128,
 }
 
 impl Config {
@@ -61,6 +67,7 @@ impl Config {
             self.x_booster_multiplier_at_maximum_staking_duration >= MIN_BOOSTER_MULTIPLIER,
             "xBooster multiplier should be no less than 100%"
         );
+        assert!(self.boost_suppress_factor > 0, "The boost_suppress_factor must be greater than 0");
     }
 }
 
@@ -107,6 +114,35 @@ impl Contract {
             current_config.booster_decimals != config.booster_decimals {
             env::panic_str("Can't change booster_token_id/booster_decimals");
         }
+        self.config.set(&config);
+    }
+
+    /// Adjust boost staking policy.
+    /// - Panics if minimum_staking_duration_sec >= maximum_staking_duration_sec.
+    /// - Panics if x_booster_multiplier_at_maximum_staking_duration < MIN_BOOSTER_MULTIPLIER.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    pub fn adjust_boost_staking_policy(&mut self, minimum_staking_duration_sec: DurationSec, maximum_staking_duration_sec: DurationSec, x_booster_multiplier_at_maximum_staking_duration: u32) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        let mut config = self.internal_config();
+        config.minimum_staking_duration_sec = minimum_staking_duration_sec;
+        config.maximum_staking_duration_sec = maximum_staking_duration_sec;
+        config.x_booster_multiplier_at_maximum_staking_duration = x_booster_multiplier_at_maximum_staking_duration;
+        config.assert_valid();
+        self.config.set(&config);
+    }
+
+    /// Adjust boost suppress factor.
+    /// - Panics if boost_suppress_factor <= 0.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    pub fn adjust_boost_suppress_factor(&mut self, boost_suppress_factor: u128) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut config = self.internal_config();
+        config.boost_suppress_factor = boost_suppress_factor;
+        config.assert_valid();
         self.config.set(&config);
     }
 
@@ -160,28 +196,59 @@ impl Contract {
         self.internal_set_asset(&token_id, asset);
     }
 
-    /// Updates the capacity for the asset with the a given token_id.
+    /// Enable the capacity for the asset with the a given token_id.
     /// - Panics if the capacity is invalid.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
-    /// - The can_withdraw requires to be called by the contract owner.
-    /// - The can_deposit、can_use_as_collateral and can_borrow requires to be called by the contract owner or guardians.
+    /// - Requires to be called by the contract owner.
     #[payable]
-    pub fn update_asset_capacity(&mut self, token_id: AccountId, can_deposit: Option<bool>, can_withdraw: Option<bool>, can_use_as_collateral: Option<bool>, can_borrow: Option<bool>) {
+    pub fn enable_asset_capacity(&mut self, token_id: AccountId, can_deposit: Option<bool>, can_withdraw: Option<bool>, can_use_as_collateral: Option<bool>, can_borrow: Option<bool>) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        if let Some(can_deposit) = can_deposit {
+            assert!(can_deposit, "Invalid can_deposit!");
+            asset.config.can_deposit = can_deposit;
+        }
+        if let Some(can_withdraw) = can_withdraw {
+            assert!(can_withdraw, "Invalid can_withdraw!");
+            asset.config.can_withdraw = can_withdraw;
+        }
+        if let Some(can_use_as_collateral) = can_use_as_collateral {
+            assert!(can_use_as_collateral, "Invalid can_use_as_collateral!");
+            asset.config.can_use_as_collateral = can_use_as_collateral;
+        }
+        if let Some(can_borrow) = can_borrow {
+            assert!(can_borrow, "Invalid can_borrow!");
+            asset.config.can_borrow = can_borrow;
+        }
+        self.internal_set_asset(&token_id, asset);
+    }
+
+    /// Disable the capacity for the asset with the a given token_id.
+    /// - Panics if the capacity is invalid.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    #[payable]
+    pub fn disable_asset_capacity(&mut self, token_id: AccountId, can_deposit: Option<bool>, can_withdraw: Option<bool>, can_use_as_collateral: Option<bool>, can_borrow: Option<bool>) {
         assert_one_yocto();
         self.assert_owner_or_guardians();
         let mut asset = self.internal_unwrap_asset(&token_id);
         if let Some(can_deposit) = can_deposit {
+            assert!(!can_deposit, "Invalid can_deposit!");
             asset.config.can_deposit = can_deposit;
         }
         if let Some(can_withdraw) = can_withdraw {
-            self.assert_owner();
+            assert!(!can_withdraw, "Invalid can_withdraw!");
             asset.config.can_withdraw = can_withdraw;
         }
         if let Some(can_use_as_collateral) = can_use_as_collateral {
+            assert!(!can_use_as_collateral, "Invalid can_use_as_collateral!");
             asset.config.can_use_as_collateral = can_use_as_collateral;
         }
         if let Some(can_borrow) = can_borrow {
+            assert!(!can_borrow, "Invalid can_borrow!");
             asset.config.can_borrow = can_borrow;
         }
         self.internal_set_asset(&token_id, asset);
@@ -265,11 +332,11 @@ impl Contract {
     /// Claim prot_fee from asset with the a given token_id.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
-    /// - Requires to be called by the contract owner.
+    /// - Requires to be called by the contract owner or guardians.
     #[payable]
     pub fn claim_prot_fee(&mut self, token_id: AccountId, stdd_amount: Option<U128>) {
         assert_one_yocto();
-        self.assert_owner();
+        self.assert_owner_or_guardians();
         let mut asset = self.internal_unwrap_asset(&token_id);
         let stdd_amount: u128 = stdd_amount.map(|v| v.into()).unwrap_or(asset.prot_fee);
         
@@ -286,7 +353,7 @@ impl Contract {
     /// Decrease reserved from asset with the a given token_id.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
-    /// - Requires to be called by the contract owner.
+    /// - Requires to be called by the contract owner or guardians.
     #[payable]
     pub fn decrease_reserved(&mut self, token_id: AccountId, stdd_amount: Option<U128>) {
         assert_one_yocto();
@@ -313,11 +380,11 @@ impl Contract {
     /// Increase reserved from asset with the a given token_id.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
-    /// - Requires to be called by the contract owner.
+    /// - Requires to be called by the contract owner or guardians.
     #[payable]
     pub fn increase_reserved(&mut self, asset_amount: AssetAmount) {
         assert_one_yocto();
-        self.assert_owner();
+        self.assert_owner_or_guardians();
         let owner_id = self.internal_config().owner_id;
         let mut account = self.internal_unwrap_account(&owner_id);
         let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);

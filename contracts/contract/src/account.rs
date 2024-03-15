@@ -174,20 +174,32 @@ impl Account {
             }
         }) as u32
     }
-}
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct CollateralAsset {
-    pub token_id: TokenId,
-    pub shares: Shares,
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct BorrowedAsset {
-    pub token_id: TokenId,
-    pub shares: Shares,
+    pub fn sync_booster_policy(&mut self, config: &Config) {
+        if let Some(booster_staking) = self.booster_staking.as_mut() {
+            let timestamp = env::block_timestamp();
+            if booster_staking.unlock_timestamp > timestamp {
+                let remain_duration_ns = booster_staking.unlock_timestamp - timestamp;
+                let multiplier = booster_staking.x_booster_amount * MIN_BOOSTER_MULTIPLIER as u128 / booster_staking.staked_booster_amount;
+                if remain_duration_ns > to_nano(config.maximum_staking_duration_sec) {
+                    booster_staking.x_booster_amount = compute_x_booster_amount(
+                        config,
+                        booster_staking.staked_booster_amount,
+                        to_nano(config.maximum_staking_duration_sec),
+                    );
+                    booster_staking.unlock_timestamp = timestamp + to_nano(config.maximum_staking_duration_sec);
+                } else if multiplier > config.x_booster_multiplier_at_maximum_staking_duration as u128 {
+                    booster_staking.x_booster_amount = compute_x_booster_amount(
+                        config,
+                        booster_staking.staked_booster_amount,
+                        to_nano(config.maximum_staking_duration_sec),
+                    );
+                }
+            } else {
+                booster_staking.x_booster_amount = 0;
+            }
+        }
+    }
 }
 
 impl Contract {

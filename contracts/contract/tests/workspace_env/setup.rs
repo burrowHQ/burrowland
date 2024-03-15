@@ -44,6 +44,7 @@ pub async fn deploy_burrowland(
                 maximum_staking_duration_sec: 31536000,
                 x_booster_multiplier_at_maximum_staking_duration: 40000,
                 force_closing_enabled: true,
+                boost_suppress_factor: 1,
             },
         }))
         .max_gas()
@@ -68,7 +69,7 @@ pub async fn deploy_previous_version_burrowland(
         .unwrap();
     assert!(burrowland.call("new")
         .args_json(json!({
-            "config": Config {
+            "config": ConfigV1 {
                 oracle_account_id: near_sdk::AccountId::new_unchecked(ORACLE_ID.to_string()),
                 ref_exchange_id: near_sdk::AccountId::new_unchecked("ref_exchange.test.near".to_string()),
                 owner_id: near_sdk::AccountId::new_unchecked(root.id().to_string()),
