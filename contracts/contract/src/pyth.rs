@@ -261,7 +261,7 @@ impl Contract {
                 }
                 Action::ForceClose { account_id, position, min_token_amounts: _ } => {
                     let position = position.clone().unwrap_or(REGULAR_POSITION.to_string());
-                    let liquidation_account = self.internal_unwrap_account(account_id);
+                    let liquidation_account = self.internal_get_account(&account_id, true).expect("Account is not registered");
                     tokens.extend(get_account_position_involved_tokens(&self.last_lp_token_infos, &liquidation_account, &position));
                 }
                 _ => {}

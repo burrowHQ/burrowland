@@ -157,7 +157,7 @@ impl Contract {
         out_assets: Vec<AssetAmount>,
         min_token_amounts: Vec<U128>
     ) {
-        let mut liquidation_account = self.internal_unwrap_account(liquidation_account_id);
+        let mut liquidation_account = self.internal_get_account(liquidation_account_id, true).expect("Account is not registered");
         let max_discount = self.compute_max_discount(position, &liquidation_account, &prices);
         assert!(
             max_discount > BigDecimal::zero(),
@@ -281,7 +281,7 @@ impl Contract {
 
         let mut borrowed_sum = BigDecimal::zero();
 
-        let liquidation_account = self.internal_unwrap_account(liquidation_account_id);
+        let liquidation_account = self.internal_get_account(liquidation_account_id, true).expect("Account is not registered");
         if let Position::LPTokenPosition(position_info) = liquidation_account.positions.get(position).expect("Position not found") {
             let collateral_asset = self.internal_unwrap_asset(&AccountId::new_unchecked(position_info.lpt_id.clone()));
             let collateral_shares = position_info.collateral;
