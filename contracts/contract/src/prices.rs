@@ -1,14 +1,22 @@
 use crate::*;
 use std::convert::TryFrom;
 
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
 pub struct Prices {
-    prices: HashMap<TokenId, Price>,
+    pub prices: HashMap<TokenId, Price>,
 }
 
 impl Prices {
     pub fn new() -> Self {
         Self {
             prices: HashMap::new(),
+        }
+    }
+
+    pub fn from_prices(prices: HashMap<TokenId, Price>) -> Self {
+        Self {
+            prices,
         }
     }
 

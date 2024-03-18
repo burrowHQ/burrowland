@@ -2,8 +2,8 @@ mod workspace_env;
 
 use crate::workspace_env::*;
 
-const PREVIOUS_VERSION: &'static str = "0.9.0";
-const LATEST_VERSION: &'static str = "0.9.1";
+const PREVIOUS_VERSION: &'static str = "0.9.1";
+const LATEST_VERSION: &'static str = "0.10.0";
 
 #[tokio::test]
 async fn test_upgrade() -> Result<()> {
@@ -14,7 +14,7 @@ async fn test_upgrade() -> Result<()> {
     let version = previous_burrowland_contract.get_version().await?;
     assert_eq!(version, PREVIOUS_VERSION);
 
-    check!(view previous_burrowland_contract.get_config());
+    check!(view previous_burrowland_contract.get_config_v1());
 
     assert!(root
         .call(previous_burrowland_contract.0.id(), "upgrade")

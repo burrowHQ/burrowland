@@ -537,12 +537,15 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 
 [[package]]
 name = "contract"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "approx",
  "common",
+ "hex 0.4.3",
  "mock-boost-farming",
  "mock-ft",
+ "mock-pyth",
+ "mock-rated-token",
  "mock-ref-exchange",
  "near-contract-standards",
  "near-sdk",
@@ -1447,6 +1450,23 @@ dependencies = [
  "near-contract-standards",
  "near-sdk",
  "uint",
+]
+
+[[package]]
+name = "mock-pyth"
+version = "0.1.0"
+dependencies = [
+ "hex 0.4.3",
+ "near-contract-standards",
+ "near-sdk",
+]
+
+[[package]]
+name = "mock-rated-token"
+version = "0.1.0"
+dependencies = [
+ "near-contract-standards",
+ "near-sdk",
 ]
 
 [[package]]
