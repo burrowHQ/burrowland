@@ -27,6 +27,22 @@ trait Contract {
     /// Returns all guardians.
     fn get_guardians(&self);
 
+    /// Add pyth info for the specified token. Only can be called by owner or guardians.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    fn add_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo);
+
+    /// Update pyth info for the specified token. Only can be called by owner or guardians.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    fn update_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo);
+
+    /// Returns all pyth info.
+    fn get_all_token_pyth_infos(&self) -> HashMap<TokenId, TokenPythInfo>;
+
+    /// Return pyth information for the specified token.
+    fn get_token_pyth_info(&self, token_id: TokenId) -> Option<TokenPythInfo>;
+
     /// Extend farmers to the blacklist. Only can be called by owner or guardians.
     /// - Requires one yoctoNEAR.
     #[payable]
@@ -58,10 +74,15 @@ trait Contract {
     /// Returns the number of accounts
     fn get_num_accounts(&self) -> u32;
 
-    /// Executes a given list actions on behalf of the predecessor account.
+    /// Executes a given list actions on behalf of the predecessor account without price.
     /// - Requires one yoctoNEAR.
     #[payable]
     fn execute(&mut self, actions: Vec<Action>);
+
+    /// Executes a given list actions on behalf of the predecessor account with pyth oracle price.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    pub fn execute_with_pyth(&mut self, actions: Vec<Action>);
 
     /// Returns a detailed view asset for a given token_id.
     /// The detailed view includes current APR and corresponding farms.
@@ -495,7 +516,10 @@ pub struct Config {
     /// The account ID of the oracle contract
     pub oracle_account_id: AccountId,
 
-    /// The account ID of the ref exchange
+    /// The account ID of the pyth oracle contract
+    pub pyth_oracle_account_id: AccountId,
+
+    /// The account ID of the ref_exchange contract
     pub ref_exchange_id: AccountId,
 
     /// The account ID of the contract owner that allows to modify config, assets and use reserves.
@@ -519,8 +543,11 @@ pub struct Config {
     /// This parameter can be updated in the future by the owner.
     pub maximum_staleness_duration_sec: DurationSec,
 
-    /// The valid duration (in seconds) of lp_tokens_info.
+    /// The valid duration to lp tokens info in seconds.
     pub lp_tokens_info_valid_duration_sec: DurationSec,
+
+    /// The valid duration to pyth price in seconds.
+    pub pyth_price_valid_duration_sec: DurationSec,
 
     /// The minimum duration to stake booster token in seconds.
     pub minimum_staking_duration_sec: DurationSec,
@@ -537,6 +564,10 @@ pub struct Config {
     /// The account should have borrowed sum larger than the collateral sum.
     pub force_closing_enabled: bool,
 
+    /// Whether to use the price of price oracle
+    pub enable_price_oracle: bool,
+    /// Whether to use the price of pyth oracle
+    pub enable_pyth_oracle: bool,
     /// The factor that suppresses the effect of boost.
     /// E.g. 1000 means that in the calculation, the actual boost amount will be divided by 1000.
     pub boost_suppress_factor: u128,
@@ -582,6 +613,7 @@ pub enum Action {
 
 pub enum TokenReceiverMsg {
     Execute { actions: Vec<Action> },
+    ExecuteWithPyth { actions: Vec<Action> },
     /// The entire amount will be deposited to the asset reserve. 
     DepositToReserve,
 }

@@ -22,6 +22,7 @@ mod upgrade;
 mod utils;
 mod shadow_actions;
 mod position;
+mod pyth;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -45,12 +46,13 @@ use crate::storage_tracker::*;
 pub use crate::utils::*;
 pub use crate::shadow_actions::*;
 pub use crate::position::*;
+pub use crate::pyth::*;
 
 use common::*;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{I64, U64, U128};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     assert_one_yocto, env, ext_contract, log, near_bindgen, AccountId, Balance, BorshStorageKey,
@@ -89,6 +91,7 @@ pub struct Contract {
     /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
     pub last_prices: HashMap<TokenId, Price>,
     pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
+    pub token_pyth_info: HashMap<TokenId, TokenPythInfo>,
     pub blacklist_of_farmers: UnorderedSet<AccountId>,
 }
 
@@ -108,6 +111,7 @@ impl Contract {
             guardians: UnorderedSet::new(StorageKey::Guardian),
             last_prices: HashMap::new(),
             last_lp_token_infos: HashMap::new(),
+            token_pyth_info: HashMap::new(),
             blacklist_of_farmers: UnorderedSet::new(StorageKey::BlacklistOfFarmers),
         }
     }
@@ -140,6 +144,36 @@ impl Contract {
         self.guardians.to_vec()
     }
 
+    /// Add pyth info for the specified token. Only can be called by owner or guardians.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    pub fn add_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        assert!(!self.token_pyth_info.contains_key(&token_id), "Already exist");
+        self.token_pyth_info.insert(token_id, token_pyth_info);
+    }
+
+    /// Update pyth info for the specified token. Only can be called by owner or guardians.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    pub fn update_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        assert!(self.token_pyth_info.contains_key(&token_id), "Invalid token_id");
+        self.token_pyth_info.insert(token_id, token_pyth_info);
+    }
+
+    /// Returns all pyth info.
+    pub fn get_all_token_pyth_infos(&self) -> HashMap<TokenId, TokenPythInfo> {
+        self.token_pyth_info.clone()
+    }
+
+    /// Return pyth information for the specified token.
+    pub fn get_token_pyth_info(&self, token_id: TokenId) -> Option<TokenPythInfo> {
+        self.token_pyth_info.get(&token_id).cloned()
+    }
+
     /// Extend farmers to blacklist. Only can be called by owner or guardians.
     /// - Requires one yoctoNEAR.
     #[payable]
@@ -163,6 +197,7 @@ impl Contract {
         }
     }
 
+    /// Returns all farmers in the blacklist.
     pub fn get_blacklist_of_farmers(&self) -> Vec<AccountId> {
         self.blacklist_of_farmers.to_vec()
     }
@@ -501,6 +536,9 @@ mod unit_env {
     pub fn oracle_id() -> AccountId {
         AccountId::new_unchecked("oracle_id".to_string())
     }
+    pub fn pyth_oracle_id() -> AccountId {
+        AccountId::new_unchecked("pyth".to_string())
+    }
     pub fn ref_exchange_id() -> AccountId {
         AccountId::new_unchecked("ref_exchange_id".to_string())
     }
@@ -543,6 +581,7 @@ mod unit_env {
         testing_env!(context.predecessor_account_id(owner_id()).build());
         let contract = Contract::new(Config {
             oracle_account_id: oracle_id(),
+            pyth_oracle_account_id: pyth_oracle_id(),
             ref_exchange_id: ref_exchange_id(),
             owner_id: owner_id(),
             booster_token_id: booster_token_id(),
@@ -551,10 +590,13 @@ mod unit_env {
             maximum_recency_duration_sec: 90,
             maximum_staleness_duration_sec: 15,
             lp_tokens_info_valid_duration_sec: 600,
+            pyth_price_valid_duration_sec: 60,
             minimum_staking_duration_sec: 2678400,
             maximum_staking_duration_sec: 31536000,
             x_booster_multiplier_at_maximum_staking_duration: 40000,
             force_closing_enabled: true,
+            enable_price_oracle: true,
+            enable_pyth_oracle: false,
             boost_suppress_factor: 1,
         });
         let mut test_env = UnitEnv{

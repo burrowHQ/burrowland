@@ -2,8 +2,9 @@
 use crate::*;
 use near_sdk::{is_promise_success, Timestamp};
 
-pub const GAS_FOR_ON_CAST_SHADOW: Gas = Gas(Gas::ONE_TERA.0 * 40);
+pub const GAS_FOR_ON_CAST_SHADOW: Gas = Gas(Gas::ONE_TERA.0 * 200);
 pub const GAS_FOR_ON_CAST_SHADOW_CALLBACK: Gas = Gas(Gas::ONE_TERA.0 * 20);
+pub const GAS_FOR_ON_BURROW_LIQUIDATION: Gas = Gas(Gas::ONE_TERA.0 * 40);
 pub const GAS_FOR_ON_BURROW_LIQUIDATION_CALLBACK: Gas = Gas(Gas::ONE_TERA.0 * 5);
 
 #[ext_contract(ext_shadow_receiver)]
@@ -216,7 +217,7 @@ impl Contract {
 
         if withdraw_seed_amount > 0 {
             ext_shadow_receiver::ext(self.boost_farm_id.clone())
-                .with_static_gas(GAS_FOR_ON_CAST_SHADOW)
+                .with_static_gas(GAS_FOR_ON_BURROW_LIQUIDATION)
                 .on_remove_shadow(
                     liquidation_account_id.clone(),
                     shadow_id,

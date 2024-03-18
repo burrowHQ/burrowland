@@ -658,7 +658,7 @@ pub fn asset_amount_to_shares(
 
 #[near_bindgen]
 impl Contract {
-    /// Executes a given list actions on behalf of the predecessor account.
+    /// Executes a given list actions on behalf of the predecessor account without price.
     /// - Requires one yoctoNEAR.
     #[payable]
     pub fn execute(&mut self, actions: Vec<Action>) {
