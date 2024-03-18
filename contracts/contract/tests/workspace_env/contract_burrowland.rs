@@ -760,6 +760,16 @@ impl Burrowland {
             .json::<ConfigV1>()
     }
 
+    pub async fn get_config_v0100(
+        &self,
+    ) -> Result<ConfigV0100> {
+        self.0
+            .call("get_config")
+            .view()
+            .await?
+            .json::<ConfigV0100>()
+    }
+
     pub async fn get_version(
         &self,
     ) -> Result<String> {
