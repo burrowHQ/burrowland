@@ -1,4 +1,11 @@
 # Release Notes
+
+Version 0.10.0
+```bssh=
+# codehash: GcntYxNjD6y4XhiJuyd6ar4FQoTY3ZA1wQ3VJfraX4pC 
+```
+- Support pyth oracle and switch between pyth and priceoracle.
+
 Version 0.9.1
 ```bssh=
 # codehash: 8wSzoqHRtNXdV1xTwT6JvD7HYXLqKwqJyskeR9BkCdcv 
