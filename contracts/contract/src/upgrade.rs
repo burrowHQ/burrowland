@@ -7,33 +7,7 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     pub fn migrate_state() -> Self {
-        let ContractV0100 { 
-            accounts, 
-            storage, 
-            assets, 
-            asset_farms, 
-            asset_ids, 
-            config, 
-            guardians,
-            last_prices,
-            last_lp_token_infos,
-            token_pyth_info 
-        } = env::state_read().unwrap();
-        let config_v0100 = config.get().unwrap();
-        Self { 
-            accounts, 
-            storage, 
-            assets, 
-            asset_farms, 
-            asset_ids, 
-            config: LazyOption::new(StorageKey::Config, Some(&config_v0100.into())),
-            guardians,
-            last_prices, 
-            last_lp_token_infos,
-            token_pyth_info,
-            blacklist_of_farmers: UnorderedSet::new(StorageKey::BlacklistOfFarmers),
-
-        }
+        env::state_read().unwrap()
     }
 
     /// Returns semver of this contract.

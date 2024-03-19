@@ -19,6 +19,7 @@ pub const NET_TVL_SHARES_DIVISOR: u128 = 10u128.pow(18);
 pub enum FarmId {
     Supplied(TokenId),
     Borrowed(TokenId),
+    TokenNetTvl(TokenId),
     NetTvl,
 }
 
@@ -132,6 +133,63 @@ impl Contract {
         }
     }
 
+    pub fn get_account_token_tvl_shares(&self, account: &Account, token_id: &AccountId) -> u128 {
+        let supplied_shares = account.get_supplied_shares(token_id);
+        let borrowed_shares = account.get_borrowed_shares(token_id);
+        let asset = self.internal_unwrap_asset(&token_id);
+
+        let mut total_supplied = BigDecimal::zero();
+        let mut total_borrowed = BigDecimal::zero();
+
+        if supplied_shares.0 > 0 {
+            if let Some(unit_share_tokens) = self.last_lp_token_infos.get(&token_id.to_string()) {
+                if unit_share_tokens.tokens.iter().all(|v| self.last_prices.contains_key(&v.token_id)) {
+                    let unit_share = 10u128.pow(unit_share_tokens.decimals as u32);
+                    total_supplied = unit_share_tokens.tokens
+                        .iter()
+                        .fold(BigDecimal::zero(), |sum, unit_share_token_value|{
+                            let token_asset = self.internal_unwrap_asset(&unit_share_token_value.token_id);
+                            let token_stdd_amount = unit_share_token_value.amount.0 * 10u128.pow(token_asset.config.extra_decimals as u32);
+                            let token_balance = u128_ratio(token_stdd_amount, supplied_shares.0, 10u128.pow(asset.config.extra_decimals as u32) * unit_share);
+                            sum + BigDecimal::from_balance_price(
+                                token_balance,
+                                self.last_prices.get(&unit_share_token_value.token_id).unwrap(),
+                                token_asset.config.extra_decimals,
+                            )
+                            .mul_ratio(token_asset.config.net_tvl_multiplier)
+                        }).mul_ratio(asset.config.net_tvl_multiplier)
+                }
+            } else if let Some(price) = self.last_prices.get(&token_id) {
+                let amount = asset.supplied.shares_to_amount(supplied_shares, false);
+                total_supplied = BigDecimal::from_balance_price(
+                    amount,
+                    price,
+                    asset.config.extra_decimals,
+                )
+                .mul_ratio(asset.config.net_tvl_multiplier);
+            }
+        }
+
+        if borrowed_shares.0 > 0 {
+            if let Some(price) = self.last_prices.get(&token_id) {
+                let amount = asset.borrowed.shares_to_amount(borrowed_shares, true);
+                total_borrowed = BigDecimal::from_balance_price(
+                        amount,
+                        price,
+                        asset.config.extra_decimals,
+                    )
+                    .mul_ratio(asset.config.net_tvl_multiplier);
+            }
+        }
+
+        if total_supplied > total_borrowed {
+            let net_supplied = total_supplied - total_borrowed;
+            net_supplied.round_mul_u128(NET_TVL_SHARES_DIVISOR)
+        } else {
+            0
+        }
+    }
+
     pub fn internal_account_farm_claim(
         &self,
         account: &Account,
@@ -212,6 +270,7 @@ impl Contract {
             return;
         }
         account.add_affected_farm(FarmId::NetTvl);
+        account.add_exists_token_net_tvl_farm();
         let mut all_rewards: HashMap<TokenId, Balance> = HashMap::new();
         let mut farms = vec![];
         let mut farms_ids: Vec<_> = account.affected_farms.iter().cloned().collect();
@@ -247,6 +306,7 @@ impl Contract {
                 match &farm_id {
                     FarmId::Supplied(token_id) => account.get_supplied_shares(token_id).0,
                     FarmId::Borrowed(token_id) => account.get_borrowed_shares(token_id).0,
+                    FarmId::TokenNetTvl(token_id) => self.get_account_token_tvl_shares(account, token_id),
                     FarmId::NetTvl => self.get_account_tvl_shares(account)
                 }
             };

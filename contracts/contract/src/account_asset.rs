@@ -69,5 +69,6 @@ impl Account {
             self.supplied.insert(token_id.clone(), account_asset.shares);
         }
         self.add_affected_farm(FarmId::Supplied(token_id.clone()));
+        self.add_affected_farm(FarmId::TokenNetTvl(token_id.clone()));
     }
 }

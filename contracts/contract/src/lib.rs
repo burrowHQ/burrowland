@@ -2188,6 +2188,54 @@ mod farms {
 
     #[test]
     #[ignore]
+    fn test_farm_token_net_tvl_price_change() {
+        let mut test_env = init_unit_env();
+
+        test_env.skip_time_to_by_sec(10);
+
+        let reward_per_day = d(100, 18);
+        let total_reward = d(3000, 18);
+
+        let farm_id = FarmId::TokenNetTvl(wnear_token_id());
+        test_env.add_farm(farm_id.clone(), nusdc_token_id(), reward_per_day, d(100, 18), total_reward);
+
+        let asset_farm = test_env.get_asset_farm(farm_id.clone());
+        let reward = asset_farm
+            .rewards
+            .get(&nusdc_token_id())
+            .cloned()
+            .unwrap();
+        assert_eq!(reward.remaining_rewards, total_reward);
+
+        let amount = d(100, 24);
+        test_env.supply_to_collateral(wnear_token_id(), alice(), amount.into());
+
+        let borrow_amount = d(2, 24);
+        test_env.borrow_and_withdraw(alice(), wnear_token_id(), borrow_amount, unit_price_data(10, Some(100000), None));
+
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert_eq!(account.farms.len(), 1);
+        assert_eq!(account.farms[0].farm_id, farm_id);
+        assert_eq!(
+            account.farms[0].rewards[0].reward_token_id,
+            nusdc_token_id()
+        );
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(980, 18));
+        assert_eq!(account.farms[0].rewards[0].unclaimed_amount, 0);
+
+        let borrow_amount = d(2, 24);
+        test_env.borrow_and_withdraw(alice(), wnear_token_id(), borrow_amount, unit_price_data(10, Some(1000000), None));
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(9600, 18));
+
+        let borrow_amount = d(2, 18);
+        test_env.borrow_and_withdraw(alice(), ndai_token_id(), borrow_amount, unit_price_data(10, Some(10000), None));
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(96, 18));
+    }
+    
+    #[test]
+    #[ignore]
     fn test_farm_net_tvl_bad_debt() {
         let mut test_env = init_unit_env();
 

@@ -315,7 +315,7 @@ impl Contract {
         assert_one_yocto();
         self.assert_owner();
         match &farm_id {
-            FarmId::Supplied(token_id) | FarmId::Borrowed(token_id) => {
+            FarmId::Supplied(token_id) | FarmId::Borrowed(token_id) | FarmId::TokenNetTvl(token_id) => {
                 assert!(self.assets.contains_key(token_id));
             }
             FarmId::NetTvl => {}
