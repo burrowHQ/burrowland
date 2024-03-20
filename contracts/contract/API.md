@@ -282,6 +282,7 @@ pub enum FarmId {
     Supplied(TokenId),
     Borrowed(TokenId),
     NetTvl,
+    TokenNetBalance(TokenId),
 }
 
 pub struct AccountFarmView {
