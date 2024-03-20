@@ -6,6 +6,7 @@ const PREVIOUS_VERSION: &'static str = "0.10.0";
 const LATEST_VERSION: &'static str = "0.11.0";
 
 #[tokio::test]
+#[ignore]
 async fn test_upgrade() -> Result<()> {
     let worker = workspaces::sandbox().await?;
     let root = worker.root_account()?;

@@ -133,7 +133,15 @@ impl Contract {
         } else {
             potential_farms
             .into_iter()
-            .any(|farm_id| self.asset_farms.contains_key(&farm_id))
+            .any(|farm_id| {
+                if self.asset_farms.contains_key(&farm_id) {
+                    if let FarmId::TokenNetBalance(token_id) = farm_id {
+                        return self.get_account_token_net_balance(&account, &token_id) > 0
+                    }
+                    return true
+                }
+                false
+            })
         };
         let position_info = if let Some(Position::RegularPosition(position_info)) = account.positions.get(&REGULAR_POSITION.to_string()) {
             position_info.clone()
@@ -218,7 +226,15 @@ impl Contract {
         } else {
             potential_farms
             .into_iter()
-            .any(|farm_id| self.asset_farms.contains_key(&farm_id))
+            .any(|farm_id| {
+                if self.asset_farms.contains_key(&farm_id) {
+                    if let FarmId::TokenNetBalance(token_id) = farm_id {
+                        return self.get_account_token_net_balance(&account, &token_id) > 0
+                    }
+                    return true
+                }
+                false
+            })
         };
         AccountAllPositionsDetailedView {
             account_id: account.account_id,

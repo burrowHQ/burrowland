@@ -2196,7 +2196,7 @@ mod farms {
         let reward_per_day = d(100, 18);
         let total_reward = d(3000, 18);
 
-        let farm_id = FarmId::TokenNetTvl(wnear_token_id());
+        let farm_id = FarmId::TokenNetBalance(wnear_token_id());
         test_env.add_farm(farm_id.clone(), nusdc_token_id(), reward_per_day, d(100, 18), total_reward);
 
         let asset_farm = test_env.get_asset_farm(farm_id.clone());
@@ -2220,18 +2220,29 @@ mod farms {
             account.farms[0].rewards[0].reward_token_id,
             nusdc_token_id()
         );
-        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(980, 18));
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(98, 24));
         assert_eq!(account.farms[0].rewards[0].unclaimed_amount, 0);
 
         let borrow_amount = d(2, 24);
         test_env.borrow_and_withdraw(alice(), wnear_token_id(), borrow_amount, unit_price_data(10, Some(1000000), None));
         let account = test_env.contract.get_account(alice()).unwrap();
-        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(9600, 18));
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(96, 24));
 
         let borrow_amount = d(2, 18);
-        test_env.borrow_and_withdraw(alice(), ndai_token_id(), borrow_amount, unit_price_data(10, Some(10000), None));
+        test_env.borrow_and_withdraw(alice(), ndai_token_id(), borrow_amount, unit_price_data(10, Some(1000000), None));
         let account = test_env.contract.get_account(alice()).unwrap();
-        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(96, 18));
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(96, 24));
+
+        let reward_per_day = d(100, 18);
+        let total_reward = d(3000, 18);
+
+        let farm_id = FarmId::TokenNetBalance(ndai_token_id());
+        test_env.add_farm(farm_id.clone(), nusdc_token_id(), reward_per_day, d(100, 18), total_reward);
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert!(!account.has_non_farmed_assets);
+
+        clean_assets_cache();
+        clean_assets_farm_cache();
     }
     
     #[test]
