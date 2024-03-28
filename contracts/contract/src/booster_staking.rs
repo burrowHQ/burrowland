@@ -32,6 +32,7 @@ impl Contract {
         );
 
         let account_id = env::predecessor_account_id();
+        assert!(!self.blacklist_of_farmers.contains(&account_id), "Blacklisted account");
         let mut account = self.internal_unwrap_account(&account_id);
 
         let booster_token_id = config.booster_token_id.clone();

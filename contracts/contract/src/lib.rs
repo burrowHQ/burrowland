@@ -182,6 +182,12 @@ impl Contract {
         self.assert_owner_or_guardians();
         for farmer in farmers {
             self.blacklist_of_farmers.insert(&farmer);
+            let mut account = self.internal_unwrap_account(&farmer);
+            account
+                .affected_farms
+                .extend(account.get_all_potential_farms());
+            self.internal_account_apply_affected_farms(&mut account);
+            self.internal_set_account(&farmer, account);
         }
     }
 
@@ -194,6 +200,12 @@ impl Contract {
         for farmer in farmers {
             let is_success = self.blacklist_of_farmers.remove(&farmer);
             assert!(is_success, "Invalid farmer");
+            let mut account = self.internal_unwrap_account(&farmer);
+            account
+                .affected_farms
+                .extend(account.get_all_potential_farms());
+            self.internal_account_apply_affected_farms(&mut account);
+            self.internal_set_account(&farmer, account);
         }
     }
 
@@ -1224,17 +1236,10 @@ mod farms {
 
         test_env.contract.remove_blacklist_of_farmers(vec![alice()]);
         let account = test_env.contract.get_account(alice()).unwrap();
-        assert_eq!(account.farms.len(), 0);
-        assert!(account.has_non_farmed_assets);
-
-        test_env.account_farm_claim_all(alice());
-
-        let account = test_env.contract.get_account(alice()).unwrap();
         assert_eq!(account.farms.len(), 1);
         assert!(!account.has_non_farmed_assets);
 
         test_env.contract.extend_blacklist_of_farmers(vec![alice()]);
-        test_env.account_farm_claim_all(alice());
         let account = test_env.contract.get_account(alice()).unwrap();
         assert_eq!(account.farms.len(), 0);
         assert!(!account.has_non_farmed_assets);
