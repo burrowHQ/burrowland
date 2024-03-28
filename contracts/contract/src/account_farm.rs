@@ -231,10 +231,14 @@ impl Contract {
                 let (account_farm, new_rewards, inactive_rewards) =
                     self.internal_account_farm_claim(account, &farm_id, &asset_farm);
                 for (token_id, amount) in new_rewards {
-                    let new_farm_id = FarmId::Supplied(token_id.clone());
+                    let new_supplied_farm_id = FarmId::Supplied(token_id.clone());
+                    let new_token_net_balance_farm_id = FarmId::TokenNetBalance(token_id.clone());
                     *all_rewards.entry(token_id).or_default() += amount;
-                    if account.add_affected_farm(new_farm_id.clone()) {
-                        farms_ids.push(new_farm_id);
+                    if account.add_affected_farm(new_supplied_farm_id.clone()) {
+                        farms_ids.push(new_supplied_farm_id);
+                    }
+                    if account.add_affected_farm(new_token_net_balance_farm_id.clone()) {
+                        farms_ids.push(new_token_net_balance_farm_id);
                     }
                 }
                 farms.push((farm_id, account_farm, asset_farm, inactive_rewards));
