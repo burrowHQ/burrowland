@@ -1,5 +1,5 @@
 use crate::*;
-use std::collections::HashSet;
+use std::{cmp::{max, min}, collections::HashSet};
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
@@ -180,20 +180,27 @@ impl Account {
             let timestamp = env::block_timestamp();
             if booster_staking.unlock_timestamp > timestamp {
                 let remain_duration_ns = booster_staking.unlock_timestamp - timestamp;
-                let multiplier = booster_staking.x_booster_amount * MIN_BOOSTER_MULTIPLIER as u128 / booster_staking.staked_booster_amount;
-                if remain_duration_ns > to_nano(config.maximum_staking_duration_sec) {
-                    booster_staking.x_booster_amount = compute_x_booster_amount(
-                        config,
-                        booster_staking.staked_booster_amount,
-                        to_nano(config.maximum_staking_duration_sec),
-                    );
-                    booster_staking.unlock_timestamp = timestamp + to_nano(config.maximum_staking_duration_sec);
-                } else if multiplier > config.x_booster_multiplier_at_maximum_staking_duration as u128 {
-                    booster_staking.x_booster_amount = compute_x_booster_amount(
-                        config,
-                        booster_staking.staked_booster_amount,
-                        to_nano(config.maximum_staking_duration_sec),
-                    );
+                let maximum_staking_duration_ns = to_nano(config.maximum_staking_duration_sec);
+                let max_x_booster_amount = compute_x_booster_amount(
+                    config,
+                    booster_staking.staked_booster_amount,
+                    maximum_staking_duration_ns,
+                );
+                let recount_duration_ns = max(
+                    to_nano(config.minimum_staking_duration_sec),
+                    min(remain_duration_ns, maximum_staking_duration_ns)
+                );
+                let recount_x_booster_amount = compute_x_booster_amount(
+                    config,
+                    booster_staking.staked_booster_amount,
+                    recount_duration_ns,
+                );
+                booster_staking.x_booster_amount = min(
+                    max_x_booster_amount,
+                    max(booster_staking.x_booster_amount, recount_x_booster_amount)
+                );
+                if remain_duration_ns > maximum_staking_duration_ns {
+                    booster_staking.unlock_timestamp = timestamp + maximum_staking_duration_ns;
                 }
             } else {
                 booster_staking.x_booster_amount = 0;
