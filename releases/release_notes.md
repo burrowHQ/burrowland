@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.11.0
+```bash=
+# codehash: 5r4GsfdDATmriAdT6ZteFpPjDNSfPn4NneETiNuckUc6
+```
+- Improve boost logic.
+
 Version 0.10.0
 ```bssh=
 # codehash: GcntYxNjD6y4XhiJuyd6ar4FQoTY3ZA1wQ3VJfraX4pC 
