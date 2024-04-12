@@ -180,18 +180,18 @@ async fn test_modify_config() -> Result<()> {
     assert_eq!(asset.config.prot_ratio, 0);
 
     check!(burrowland_contract.update_asset_prot_ratio(&alice, &token_id, 100), "Not allowed");
-    check!(burrowland_contract.update_asset_capacity(&alice, &token_id, Some(false), None, None, None), "Not allowed");
+    check!(burrowland_contract.enable_asset_capacity(&alice, &token_id, Some(true), None, None, None), "Not an owner");
+    check!(burrowland_contract.disable_asset_capacity(&alice, &token_id, Some(false), None, None, None), "Not allowed");
     check!(burrowland_contract.update_asset_net_tvl_multiplier(&alice, &token_id, 200), "Not allowed");
 
     check!(burrowland_contract.extend_guardians(&alice, vec![alice.id()]), "Not an owner");
     check!(burrowland_contract.remove_guardians(&alice, vec![alice.id()]), "Not an owner");
     check!(burrowland_contract.extend_guardians(&root, vec![alice.id()]));
-    check!(burrowland_contract.update_asset_capacity(&alice, &token_id, None, Some(false), None, None), "Not an owner");
 
     check!(burrowland_contract.update_asset_prot_ratio(&alice, &token_id, 100));
     check!(burrowland_contract.update_asset_net_tvl_multiplier(&alice, &token_id, 200));
-    check!(burrowland_contract.update_asset_capacity(&alice, &token_id, Some(false), None, Some(false), Some(true)));
-    check!(burrowland_contract.update_asset_capacity(&root, &token_id, None, Some(false), None, None));
+    check!(burrowland_contract.disable_asset_capacity(&alice, &token_id, Some(false), Some(false), Some(false), None));
+    check!(burrowland_contract.enable_asset_capacity(&root, &token_id, None, None, None, Some(true)));
     let asset = burrowland_contract.get_asset(&token_id).await?;
     assert_eq!(asset.config.prot_ratio, 100);
     assert_eq!(asset.config.net_tvl_multiplier, 200);

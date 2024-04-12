@@ -120,6 +120,8 @@ impl std::fmt::Debug for PriceIdentifier {
 #[near_bindgen]
 impl Contract {
 
+    /// Executes a given list actions on behalf of the predecessor account with pyth oracle price.
+    /// - Requires one yoctoNEAR.
     #[payable]
     pub fn execute_with_pyth(&mut self, actions: Vec<Action>) {
         assert_one_yocto();

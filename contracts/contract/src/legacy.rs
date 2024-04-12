@@ -3,6 +3,17 @@ use crate::*;
 /// Default multiplier for Net TVL farming. Equals to 1.
 const DEFAULT_NET_TVL_MULTIPLIER: u32 = 10000;
 
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct CollateralAsset {
+    pub token_id: TokenId,
+    pub shares: Shares,
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct BorrowedAsset {
+    pub token_id: TokenId,
+    pub shares: Shares,
+}
 /// V0 legacy version of Account structure, before staking of the burrow token was introduced.
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct AccountV0 {
@@ -453,7 +464,8 @@ impl From<ConfigV0> for Config {
             x_booster_multiplier_at_maximum_staking_duration, 
             force_closing_enabled,
             enable_price_oracle: true,
-            enable_pyth_oracle: false
+            enable_pyth_oracle: false,
+            boost_suppress_factor: 1,
         }
     }
 }
@@ -540,7 +552,113 @@ impl From<ConfigV1> for Config {
             x_booster_multiplier_at_maximum_staking_duration, 
             force_closing_enabled,
             enable_price_oracle: true,
-            enable_pyth_oracle: false
+            enable_pyth_oracle: false,
+            boost_suppress_factor: 1
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+#[serde(crate = "near_sdk::serde")]
+pub struct ConfigV0100 {
+    /// The account ID of the oracle contract
+    pub oracle_account_id: AccountId,
+
+    /// The account ID of the pyth oracle contract
+    pub pyth_oracle_account_id: AccountId,
+
+    /// The account ID of the ref_exchange contract
+    pub ref_exchange_id: AccountId,
+
+    /// The account ID of the contract owner that allows to modify config, assets and use reserves.
+    pub owner_id: AccountId,
+
+    /// The account ID of the booster token contract.
+    pub booster_token_id: TokenId,
+
+    /// The number of decimals of the booster fungible token.
+    pub booster_decimals: u8,
+
+    /// The total number of different assets
+    pub max_num_assets: u32,
+
+    /// The maximum number of seconds expected from the oracle price call.
+    pub maximum_recency_duration_sec: DurationSec,
+
+    /// Maximum staleness duration of the price data timestamp.
+    /// Because NEAR protocol doesn't implement the gas auction right now, the only reason to
+    /// delay the price updates are due to the shard congestion.
+    /// This parameter can be updated in the future by the owner.
+    pub maximum_staleness_duration_sec: DurationSec,
+
+    /// The valid duration to lp tokens info in seconds.
+    pub lp_tokens_info_valid_duration_sec: DurationSec,
+
+    /// The valid duration to pyth price in seconds.
+    pub pyth_price_valid_duration_sec: DurationSec,
+
+    /// The minimum duration to stake booster token in seconds.
+    pub minimum_staking_duration_sec: DurationSec,
+
+    /// The maximum duration to stake booster token in seconds.
+    pub maximum_staking_duration_sec: DurationSec,
+
+    /// The rate of xBooster for the amount of Booster given for the maximum staking duration.
+    /// Assuming the 100% multiplier at the minimum staking duration. Should be no less than 100%.
+    /// E.g. 20000 means 200% multiplier (or 2X).
+    pub x_booster_multiplier_at_maximum_staking_duration: u32,
+
+    /// Whether an account with bad debt can be liquidated using reserves.
+    /// The account should have borrowed sum larger than the collateral sum.
+    pub force_closing_enabled: bool,
+
+    /// Whether to use the price of price oracle
+    pub enable_price_oracle: bool,
+    /// Whether to use the price of pyth oracle
+    pub enable_pyth_oracle: bool,
+}
+
+impl From<ConfigV0100> for Config {
+    fn from(a: ConfigV0100) -> Self {
+        let ConfigV0100 { 
+            oracle_account_id, 
+            pyth_oracle_account_id,
+            ref_exchange_id,
+            owner_id, 
+            booster_token_id, 
+            booster_decimals, 
+            max_num_assets, 
+            maximum_recency_duration_sec, 
+            maximum_staleness_duration_sec, 
+            lp_tokens_info_valid_duration_sec,
+            pyth_price_valid_duration_sec,
+            minimum_staking_duration_sec, 
+            maximum_staking_duration_sec, 
+            x_booster_multiplier_at_maximum_staking_duration,
+            force_closing_enabled,
+            enable_price_oracle,
+            enable_pyth_oracle
+        } = a;
+        Self {
+            oracle_account_id, 
+            pyth_oracle_account_id,
+            ref_exchange_id,
+            owner_id, 
+            booster_token_id, 
+            booster_decimals, 
+            max_num_assets, 
+            maximum_recency_duration_sec, 
+            maximum_staleness_duration_sec, 
+            lp_tokens_info_valid_duration_sec,
+            pyth_price_valid_duration_sec,
+            minimum_staking_duration_sec, 
+            maximum_staking_duration_sec, 
+            x_booster_multiplier_at_maximum_staking_duration, 
+            force_closing_enabled,
+            enable_price_oracle,
+            enable_pyth_oracle,
+            boost_suppress_factor: 1
         }
     }
 }
@@ -569,4 +687,19 @@ pub struct ContractV090 {
     /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
     pub last_prices: HashMap<TokenId, Price>,
     pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize)]
+pub struct ContractV0100 {
+    pub accounts: UnorderedMap<AccountId, VAccount>,
+    pub storage: LookupMap<AccountId, VStorage>,
+    pub assets: LookupMap<TokenId, VAsset>,
+    pub asset_farms: LookupMap<FarmId, VAssetFarm>,
+    pub asset_ids: UnorderedSet<TokenId>,
+    pub config: LazyOption<ConfigV0100>,
+    pub guardians: UnorderedSet<AccountId>,
+    /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
+    pub last_prices: HashMap<TokenId, Price>,
+    pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
+    pub token_pyth_info: HashMap<TokenId, TokenPythInfo>,
 }

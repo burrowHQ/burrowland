@@ -20,7 +20,8 @@ const MAX_RATIO: u32 = 10000;
 ///   "can_deposit": true,
 ///   "can_withdraw": true,
 ///   "can_use_as_collateral": true,
-///   "can_borrow": true
+///   "can_borrow": true,
+///   "net_tvl_multiplier": 0
 /// }
 /// ```
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]

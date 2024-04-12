@@ -7,7 +7,7 @@ pub const PYTH_ID: &str = "pyth.test.near";
 pub const BOOSTER_TOKEN_ID: &str = "booster.test.near";
 pub const BOOSTER_TOKEN_DECIMALS: u8 = 18;
 
-const PREVIOUS_BURROWLAND_WASM: &str = "../../releases/burrowland_0.9.1.wasm";
+const PREVIOUS_BURROWLAND_WASM: &str = "../../releases/burrowland_release.wasm";
 pub const BURROWLAND_WASM: &str = "../../res/burrowland.wasm";
 const REF_EXCHANGE_WASM: &str = "../../res/mock_ref_exchange.wasm";
 pub const BOOST_FARMING_WASM: &str = "../../res/mock_boost_farming.wasm";
@@ -50,7 +50,8 @@ pub async fn deploy_burrowland(
                 x_booster_multiplier_at_maximum_staking_duration: 40000,
                 force_closing_enabled: true,
                 enable_price_oracle: true,
-                enable_pyth_oracle: true
+                enable_pyth_oracle: true,
+                boost_suppress_factor: 1,
             },
         }))
         .max_gas()
@@ -75,8 +76,9 @@ pub async fn deploy_previous_version_burrowland(
         .unwrap();
     assert!(burrowland.call("new")
         .args_json(json!({
-            "config": ConfigV1 {
+            "config": ConfigV0100 {
                 oracle_account_id: near_sdk::AccountId::new_unchecked(ORACLE_ID.to_string()),
+                pyth_oracle_account_id: near_sdk::AccountId::new_unchecked(PYTH_ID.to_string()),
                 ref_exchange_id: near_sdk::AccountId::new_unchecked("ref_exchange.test.near".to_string()),
                 owner_id: near_sdk::AccountId::new_unchecked(root.id().to_string()),
                 booster_token_id: near_sdk::AccountId::new_unchecked(BOOSTER_TOKEN_ID.to_string()),
@@ -85,10 +87,13 @@ pub async fn deploy_previous_version_burrowland(
                 maximum_recency_duration_sec: 90,
                 maximum_staleness_duration_sec: 15,
                 lp_tokens_info_valid_duration_sec: 600,
+                pyth_price_valid_duration_sec: 60,
                 minimum_staking_duration_sec: 2678400,
                 maximum_staking_duration_sec: 31536000,
                 x_booster_multiplier_at_maximum_staking_duration: 40000,
                 force_closing_enabled: true,
+                enable_price_oracle: true,
+                enable_pyth_oracle: true,
             },
         }))
         .max_gas()
