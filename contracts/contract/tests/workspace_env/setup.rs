@@ -7,7 +7,7 @@ pub const PYTH_ID: &str = "pyth.test.near";
 pub const BOOSTER_TOKEN_ID: &str = "booster.test.near";
 pub const BOOSTER_TOKEN_DECIMALS: u8 = 18;
 
-const PREVIOUS_BURROWLAND_WASM: &str = "../../releases/burrowland_0.11.0.wasm";
+const PREVIOUS_BURROWLAND_WASM: &str = "../../releases/burrowland_0.10.0.wasm";
 pub const BURROWLAND_WASM: &str = "../../res/burrowland.wasm";
 const REF_EXCHANGE_WASM: &str = "../../res/mock_ref_exchange.wasm";
 pub const BOOST_FARMING_WASM: &str = "../../res/mock_boost_farming.wasm";
@@ -119,7 +119,7 @@ pub async fn deploy_previous_version_burrowland(
         .unwrap();
     assert!(burrowland.call("new")
         .args_json(json!({
-            "config": Config {
+            "config": ConfigV0100 {
                 oracle_account_id: near_sdk::AccountId::new_unchecked(ORACLE_ID.to_string()),
                 pyth_oracle_account_id: near_sdk::AccountId::new_unchecked(PYTH_ID.to_string()),
                 ref_exchange_id: near_sdk::AccountId::new_unchecked("ref_exchange.test.near".to_string()),
@@ -137,7 +137,6 @@ pub async fn deploy_previous_version_burrowland(
                 force_closing_enabled: true,
                 enable_price_oracle: true,
                 enable_pyth_oracle: true,
-                boost_suppress_factor: 1,
             },
         }))
         .max_gas()

@@ -21,7 +21,10 @@ const MAX_RATIO: u32 = 10000;
 ///   "can_withdraw": true,
 ///   "can_use_as_collateral": true,
 ///   "can_borrow": true,
-///   "net_tvl_multiplier": 0
+///   "net_tvl_multiplier": 0,
+///   "max_change_rate": None,
+///   "supplied_limit": "340282366920938463463374607431768211455",
+///   "borrowed_limit": "340282366920938463463374607431768211455",
 /// }
 /// ```
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
@@ -90,6 +93,7 @@ impl AssetConfig {
         assert!(self.max_change_rate.is_none() || self.max_change_rate.unwrap() <= MAX_RATIO);
         assert!(self.supplied_limit.is_some());
         assert!(self.borrowed_limit.is_some());
+        assert!(self.borrowed_limit.unwrap() <= self.supplied_limit.unwrap());
     }
 
     pub fn get_rate(

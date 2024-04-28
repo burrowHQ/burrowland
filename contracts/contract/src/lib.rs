@@ -23,6 +23,7 @@ mod utils;
 mod shadow_actions;
 mod position;
 mod pyth;
+mod actions_pyth;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -233,9 +234,9 @@ impl Contract {
         token_id: TokenId,
         #[callback_result] price_result: Result<U128, PromiseError>,
     ) {
-        if let Ok(price) = price_result {
-            log!(format!("sync {token_id} price Successful: {price:?}"));
-            self.last_staking_token_prices.insert(token_id, price);
+        if let Ok(U128(price)) = price_result {
+            self.update_staking_token_price_record(&token_id, price, "The return value is out of the valid range".to_string());
+            log!(format!("sync {token_id} price Successful: {price}"));
         } else {
             log!(format!("sync {token_id} price failed"));
         }

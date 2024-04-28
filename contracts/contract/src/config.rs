@@ -207,6 +207,7 @@ impl Contract {
         if borrowed_limit.is_some() {
             asset.config.borrowed_limit = borrowed_limit;
         }
+        asset.config.assert_valid();
         self.internal_set_asset(&token_id, asset);
     }
     
@@ -241,7 +242,7 @@ impl Contract {
 
     /// Enable or disable oracle
     /// - Requires one yoctoNEAR.
-    /// - Requires to be called by the contract owner or guardians.
+    /// - Requires to be called by the contract owner.
     #[payable]
     pub fn enable_oracle(&mut self, enable_price_oracle: bool, enable_pyth_oracle: bool) {
         assert_one_yocto();
@@ -315,7 +316,7 @@ impl Contract {
     /// - Panics if the net_tvl_multiplier is invalid.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
-    /// - Requires to be called by the contract owner or guardians.
+    /// - Requires to be called by the contract owner.
     #[payable]
     pub fn update_asset_net_tvl_multiplier(&mut self, token_id: AccountId, net_tvl_multiplier: u32) {
         assert_one_yocto();
