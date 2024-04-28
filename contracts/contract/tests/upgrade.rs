@@ -40,12 +40,11 @@ async fn test_upgrade() -> Result<()> {
         .deposit(1)
         .transact());
 
-    assert!(root
+    check!(print root
         .call(previous_burrowland_contract.0.id(), "upgrade")
         .args(std::fs::read(BURROWLAND_WASM).unwrap())
         .max_gas()
-        .transact()
-        .await?.is_success());
+        .transact());
     let version = previous_burrowland_contract.get_version().await?;
     assert_eq!(version, LATEST_VERSION);
     check!(view previous_burrowland_contract.get_config());

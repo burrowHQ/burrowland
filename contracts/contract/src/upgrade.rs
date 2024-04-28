@@ -21,13 +21,14 @@ impl Contract {
             blacklist_of_farmers,
             last_staking_token_prices,
         } = env::state_read().unwrap();
+        let config_v0100 = config.get().unwrap();
         Self { 
             accounts, 
             storage, 
             assets, 
             asset_farms, 
             asset_ids, 
-            config,
+            config: LazyOption::new(StorageKey::Config, Some(&config_v0100.into())),
             guardians,
             last_prices,
             last_lp_token_infos,

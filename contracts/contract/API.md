@@ -56,6 +56,12 @@ trait Contract {
     /// Returns all farmers in the blacklist.
     fn get_blacklist_of_farmers(&self) -> Vec<AccountId>;
 
+    /// Sync the price of the specified token.
+    fn sync_staking_token_price(&mut self, token_id: TokenId);
+
+    /// Returns last_staking_token_prices.
+    fn get_last_staking_token_prices(&self) -> HashMap<TokenId, U128>;
+
     /// Returns detailed information about an account for a given account_id.
     /// The information includes all supplied assets, collateral and borrowed.
     /// Each asset includes the current balance and the number of shares.
@@ -83,6 +89,16 @@ trait Contract {
     /// - Requires one yoctoNEAR.
     #[payable]
     pub fn execute_with_pyth(&mut self, actions: Vec<Action>);
+
+    /// Executes a given list margin actions on behalf of the predecessor account.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    pub fn margin_execute(&mut self, actions: Vec<MarginAction>);
+
+    /// Executes a given list margin actions on behalf of the predecessor account with pyth oracle price.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    pub fn margin_execute_with_pyth(&mut self, actions: Vec<MarginAction>);
 
     /// Returns a detailed view asset for a given token_id.
     /// The detailed view includes current APR and corresponding farms.
@@ -143,6 +159,20 @@ trait Contract {
     /// - Requires to be called by the contract owner.
     #[payable]
     fn update_asset(&mut self, token_id: ValidAccountId, asset_config: AssetConfig);
+
+    /// Updates the limit for the asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    fn update_asset_limit(&mut self, token_id: AccountId, supplied_limit: Option<U128>, borrowed_limit: Option<U128>);
+
+    /// Updates the max_change_rate for the asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    fn update_asset_max_change_rate(&mut self, token_id: AccountId, max_change_rate: Option<u32>);
 
     /// Updates the prot_ratio for the asset with the a given token_id.
     /// - Panics if the prot_ratio is invalid.
@@ -455,6 +485,9 @@ pub struct Pool {
 ///   "can_use_as_collateral": true,
 ///   "can_borrow": true,
 ///   "net_tvl_multiplier": 0
+///   "max_change_rate": None,
+///   "supplied_limit": "340282366920938463463374607431768211455",
+///   "borrowed_limit": "340282366920938463463374607431768211455",
 /// }
 /// ```
 pub struct AssetConfig {
@@ -618,11 +651,64 @@ pub enum Action {
     },
 }
 
+pub enum MarginAction {
+    Withdraw {
+        token_id: AccountId,
+        amount: Option<U128>,
+    },
+    IncreaseCollateral {
+        pos_id: PosId,
+        amount: U128,
+    },
+    DecreaseCollateral {
+        pos_id: PosId,
+        amount: U128,
+    },
+    OpenPosition {
+        token_c_id: AccountId,
+        token_c_amount: U128,
+        token_d_id: AccountId,
+        token_d_amount: U128,
+        token_p_id: AccountId,
+        min_token_p_amount: U128,
+        swap_indication: SwapIndication,
+    },
+    DecreaseMTPosition {
+        pos_id: PosId,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
+        swap_indication: SwapIndication,
+    },
+    CloseMTPosition {
+        pos_id: PosId,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
+        swap_indication: SwapIndication,
+    },
+    LiquidateMTPosition {
+        pos_owner_id: AccountId,
+        pos_id: PosId,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
+        swap_indication: SwapIndication,
+    },
+    ForceCloseMTPosition {
+        pos_owner_id: AccountId,
+        pos_id: PosId,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
+        swap_indication: SwapIndication,
+    },
+}
+
 pub enum TokenReceiverMsg {
     Execute { actions: Vec<Action> },
     ExecuteWithPyth { actions: Vec<Action> },
-    /// The entire amount will be deposited to the asset reserve. 
     DepositToReserve,
+    DepositToMargin,
+    MarginExecute { actions: Vec<MarginAction> },
+    MarginExecuteWithPyth { actions: Vec<MarginAction> },
+    SwapReference { swap_ref: SwapReference },
 }
 
 enum PriceReceiverMsg {

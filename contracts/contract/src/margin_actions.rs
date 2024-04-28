@@ -304,7 +304,7 @@ impl Contract {
 
 #[near_bindgen]
 impl Contract {
-    /// Executes a given list actions on behalf of the predecessor account.
+    /// Executes a given list margin actions on behalf of the predecessor account.
     /// - Requires one yoctoNEAR.
     #[payable]
     pub fn margin_execute(&mut self, actions: Vec<MarginAction>) {
