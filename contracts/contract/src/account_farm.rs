@@ -20,6 +20,7 @@ pub enum FarmId {
     Supplied(TokenId),
     Borrowed(TokenId),
     NetTvl,
+    TokenNetBalance(TokenId),
 }
 
 /// A data required to keep track of a farm for an account.
@@ -132,6 +133,16 @@ impl Contract {
         }
     }
 
+    pub fn get_account_token_net_balance(&self, account: &Account, token_id: &AccountId) -> u128 {
+        let asset = self.internal_unwrap_asset(&token_id);
+        let supplied_shares = account.get_supplied_shares(token_id);
+        let supplied_amount = asset.supplied.shares_to_amount(supplied_shares, false);
+        let borrowed_shares = account.get_borrowed_shares(token_id);
+        let borrowed_amount = asset.borrowed.shares_to_amount(borrowed_shares, true);
+
+        supplied_amount.checked_sub(borrowed_amount).unwrap_or(0)
+    }
+
     pub fn internal_account_farm_claim(
         &self,
         account: &Account,
@@ -220,10 +231,14 @@ impl Contract {
                 let (account_farm, new_rewards, inactive_rewards) =
                     self.internal_account_farm_claim(account, &farm_id, &asset_farm);
                 for (token_id, amount) in new_rewards {
-                    let new_farm_id = FarmId::Supplied(token_id.clone());
+                    let new_supplied_farm_id = FarmId::Supplied(token_id.clone());
+                    let new_token_net_balance_farm_id = FarmId::TokenNetBalance(token_id.clone());
                     *all_rewards.entry(token_id).or_default() += amount;
-                    if account.add_affected_farm(new_farm_id.clone()) {
-                        farms_ids.push(new_farm_id);
+                    if account.add_affected_farm(new_supplied_farm_id.clone()) {
+                        farms_ids.push(new_supplied_farm_id);
+                    }
+                    if account.add_affected_farm(new_token_net_balance_farm_id.clone()) {
+                        farms_ids.push(new_token_net_balance_farm_id);
                     }
                 }
                 farms.push((farm_id, account_farm, asset_farm, inactive_rewards));
@@ -232,18 +247,24 @@ impl Contract {
         for (token_id, &reward) in &all_rewards {
             self.internal_deposit(account, &token_id, reward);
         }
+        account.sync_booster_policy(&config);
         let booster_balance = account
             .booster_staking
             .as_ref()
             .map(|b| b.x_booster_amount)
             .unwrap_or(0);
-        let booster_base = 10u128.pow(config.booster_decimals as u32);
+        let booster_base = 10u128.pow(config.booster_decimals as u32) * config.boost_suppress_factor;
 
         for (farm_id, mut account_farm, mut asset_farm, inactive_rewards) in farms {
-            let shares = match &farm_id {
-                FarmId::Supplied(token_id) => account.get_supplied_shares(token_id).0,
-                FarmId::Borrowed(token_id) => account.get_borrowed_shares(token_id).0,
-                FarmId::NetTvl => self.get_account_tvl_shares(account)
+            let shares = if self.blacklist_of_farmers.contains(&account.account_id) {
+                0
+            } else {
+                match &farm_id {
+                    FarmId::Supplied(token_id) => account.get_supplied_shares(token_id).0,
+                    FarmId::Borrowed(token_id) => account.get_borrowed_shares(token_id).0,
+                    FarmId::TokenNetBalance(token_id) => self.get_account_token_net_balance(account, token_id),
+                    FarmId::NetTvl => self.get_account_tvl_shares(account)
+                }
             };
             for (token_id, asset_farm_reward) in asset_farm.rewards.iter_mut() {
                 let account_farm_reward = account_farm.rewards.get_mut(token_id).unwrap();
@@ -253,7 +274,7 @@ impl Contract {
                         && booster_balance > booster_base
                     {
                         let log_base =
-                            (asset_farm_reward.booster_log_base as f64) / (booster_base as f64);
+                            (asset_farm_reward.booster_log_base as f64) / 10f64.powi(config.booster_decimals as i32);
                         ((shares as f64)
                             * ((booster_balance as f64) / (booster_base as f64)).log(log_base))
                             as u128

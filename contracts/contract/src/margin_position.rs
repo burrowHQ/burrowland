@@ -404,10 +404,10 @@ impl Contract {
             let gap_shares = asset_p
                 .supplied
                 .amount_to_shares(token_p_amount - mt.token_p_amount, true);
-            mt.token_c_shares
+            mt.token_c_shares = mt.token_c_shares
                 .0
                 .checked_sub(gap_shares.0)
-                .expect("Not enough position asset balance");
+                .expect("Not enough position asset balance").into();
             asset_p
                 .supplied
                 .withdraw(gap_shares, token_p_amount - mt.token_p_amount);

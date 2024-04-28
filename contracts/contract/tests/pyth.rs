@@ -29,7 +29,7 @@ async fn test_pyth() -> Result<()> {
         check!(ref_exchange_contract.storage_deposit(&root));
         check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()]));
     }
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     {
         check!(usdt_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
         check!(linear_contract.ft_storage_deposit(burrowland_contract.0.id()));
@@ -59,6 +59,9 @@ async fn test_pyth() -> Result<()> {
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            max_change_rate: None,
+            supplied_limit: Some(u128::MAX.into()),
+            borrowed_limit: Some(u128::MAX.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -240,7 +243,7 @@ async fn test_position_liquidate_with_pyth() -> Result<()> {
         check!(ref_exchange_contract.storage_deposit(&root));
         check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()]));
     }
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     {
         check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
         check!(burrowland_contract.add_asset_handler(&root, &usdt_token_contract));
@@ -262,13 +265,23 @@ async fn test_position_liquidate_with_pyth() -> Result<()> {
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            max_change_rate: None,
+            supplied_limit: Some(u128::MAX.into()),
+            borrowed_limit: Some(u128::MAX.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
         check!(burrowland_contract.storage_deposit(&root));
+        // usdt
+        check!(burrowland_contract.add_token_pyth_info(&root, usdt_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
+        // usdc
+        check!(burrowland_contract.add_token_pyth_info(&root, usdc_token_contract.0.id(), 6, 4, "41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", None, None));
+        // dai
+        check!(burrowland_contract.add_token_pyth_info(&root, dai_token_contract.0.id(), 18, 4, "87a67534df591d2dd5ec577ab3c75668a8e3d35e92e27bf29d9e2e52df8de412", None, None));
+        // near
+        check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, None));
     }
     let boost_farming_contract = deploy_boost_farming(&root).await?;
-    let oralce_contract = deploy_oralce(&root).await?;
 
     let alice = tool_create_account(&root, "alice", None).await;
     check!(ref_exchange_contract.storage_deposit(&alice));
@@ -311,11 +324,34 @@ async fn test_position_liquidate_with_pyth() -> Result<()> {
     assert_eq!(alice_burrowland_account.supplied[0].balance, d(30000, 18));
     assert_eq!(alice_burrowland_account.supplied[0].token_id.to_string(), token_id.to_string());
 
-    let current_timestamp = worker.view_block().await?.timestamp();
     check!(logs burrowland_contract.sync_ref_exchange_lp_token_infos(&root, Some(vec![token_id.to_string().clone()])));
     check!(burrowland_contract.position_increase_collateral(&alice, &token_id, 0));
-    check!(burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
-    price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
+        price: I64(99980647),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(pyth_contract.set_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", PythPrice{
+        price: I64(99980647),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(pyth_contract.set_price("87a67534df591d2dd5ec577ab3c75668a8e3d35e92e27bf29d9e2e52df8de412", PythPrice{
+        price: I64(99980647),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
+        price: I64(1000000000),
+        conf: U64(278100),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(burrowland_contract.position_borrow_and_withdraw_with_pyth(&alice, token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
     
     check!(wrap_token_contract.ft_mint(&root, &bob, parse_near!("10000 N")));
     check!(burrowland_contract.deposit(&wrap_token_contract, &bob, parse_near!("10000 N")));
@@ -349,49 +385,13 @@ async fn test_position_liquidate_with_pyth() -> Result<()> {
 
     assert_eq!(boost_farming_contract.get_farmer_seed(&alice, &seed_id).await?.unwrap().shadow_amount, d(30000, 18));
 
-    // near
     let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, None));
     check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
         price: I64(20000000000),
         conf: U64(278100),
         expo: -8,
         publish_time: nano_to_sec(current_timestamp) as i64,
     }));
-    check!(view pyth_contract.get_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4"));
-
-    // usdt
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, usdt_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
-    check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
-        price: I64(99980647),
-        conf: U64(103853),
-        expo: -8,
-        publish_time: nano_to_sec(current_timestamp) as i64,
-    }));
-    check!(view pyth_contract.get_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588"));
-
-    // usdc
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, usdc_token_contract.0.id(), 6, 4, "41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", None, None));
-    check!(pyth_contract.set_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", PythPrice{
-        price: I64(99980647),
-        conf: U64(103853),
-        expo: -8,
-        publish_time: nano_to_sec(current_timestamp) as i64,
-    }));
-    check!(view pyth_contract.get_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722"));
-
-    // dai
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, dai_token_contract.0.id(), 18, 4, "87a67534df591d2dd5ec577ab3c75668a8e3d35e92e27bf29d9e2e52df8de412", None, None));
-    check!(pyth_contract.set_price("87a67534df591d2dd5ec577ab3c75668a8e3d35e92e27bf29d9e2e52df8de412", PythPrice{
-        price: I64(99980647),
-        conf: U64(103853),
-        expo: -8,
-        publish_time: nano_to_sec(current_timestamp) as i64,
-    }));
-    check!(view pyth_contract.get_price("87a67534df591d2dd5ec577ab3c75668a8e3d35e92e27bf29d9e2e52df8de412"));
 
     check!(view burrowland_contract.get_account_all_positions(&alice));
 
@@ -458,7 +458,7 @@ async fn test_position_liquidate_with_pyth_and_default_price() -> Result<()> {
         check!(ref_exchange_contract.storage_deposit(&root));
         check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()]));
     }
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     {
         check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
         check!(burrowland_contract.add_asset_handler(&root, &usdt_token_contract));
@@ -480,13 +480,27 @@ async fn test_position_liquidate_with_pyth_and_default_price() -> Result<()> {
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            max_change_rate: None,
+            supplied_limit: Some(u128::MAX.into()),
+            borrowed_limit: Some(u128::MAX.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
         check!(burrowland_contract.storage_deposit(&root));
+
+        // near
+        check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, None));
+        // usdt
+        check!(burrowland_contract.add_token_pyth_info(&root, usdt_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
+        // usdc
+        check!(burrowland_contract.add_token_pyth_info(&root, usdc_token_contract.0.id(), 6, 4, "41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", None, None));
+        // dai
+        check!(burrowland_contract.add_token_pyth_info(&root, dai_token_contract.0.id(), 18, 4, "87a67534df591d2dd5ec577ab3c75668a8e3d35e92e27bf29d9e2e52df8de412", None, Some(Price {
+            multiplier: 9998,
+            decimals: 22,
+        })));
     }
     let boost_farming_contract = deploy_boost_farming(&root).await?;
-    let oralce_contract = deploy_oralce(&root).await?;
 
     let alice = tool_create_account(&root, "alice", None).await;
     check!(ref_exchange_contract.storage_deposit(&alice));
@@ -529,11 +543,28 @@ async fn test_position_liquidate_with_pyth_and_default_price() -> Result<()> {
     assert_eq!(alice_burrowland_account.supplied[0].balance, d(30000, 18));
     assert_eq!(alice_burrowland_account.supplied[0].token_id.to_string(), token_id.to_string());
 
-    let current_timestamp = worker.view_block().await?.timestamp();
     check!(logs burrowland_contract.sync_ref_exchange_lp_token_infos(&root, Some(vec![token_id.to_string().clone()])));
     check!(burrowland_contract.position_increase_collateral(&alice, &token_id, 0));
-    check!(burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
-    price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
+        price: I64(99980647),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(pyth_contract.set_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", PythPrice{
+        price: I64(99980647),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
+        price: I64(1000000000),
+        conf: U64(278100),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(burrowland_contract.position_borrow_and_withdraw_with_pyth(&alice, token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
     
     check!(wrap_token_contract.ft_mint(&root, &bob, parse_near!("10000 N")));
     check!(burrowland_contract.deposit(&wrap_token_contract, &bob, parse_near!("10000 N")));
@@ -567,44 +598,25 @@ async fn test_position_liquidate_with_pyth_and_default_price() -> Result<()> {
 
     assert_eq!(boost_farming_contract.get_farmer_seed(&alice, &seed_id).await?.unwrap().shadow_amount, d(30000, 18));
 
-    // near
     let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, None));
     check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
         price: I64(20000000000),
         conf: U64(278100),
         expo: -8,
         publish_time: nano_to_sec(current_timestamp) as i64,
     }));
-    check!(view pyth_contract.get_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4"));
-
-    // usdt
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, usdt_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
     check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
         price: I64(99980647),
         conf: U64(103853),
         expo: -8,
         publish_time: nano_to_sec(current_timestamp) as i64,
     }));
-    check!(view pyth_contract.get_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588"));
-
-    // usdc
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, usdc_token_contract.0.id(), 6, 4, "41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", None, None));
     check!(pyth_contract.set_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", PythPrice{
         price: I64(99980647),
         conf: U64(103853),
         expo: -8,
         publish_time: nano_to_sec(current_timestamp) as i64,
     }));
-    check!(view pyth_contract.get_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722"));
-
-    // dai
-    check!(burrowland_contract.add_token_pyth_info(&root, dai_token_contract.0.id(), 18, 4, "87a67534df591d2dd5ec577ab3c75668a8e3d35e92e27bf29d9e2e52df8de412", None, Some(Price {
-        multiplier: 9998,
-        decimals: 22,
-    })));
 
     check!(view burrowland_contract.get_account_all_positions(&alice));
 
@@ -664,8 +676,7 @@ async fn test_liquidation_decrease_health_factor_with_pyth() -> Result<()> {
     check!(wrap_token_contract.ft_mint(&root, &root, wrap_reserve_amount));
     check!(nusdt_token_contract.ft_mint(&root, &root, nusdt_reserve_amount));
 
-    let oracle_contract = deploy_oralce(&root).await?;
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &nusdc_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));
@@ -674,6 +685,33 @@ async fn test_liquidation_decrease_health_factor_with_pyth() -> Result<()> {
     check!(nusdt_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
     check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, wrap_reserve_amount));
     check!(burrowland_contract.deposit_to_reserve(&nusdt_token_contract, &root, nusdt_reserve_amount));
+    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, None));
+    check!(burrowland_contract.add_token_pyth_info(&root, nusdt_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
+    check!(burrowland_contract.add_token_pyth_info(&root, nusdc_token_contract.0.id(), 6, 4, "41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", None, None));
+    // usdt
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
+        price: I64(100000000),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    // usdc
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(pyth_contract.set_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", PythPrice{
+        price: I64(100000000),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    // near
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
+        price: I64(1000000000),
+        conf: U64(278100),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
 
     let alice = create_account(&root, "alice", None).await;
     check!(burrowland_contract.storage_deposit(&alice));
@@ -686,12 +724,10 @@ async fn test_liquidation_decrease_health_factor_with_pyth() -> Result<()> {
     check!(burrowland_contract.supply_to_collateral(&nusdc_token_contract, &alice, (supply_amount / extra_decimals_mult).into()));
 
     let wnear_borrow_amount = d(50, 24);
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.borrow_and_withdraw(&alice, &oracle_contract, burrowland_contract.0.id(), price_data(current_timestamp, Some(100000)), wrap_token_contract.0.id(), wnear_borrow_amount));
+    check!(burrowland_contract.borrow_and_withdraw_with_pyth(&alice, wrap_token_contract.0.id(), wnear_borrow_amount));
 
     let usdt_borrow_amount = d(50, 18);
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.borrow_and_withdraw(&alice, &oracle_contract, burrowland_contract.0.id(), price_data(current_timestamp, Some(100000)), nusdt_token_contract.0.id(), usdt_borrow_amount));
+    check!(burrowland_contract.borrow_and_withdraw_with_pyth(&alice, nusdt_token_contract.0.id(), usdt_borrow_amount));
 
     let account = burrowland_contract.get_account(&alice).await?.unwrap();
     assert!(account.supplied.is_empty());
@@ -713,40 +749,18 @@ async fn test_liquidation_decrease_health_factor_with_pyth() -> Result<()> {
     assert!(find_asset(&account.supplied, nusdt_token_contract.0.id()).apr > BigDecimal::zero());
 
     // Assuming 2% discount for NEAR at 12$. Paying 49 USDT for 50 USDC.
-    let usdt_amount_in = d(49, 18);
-    let usdc_amount_out = d(50, 18);
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.liquidate(&bob, &oracle_contract, burrowland_contract.0.id(), alice.id(), price_data(current_timestamp, Some(120000)), 
-    vec![asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)], None, None), "The health factor of liquidation account can't decrease");
-
-    // Assuming ~2% discount for 5 NEAR at 12$. 50 USDT -> ~51 USDC, 4.9 NEAR -> 60 USDC.
-    // near
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, None));
     check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
         price: I64(1200000000),
         conf: U64(278100),
         expo: -8,
         publish_time: nano_to_sec(current_timestamp) as i64,
     }));
-    // usdt
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, nusdt_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
-    check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
-        price: I64(100000000),
-        conf: U64(103853),
-        expo: -8,
-        publish_time: nano_to_sec(current_timestamp) as i64,
-    }));
-    // usdc
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, nusdc_token_contract.0.id(), 6, 4, "41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", None, None));
-    check!(pyth_contract.set_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", PythPrice{
-        price: I64(100000000),
-        conf: U64(103853),
-        expo: -8,
-        publish_time: nano_to_sec(current_timestamp) as i64,
-    }));
+    let usdt_amount_in = d(49, 18);
+    let usdc_amount_out = d(50, 18);
+    check!(burrowland_contract.liquidate_with_pyth(&bob, alice.id(), 
+    vec![asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)], None, None), "The health factor of liquidation account can't decrease");
+
+    // Assuming ~2% discount for 5 NEAR at 12$. 50 USDT -> ~51 USDC, 4.9 NEAR -> 60 USDC.
     let wnear_amount_in = d(49, 23);
     let usdt_amount_in = d(50, 18);
     let usdc_amount_out = d(111, 18);
@@ -815,7 +829,7 @@ async fn test_position_force_close() -> Result<()> {
         check!(ref_exchange_contract.storage_deposit(&root));
         check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()]));
     }
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     {
         check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
         check!(burrowland_contract.add_asset_handler(&root, &usdt_token_contract));
@@ -837,13 +851,24 @@ async fn test_position_force_close() -> Result<()> {
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            max_change_rate: None,
+            supplied_limit: Some(u128::MAX.into()),
+            borrowed_limit: Some(u128::MAX.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
         check!(burrowland_contract.storage_deposit(&root));
+
+        // near
+        check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, None));
+        // usdt
+        check!(burrowland_contract.add_token_pyth_info(&root, usdt_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
+        // usdc
+        check!(burrowland_contract.add_token_pyth_info(&root, usdc_token_contract.0.id(), 6, 4, "41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", None, None));
+        // dai
+        check!(burrowland_contract.add_token_pyth_info(&root, dai_token_contract.0.id(), 18, 4, "87a67534df591d2dd5ec577ab3c75668a8e3d35e92e27bf29d9e2e52df8de412", None, None));
     }
     let boost_farming_contract = deploy_boost_farming(&root).await?;
-    let oralce_contract = deploy_oralce(&root).await?;
 
     let alice = tool_create_account(&root, "alice", None).await;
     check!(ref_exchange_contract.storage_deposit(&alice));
@@ -890,11 +915,34 @@ async fn test_position_force_close() -> Result<()> {
 
     check!(ref_exchange_contract.shadow_burrowland_deposit(&alice, 0, None, None));
 
-    let current_timestamp = worker.view_block().await?.timestamp();
     check!(burrowland_contract.sync_ref_exchange_lp_token_infos(&root, Some(vec![token_id.to_string().clone()])));
     check!(burrowland_contract.position_increase_collateral(&alice, &token_id, 0));
-    check!(logs burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
-    price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
+        price: I64(1000000000),
+        conf: U64(278100),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
+        price: I64(99980647),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(pyth_contract.set_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", PythPrice{
+        price: I64(99980647),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(pyth_contract.set_price("87a67534df591d2dd5ec577ab3c75668a8e3d35e92e27bf29d9e2e52df8de412", PythPrice{
+        price: I64(99980647),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    check!(burrowland_contract.position_borrow_and_withdraw_with_pyth(&alice, token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
     
     check!(wrap_token_contract.ft_mint(&root, &bob, parse_near!("10000 N")));
     check!(burrowland_contract.deposit(&wrap_token_contract, &bob, parse_near!("10000 N")));
@@ -926,36 +974,26 @@ async fn test_position_force_close() -> Result<()> {
     assert_eq!(boost_farming_contract.get_farmer_seed(&alice, &seed_id).await?.unwrap().shadow_amount, d(30000, 18));
 
     check!(view burrowland_contract.get_account_all_positions(&alice));
-    // near
+
     let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, None));
     check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
         price: I64(2000000000000),
         conf: U64(278100),
         expo: -8,
         publish_time: nano_to_sec(current_timestamp) as i64,
     }));
-    // usdt
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, usdt_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
     check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
         price: I64(99980647),
         conf: U64(103853),
         expo: -8,
         publish_time: nano_to_sec(current_timestamp) as i64,
     }));
-    // usdc
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, usdc_token_contract.0.id(), 6, 4, "41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", None, None));
     check!(pyth_contract.set_price("41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722", PythPrice{
         price: I64(99980647),
         conf: U64(103853),
         expo: -8,
         publish_time: nano_to_sec(current_timestamp) as i64,
     }));
-    // dai
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, dai_token_contract.0.id(), 18, 4, "87a67534df591d2dd5ec577ab3c75668a8e3d35e92e27bf29d9e2e52df8de412", None, None));
     check!(pyth_contract.set_price("87a67534df591d2dd5ec577ab3c75668a8e3d35e92e27bf29d9e2e52df8de412", PythPrice{
         price: I64(99980647),
         conf: U64(103853),
@@ -1002,8 +1040,7 @@ async fn test_force_close_with_pyth() -> Result<()> {
     let wrap_reserve_amount = d(10000, 24);
     check!(wrap_token_contract.ft_mint(&root, &root, wrap_reserve_amount));
 
-    let oracle_contract = deploy_oralce(&root).await?;
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &nusdc_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(nusdc_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
@@ -1019,35 +1056,48 @@ async fn test_force_close_with_pyth() -> Result<()> {
 
     check!(burrowland_contract.supply_to_collateral(&nusdc_token_contract, &alice, (supply_amount / extra_decimals_mult).into()));
 
-    let borrow_amount = d(50, 24);
     let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.borrow_and_withdraw(&alice, &oracle_contract, burrowland_contract.0.id(), price_data(current_timestamp, Some(100000)), wrap_token_contract.0.id(), borrow_amount));
+    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, None));
+    check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
+        price: I64(1000000000),
+        conf: U64(278100),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    // usdc
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(burrowland_contract.add_token_pyth_info(&root, nusdc_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
+    check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
+        price: I64(100000000),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    let borrow_amount = d(50, 24);
+    check!(burrowland_contract.borrow_and_withdraw_with_pyth(&alice, wrap_token_contract.0.id(), borrow_amount));
 
    // Attempt to force close the account with NEAR at 12$, the account debt is still not bad.
    let bob = create_account(&root, "bob", None).await;
    check!(burrowland_contract.storage_deposit(&bob));
-   check!(burrowland_contract.force_close(&bob, &oracle_contract, alice.id(), price_data(current_timestamp, Some(120000)), None, None), "is not greater than total collateral");
-
-    // Force closing account with NEAR at 25$.
-   // near
    let current_timestamp = worker.view_block().await?.timestamp();
-   check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, None));
    check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
-       price: I64(2500000000),
+       price: I64(1200000000),
        conf: U64(278100),
        expo: -8,
        publish_time: nano_to_sec(current_timestamp) as i64,
    }));
-   // usdc
-   let current_timestamp = worker.view_block().await?.timestamp();
-   check!(burrowland_contract.add_token_pyth_info(&root, nusdc_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
-   check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
-       price: I64(100000000),
-       conf: U64(103853),
-       expo: -8,
-       publish_time: nano_to_sec(current_timestamp) as i64,
-   }));
-   let outcome = burrowland_contract.force_close_with_pyth(&bob, alice.id(), None, None).await?;
+   check!(burrowland_contract.force_close_with_pyth(&bob, alice.id(), None, None), "is not greater than total collateral");
+
+    // Force closing account with NEAR at 25$.
+    // near
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
+        price: I64(2500000000),
+        conf: U64(278100),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    let outcome = burrowland_contract.force_close_with_pyth(&bob, alice.id(), None, None).await?;
 
     let logs = outcome.logs();
     let event = &logs[0];
@@ -1087,14 +1137,22 @@ async fn test_force_close_with_pyth_and_default_price() -> Result<()> {
     let wrap_reserve_amount = d(10000, 24);
     check!(wrap_token_contract.ft_mint(&root, &root, wrap_reserve_amount));
 
-    let oracle_contract = deploy_oralce(&root).await?;
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &nusdc_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(nusdc_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
     check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
     check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, wrap_reserve_amount));
-
+    check!(burrowland_contract.add_token_pyth_info(&root, nusdc_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
+    // usdc
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
+        price: I64(100000000),
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    
     let alice = create_account(&root, "alice", None).await;
     check!(burrowland_contract.storage_deposit(&alice));
     let supply_amount = d(1000, 18);
@@ -1105,29 +1163,28 @@ async fn test_force_close_with_pyth_and_default_price() -> Result<()> {
     check!(burrowland_contract.supply_to_collateral(&nusdc_token_contract, &alice, (supply_amount / extra_decimals_mult).into()));
 
     let borrow_amount = d(50, 24);
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.borrow_and_withdraw(&alice, &oracle_contract, burrowland_contract.0.id(), price_data(current_timestamp, Some(100000)), wrap_token_contract.0.id(), borrow_amount));
+    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, Some(Price {
+        multiplier: 100000,
+        decimals: 28,
+    })));
+    check!(burrowland_contract.borrow_and_withdraw_with_pyth(&alice, wrap_token_contract.0.id(), borrow_amount));
 
     // Attempt to force close the account with NEAR at 12$, the account debt is still not bad.
+    check!(burrowland_contract.update_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, Some(Price {
+        multiplier: 120000,
+        decimals: 28,
+    })));
     let bob = create_account(&root, "bob", None).await;
     check!(burrowland_contract.storage_deposit(&bob));
-    check!(burrowland_contract.force_close(&bob, &oracle_contract, alice.id(), price_data(current_timestamp, Some(120000)), None, None), "is not greater than total collateral");
+    check!(burrowland_contract.force_close_with_pyth(&bob, alice.id(), None, None), "is not greater than total collateral");
 
         // Force closing account with NEAR at 25$.
     // near
-    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, Some(Price {
+    check!(burrowland_contract.update_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, Some(Price {
         multiplier: 250000,
         decimals: 28,
     })));
-    // usdc
-    let current_timestamp = worker.view_block().await?.timestamp();
-    check!(burrowland_contract.add_token_pyth_info(&root, nusdc_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
-    check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
-        price: I64(100000000),
-        conf: U64(103853),
-        expo: -8,
-        publish_time: nano_to_sec(current_timestamp) as i64,
-    }));
+    
     let outcome = burrowland_contract.force_close_with_pyth(&bob, alice.id(), None, None).await?;
 
     let logs = outcome.logs();
@@ -1168,7 +1225,7 @@ async fn test_batch_actions() -> Result<()> {
     let wrap_reserve_amount = d(10000, 24);
     check!(wrap_token_contract.ft_mint(&root, &root, wrap_reserve_amount));
 
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &nusdc_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(nusdc_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
@@ -1234,7 +1291,7 @@ async fn test_position_batch_actions() -> Result<()> {
         check!(ref_exchange_contract.storage_deposit(&root));
         check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()]));
     }
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     {
         check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
         check!(burrowland_contract.add_asset_handler(&root, &usdt_token_contract));
@@ -1256,6 +1313,9 @@ async fn test_position_batch_actions() -> Result<()> {
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            max_change_rate: None,
+            supplied_limit: Some(u128::MAX.into()),
+            borrowed_limit: Some(u128::MAX.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -1378,7 +1438,7 @@ async fn test_position_batch_actions_with_default_prices() -> Result<()> {
         check!(ref_exchange_contract.storage_deposit(&root));
         check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![usdt_token_contract.0.id(), usdc_token_contract.0.id(), dai_token_contract.0.id()]));
     }
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     {
         check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
         check!(burrowland_contract.add_asset_handler(&root, &usdt_token_contract));
@@ -1400,6 +1460,9 @@ async fn test_position_batch_actions_with_default_prices() -> Result<()> {
             can_use_as_collateral: true,
             can_borrow: false,
             net_tvl_multiplier: 10000,
+            max_change_rate: None,
+            supplied_limit: Some(u128::MAX.into()),
+            borrowed_limit: Some(u128::MAX.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -1493,7 +1556,7 @@ async fn test_switch_price_oracle() -> Result<()> {
     check!(wrap_token_contract.ft_mint(&root, &root, wrap_reserve_amount));
 
     let oracle_contract = deploy_oralce(&root).await?;
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &nusdc_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(nusdc_token_contract.ft_storage_deposit(burrowland_contract.0.id()));

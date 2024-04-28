@@ -11,7 +11,7 @@ async fn test_dev_setup() -> Result<()> {
     let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
     check!(wrap_token_contract.ft_mint(&root, &root, amount));
     
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
 
@@ -29,7 +29,7 @@ async fn test_supply() -> Result<()> {
 
     let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
     
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
 
@@ -56,7 +56,7 @@ async fn test_supply_to_collateral() -> Result<()> {
 
     let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
     
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
 
@@ -88,7 +88,7 @@ async fn test_withdraw_prot_fee_reserved_failed() -> Result<()> {
     check!(ndai_token_contract.ft_mint(&root, &root, d(500, 18)));
     
     let oracle_contract = deploy_oralce(&root).await?;
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &ndai_token_contract));
     check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
@@ -137,7 +137,7 @@ async fn test_modify_booster_token_id_and_decimals() -> Result<()> {
     let worker = workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
 
     let mut config = burrowland_contract.get_config().await?;
     config.booster_token_id = "new_booster_token_id".parse().unwrap();
@@ -160,7 +160,7 @@ async fn test_modify_config() -> Result<()> {
     let alice = tool_create_account(&root, "alice", None).await;
 
     let token_id = "s_v1-0".parse::<AccountId>().unwrap();
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset(&root, &token_id, AssetConfig{
         reserve_ratio: 2500,
         prot_ratio: 0,
@@ -175,6 +175,9 @@ async fn test_modify_config() -> Result<()> {
         can_use_as_collateral: true,
         can_borrow: false,
         net_tvl_multiplier: 10000,
+        max_change_rate: None,
+        supplied_limit: Some(u128::MAX.into()),
+        borrowed_limit: Some(u128::MAX.into()),
     }));
 
     let asset = burrowland_contract.get_asset(&token_id).await?;
@@ -183,14 +186,14 @@ async fn test_modify_config() -> Result<()> {
     check!(burrowland_contract.update_asset_prot_ratio(&alice, &token_id, 100), "Not allowed");
     check!(burrowland_contract.enable_asset_capacity(&alice, &token_id, Some(true), None, None, None), "Not an owner");
     check!(burrowland_contract.disable_asset_capacity(&alice, &token_id, Some(false), None, None, None), "Not allowed");
-    check!(burrowland_contract.update_asset_net_tvl_multiplier(&alice, &token_id, 200), "Not allowed");
+    check!(burrowland_contract.update_asset_net_tvl_multiplier(&alice, &token_id, 200), "Not an owner");
 
     check!(burrowland_contract.extend_guardians(&alice, vec![alice.id()]), "Not an owner");
     check!(burrowland_contract.remove_guardians(&alice, vec![alice.id()]), "Not an owner");
     check!(burrowland_contract.extend_guardians(&root, vec![alice.id()]));
 
     check!(burrowland_contract.update_asset_prot_ratio(&alice, &token_id, 100));
-    check!(burrowland_contract.update_asset_net_tvl_multiplier(&alice, &token_id, 200));
+    check!(burrowland_contract.update_asset_net_tvl_multiplier(&root, &token_id, 200));
     check!(burrowland_contract.disable_asset_capacity(&alice, &token_id, Some(false), Some(false), Some(false), None));
     check!(burrowland_contract.enable_asset_capacity(&root, &token_id, None, None, None, Some(true)));
     let asset = burrowland_contract.get_asset(&token_id).await?;

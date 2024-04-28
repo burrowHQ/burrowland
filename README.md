@@ -241,7 +241,14 @@ Compute the extra xBooster received for the new given `amount` and the `duration
 
 `extra_x_booster_amount = amount * xbooster_multiplier(duration)`
 
-If the previous xBooster stake exists then we compute the potential xBooster amount for the previous Booster token amount and the new duration, and 
+If the previous xBooster stake exists, first synchronize with the current booster policy:
+- if the `unlock_timestamp - current time` is greater than the `maximum_staking_duration_sec`.
+  - `extra_x_booster_amount = staked_booster_amount * xbooster_multiplier(maximum_staking_duration_sec)`
+  - `unlock_timestamp = current time + sec_to_nano(maximum_staking_duration_sec)`
+- if the `x_booster_amount * 10000 / staked_booster_amount` is greater than the `x_booster_multiplier_at_maximum_staking_duration`.
+  - `extra_x_booster_amount = staked_booster_amount * xbooster_multiplier(maximum_staking_duration_sec)`
+
+Then we compute the potential xBooster amount for the previous Booster token amount and the new duration, and 
 then compute the actual total new xBooster amount from the maximum of the restaking or keeping the old xBooster amount:
 
 ```
@@ -275,18 +282,19 @@ Once the `remaining_rewards` becomes equal to `0`, the farm stops distributing t
 The farming multiplier for each specific farm is calculated based on `booster_log_base` and `x_booster_amount` for the account.
 
 `booster_decimals` is the number of decimals of the booster token. By default, it's `18`.
+`boost_suppress_factor` is the number of suppress factor of the booster token. By default, it's `1`.
 
-`booster_base = 10 ** token_decimals`
+`booster_base = 10 ** token_decimals * boost_suppress_factor.`
 
 If the account has `x_booster_amount <= booster_base`, then the multiplier is `1`
 
 If `x_booster_amount > booster_base`, then the farming multiplier is the following:
 
-`farming_multiplier = 1 + log(x_booster_amount / booster_base) / log(booster_log_base / booster_base)`
+`farming_multiplier = 1 + log(x_booster_amount / booster_base) / log(booster_log_base / 10 ** token_decimals)`
 
 ##### Farming multiplier example
 
-Let's say `booster_log_base` is `20 * 1e18`.
+Let's say `booster_log_base` is `20 * 1e18`, and `boost_suppress_factor` is `1`.
 
 If an account has `x_booster_amount` equal to:
 - `0`, then `farming_multiplier = 1`
@@ -331,7 +339,7 @@ Let's Charlie supplies `1000` USDC without xBooster tokens.
 Requires Rust and wasm32 target.
 
 ```bash
-./build.sh
+make
 ```
 
 ### Deploy on the testnet
@@ -415,7 +423,9 @@ Example result:
   ],
   collateral: [],
   borrowed: [],
-  farms: []
+  farms: [],
+  has_non_farmed_assets: false,
+  booster_staking: null
 }
 ```
 
@@ -433,9 +443,11 @@ Example result:
   supplied: { shares: '5000000000000000000', balance: '5000000000000000000' },
   borrowed: { shares: '0', balance: '0' },
   reserved: '2000000000000000000000',
+  prot_fee: '0',
   last_update_timestamp: '1634682347763275349',
   config: {
     reserve_ratio: 2500,
+    prot_ratio: 0,
     target_utilization: 8000,
     target_utilization_rate: '1000000000002440418605283556',
     max_utilization_rate: '1000000000039724853136740579',
@@ -444,7 +456,8 @@ Example result:
     can_deposit: true,
     can_withdraw: true,
     can_use_as_collateral: true,
-    can_borrow: true
+    can_borrow: true,
+    net_tvl_multiplier: 0
   }
 }
 ```
@@ -488,7 +501,9 @@ Example result:
     }
   ],
   borrowed: [],
-  farms: []
+  farms: [],
+  has_non_farmed_assets: false,
+  booster_staking: null
 }
 ```
 
@@ -563,7 +578,9 @@ Example result:
       shares: '1000000000000000000'
     }
   ],
-  farms: []
+  farms: [],
+  has_non_farmed_assets: false,
+  booster_staking: null
 }
 ```
 
@@ -598,7 +615,9 @@ Example result:
       shares: '1000000000000000000'
     }
   ],
-  farms: []
+  farms: [],
+  has_non_farmed_assets: false,
+  booster_staking: null
 }
 ```
 
@@ -625,7 +644,8 @@ Example result:
     can_deposit: true,
     can_withdraw: true,
     can_use_as_collateral: true,
-    can_borrow: true
+    can_borrow: true,
+    net_tvl_multiplier: 0
   }
 }
 ```
@@ -685,7 +705,9 @@ Example result:
       shares: '1000000000000000000'
     }
   ],
-  farms: []
+  farms: [],
+  has_non_farmed_assets: false,
+  booster_staking: null
 }
 ```
 
@@ -714,7 +736,8 @@ Example result:
     can_deposit: true,
     can_withdraw: true,
     can_use_as_collateral: true,
-    can_borrow: true
+    can_borrow: true,
+    net_tvl_multiplier: 0
   }
 }
 ```
@@ -782,7 +805,9 @@ Example result:
     }
   ],
   borrowed: [],
-  farms: []
+  farms: [],
+  has_non_farmed_assets: false,
+  booster_staking: null
 }
 ```
 
@@ -811,7 +836,8 @@ Example result:
     can_deposit: true,
     can_withdraw: true,
     can_use_as_collateral: true,
-    can_borrow: true
+    can_borrow: true,
+    net_tvl_multiplier: 0
   }
 }
 ```
@@ -860,6 +886,8 @@ Example result:
   ],
   collateral: [],
   borrowed: [],
-  farms: []
+  farms: [],
+  has_non_farmed_assets: false,
+  booster_staking: null
 }
 ```

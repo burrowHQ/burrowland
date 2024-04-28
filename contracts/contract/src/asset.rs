@@ -46,6 +46,7 @@ pub enum VAsset {
     V0(AssetV0),
     V1(AssetV1),
     V2(AssetV2),
+    V3(AssetV3),
     Current(Asset),
 }
 
@@ -55,6 +56,7 @@ impl From<VAsset> for Asset {
             VAsset::V0(v) => v.into(),
             VAsset::V1(v) => v.into(),
             VAsset::V2(v) => v.into(),
+            VAsset::V3(v) => v.into(),
             VAsset::Current(c) => c,
         }
     }
@@ -230,14 +232,20 @@ impl Contract {
             asset.supplied.shares.0 >= MIN_RESERVE_SHARES, "Asset {} supply shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
         assert!(asset.borrowed.shares.0 == 0 || 
             asset.borrowed.shares.0 >= MIN_RESERVE_SHARES, "Asset {} borrow shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
-        if asset.supplied.shares.0 == 0 && asset.supplied.balance > 0 {
-            asset.reserved += asset.supplied.balance;
-            asset.supplied.balance = 0;
+        if let Some(supplied_limit) = asset.config.supplied_limit {
+            assert!(asset.supplied.balance <= supplied_limit.0, "Asset {} supply balance cannot be greater than {}", token_id, supplied_limit.0);
+        }
+        if let Some(borrowed_limit) = asset.config.borrowed_limit {
+            assert!(asset.borrowed.balance <= borrowed_limit.0, "Asset {} borrow balance cannot be greater than {}", token_id, borrowed_limit.0);
         }
         assert!(
             asset.borrowed.shares.0 > 0 || asset.borrowed.balance == 0,
             "Borrowed invariant broken"
         );
+        if asset.supplied.shares.0 == 0 && asset.supplied.balance > 0 {
+            asset.reserved += asset.supplied.balance;
+            asset.supplied.balance = 0;
+        }
         asset.supplied.assert_invariant();
         asset.borrowed.assert_invariant();
         ASSETS

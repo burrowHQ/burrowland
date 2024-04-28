@@ -66,6 +66,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::json_types::{I64, U64, U128};
 use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::PromiseError;
 use near_sdk::{
     assert_one_yocto, env, ext_contract, log, near_bindgen, AccountId, Balance, BorshStorageKey,
     Duration, Gas, PanicOnDefault, Promise, Timestamp,
@@ -87,6 +88,7 @@ enum StorageKey {
     AssetIds,
     Config,
     Guardian,
+    BlacklistOfFarmers,
     MarginAccounts,
     MarginConfig,
 }
@@ -104,9 +106,11 @@ pub struct Contract {
     /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
     pub last_prices: HashMap<TokenId, Price>,
     pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
+    pub token_pyth_info: HashMap<TokenId, TokenPythInfo>,
+    pub blacklist_of_farmers: UnorderedSet<AccountId>,
+    pub last_staking_token_prices: HashMap<TokenId, U128>,
     pub margin_accounts: UnorderedMap<AccountId, VMarginAccount>,
     pub margin_config: LazyOption<MarginConfig>,
-    pub token_pyth_info: HashMap<TokenId, TokenPythInfo>
 }
 
 #[near_bindgen]
@@ -137,10 +141,13 @@ impl Contract {
                 registered_tokens: HashMap::new(),
             })),
             token_pyth_info: HashMap::new(),
+            blacklist_of_farmers: UnorderedSet::new(StorageKey::BlacklistOfFarmers),
+            last_staking_token_prices: HashMap::new(),
         }
     }
 
     /// Extend guardians. Only can be called by owner.
+    /// - Requires one yoctoNEAR.
     #[payable]
     pub fn extend_guardians(&mut self, guardians: Vec<AccountId>) {
         assert_one_yocto();
@@ -151,6 +158,7 @@ impl Contract {
     }
 
     /// Remove guardians. Only can be called by owner.
+    /// - Requires one yoctoNEAR.
     #[payable]
     pub fn remove_guardians(&mut self, guardians: Vec<AccountId>) {
         assert_one_yocto();
@@ -161,37 +169,110 @@ impl Contract {
         }
     }
 
+    /// Returns all guardians.s
     pub fn get_guardians(&self) -> Vec<AccountId> {
         self.guardians.to_vec()
     }
 
+    /// Add pyth info for the specified token. Only can be called by owner or guardians.
+    /// - Requires one yoctoNEAR.
     #[payable]
     pub fn add_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         assert!(!self.token_pyth_info.contains_key(&token_id), "Already exist");
         self.token_pyth_info.insert(token_id, token_pyth_info);
     }
 
+    /// Update pyth info for the specified token. Only can be called by owner or guardians.
+    /// - Requires one yoctoNEAR.
     #[payable]
     pub fn update_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         assert!(self.token_pyth_info.contains_key(&token_id), "Invalid token_id");
         self.token_pyth_info.insert(token_id, token_pyth_info);
     }
 
+    /// Returns all pyth info.
     pub fn get_all_token_pyth_infos(&self) -> HashMap<TokenId, TokenPythInfo> {
         self.token_pyth_info.clone()
     }
 
+    /// Return pyth information for the specified token.
     pub fn get_token_pyth_info(&self, token_id: TokenId) -> Option<TokenPythInfo> {
         self.token_pyth_info.get(&token_id).cloned()
     }
+
+    /// Extend farmers to blacklist. Only can be called by owner or guardians.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    pub fn extend_blacklist_of_farmers(&mut self, farmers: Vec<AccountId>) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        for farmer in farmers {
+            self.blacklist_of_farmers.insert(&farmer);
+            let mut account = self.internal_unwrap_account(&farmer);
+            account
+                .affected_farms
+                .extend(account.get_all_potential_farms());
+            self.internal_account_apply_affected_farms(&mut account);
+            self.internal_set_account(&farmer, account);
+        }
+    }
+
+    /// Remove farmers from blacklist. Only can be called by owner or guardians.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    pub fn remove_blacklist_of_farmers(&mut self, farmers: Vec<AccountId>) {
+        assert_one_yocto();
+        self.assert_owner();
+        for farmer in farmers {
+            let is_success = self.blacklist_of_farmers.remove(&farmer);
+            assert!(is_success, "Invalid farmer");
+            let mut account = self.internal_unwrap_account(&farmer);
+            account
+                .affected_farms
+                .extend(account.get_all_potential_farms());
+            self.internal_account_apply_affected_farms(&mut account);
+            self.internal_set_account(&farmer, account);
+        }
+    }
+
+    /// Returns all farmers in the blacklist.
+    pub fn get_blacklist_of_farmers(&self) -> Vec<AccountId> {
+        self.blacklist_of_farmers.to_vec()
+    }
+
+    /// Sync the price of the specified token.
+    pub fn sync_staking_token_price(&mut self, token_id: TokenId) {
+        let function_name = self.get_pyth_info_by_token(&token_id).extra_call.clone().expect("Not extra_call token");
+        Promise::new(token_id.clone())
+            .function_call(function_name, vec![], 0, Gas::ONE_TERA * 5)
+            .then(Self::ext(env::current_account_id())
+                .callback_sync_staking_token_price(token_id)
+            );
+    }
+
+    #[private]
+    pub fn callback_sync_staking_token_price(
+        &mut self,
+        token_id: TokenId,
+        #[callback_result] price_result: Result<U128, PromiseError>,
+    ) {
+        if let Ok(price) = price_result {
+            log!(format!("sync {token_id} price Successful: {price:?}"));
+            self.last_staking_token_prices.insert(token_id, price);
+        } else {
+            log!(format!("sync {token_id} price failed"));
+        }
+    }
+
+    /// Returns last_staking_token_prices.
+    pub fn get_last_staking_token_prices(&self) -> HashMap<TokenId, U128> {
+        self.last_staking_token_prices.clone()
+    }
 }
-
-
-
 
 #[cfg(test)]
 mod unit_env {
@@ -240,6 +321,9 @@ mod unit_env {
                     can_use_as_collateral: false,
                     can_borrow: false,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(booster_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -259,6 +343,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(neth_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -278,6 +365,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(ndai_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -297,6 +387,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(nusdt_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -316,6 +409,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(nusdc_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -335,6 +431,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(wnear_token_id(), owner_id(), d(10000, 24));
         }
@@ -589,7 +688,8 @@ mod unit_env {
             x_booster_multiplier_at_maximum_staking_duration: 40000,
             force_closing_enabled: true,
             enable_price_oracle: true,
-            enable_pyth_oracle: false
+            enable_pyth_oracle: false,
+            boost_suppress_factor: 1,
         });
         let mut test_env = UnitEnv{
             contract,
@@ -1209,11 +1309,214 @@ mod farms {
         assert_eq!(account.farms.len(), 0);
         assert!(account.has_non_farmed_assets);
 
-        test_env.account_farm_claim_all(alice());
+        test_env.contract.extend_blacklist_of_farmers(vec![alice()]);
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert_eq!(account.farms.len(), 0);
+        assert!(!account.has_non_farmed_assets);
 
+        test_env.contract.remove_blacklist_of_farmers(vec![alice()]);
         let account = test_env.contract.get_account(alice()).unwrap();
         assert_eq!(account.farms.len(), 1);
         assert!(!account.has_non_farmed_assets);
+
+        test_env.contract.extend_blacklist_of_farmers(vec![alice()]);
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert_eq!(account.farms.len(), 0);
+        assert!(!account.has_non_farmed_assets);
+        
+        clean_assets_cache();
+        clean_assets_farm_cache();
+    }
+
+    #[test]
+    #[ignore]
+    fn test_adjust_boost_staking_policy() {
+        let mut test_env = init_unit_env();
+
+        test_env.skip_time_to_by_sec(10);
+
+        let booster_amount = d(5, 18);
+        test_env.deposit(booster_token_id(), alice(), booster_amount);
+        
+        testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
+        test_env.contract.account_stake_booster(Some(booster_amount.into()), MAX_DURATION_SEC);
+
+        let reward_per_day = d(100, 18);
+        let total_reward = d(3000, 18);
+        let booster_base = d(20, 18);
+
+        let farm_id = FarmId::Supplied(ndai_token_id());
+        test_env.add_farm(farm_id.clone(), nusdc_token_id(), reward_per_day, booster_base, total_reward);
+
+        let amount = d(100, 18);
+        test_env.deposit(ndai_token_id(), alice(), amount);
+        test_env.account_farm_claim_all(alice());
+
+        let account = test_env.contract.get_account(alice()).unwrap();
+        let booster_staking = account.booster_staking.unwrap();
+        assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
+        assert_eq!(booster_staking.x_booster_amount, d(20, 18));
+        assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC));
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(200, 18));
+        
+        testing_env!(test_env.context.predecessor_account_id(owner_id()).build());
+        test_env.contract.adjust_boost_staking_policy(2678400, MAX_DURATION_SEC / 2, 40000);
+        test_env.account_farm_claim_all(alice());
+        
+        let account = test_env.contract.get_account(alice()).unwrap();
+        let booster_staking = account.booster_staking.unwrap();
+        assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
+        assert_eq!(booster_staking.x_booster_amount, d(20, 18));
+        assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC / 2));
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(200, 18));
+
+        testing_env!(test_env.context.predecessor_account_id(owner_id()).build());
+        test_env.contract.adjust_boost_staking_policy(2678400, MAX_DURATION_SEC / 2, 20000);
+        test_env.account_farm_claim_all(alice());
+
+        let account = test_env.contract.get_account(alice()).unwrap();
+        let booster_staking = account.booster_staking.unwrap();
+        assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
+        assert_eq!(booster_staking.x_booster_amount, d(10, 18));
+        assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC / 2));
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(100, 18) + ((d(100, 18) as f64)
+            * ((d(10, 18) as f64) / (10f64.powi(18))).log(20f64)) as u128);
+        
+        test_env.skip_time_to_by_sec(10 + MAX_DURATION_SEC / 2);
+
+        test_env.account_farm_claim_all(alice());
+        let account = test_env.contract.get_account(alice()).unwrap();
+        let booster_staking = account.booster_staking.unwrap();
+        assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
+        assert_eq!(booster_staking.x_booster_amount, 0);
+        assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC / 2));
+        println!("{:?}", account.farms);
+        assert!(account.farms[0].rewards.is_empty());
+
+        test_env.skip_time_to_by_sec(10 + MAX_DURATION_SEC);
+        
+        let reward_per_day = d(100, 18);
+        let total_reward = d(3000, 18);
+        let booster_base = d(20, 18);
+
+        let farm_id = FarmId::Supplied(ndai_token_id());
+        test_env.add_farm(farm_id.clone(), nusdc_token_id(), reward_per_day, booster_base, total_reward);
+
+        test_env.account_farm_claim_all(alice());
+        let account = test_env.contract.get_account(alice()).unwrap();
+        let booster_staking = account.booster_staking.unwrap();
+        assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
+        assert_eq!(booster_staking.x_booster_amount, 0);
+        assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC / 2));
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(100, 18));
+
+        clean_assets_cache();
+        clean_assets_farm_cache();
+    }
+
+    #[test]
+    #[ignore]
+    fn test_adjust_boost_suppress_factor() {
+        let mut test_env = init_unit_env();
+
+        test_env.skip_time_to_by_sec(10);
+
+        let booster_amount = d(5000, 18);
+        test_env.deposit(booster_token_id(), alice(), booster_amount);
+        
+        testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
+        test_env.contract.account_stake_booster(Some(booster_amount.into()), MAX_DURATION_SEC);
+
+        let reward_per_day = d(100, 18);
+        let total_reward = d(3000, 18);
+        let booster_base = d(20, 18);
+
+        let farm_id = FarmId::Supplied(ndai_token_id());
+        test_env.add_farm(farm_id.clone(), nusdc_token_id(), reward_per_day, booster_base, total_reward);
+
+        let amount = d(100, 18);
+        test_env.deposit(ndai_token_id(), alice(), amount);
+        test_env.account_farm_claim_all(alice());
+
+        let account = test_env.contract.get_account(alice()).unwrap();
+        let booster_staking = account.booster_staking.unwrap();
+        assert_eq!(booster_staking.staked_booster_amount, d(5000, 18));
+        assert_eq!(booster_staking.x_booster_amount, d(20000, 18));
+        assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC));
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(100, 18) + ((d(100, 18) as f64)
+            * ((d(20000, 18) as f64) / (10f64.powi(18))).log(20f64)) as u128);
+
+        testing_env!(test_env.context.predecessor_account_id(owner_id()).build());
+        test_env.contract.adjust_boost_suppress_factor(1000);
+        test_env.account_farm_claim_all(alice());
+        let account = test_env.contract.get_account(alice()).unwrap();
+        let booster_staking = account.booster_staking.unwrap();
+        assert_eq!(booster_staking.staked_booster_amount, d(5000, 18));
+        assert_eq!(booster_staking.x_booster_amount, d(20000, 18));
+        assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC));
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(100, 18) + ((d(100, 18) as f64)
+            * ((d(20, 18) as f64) / (10f64.powi(18))).log(20f64)) as u128);
+
+        clean_assets_cache();
+        clean_assets_farm_cache();
+    }
+
+    #[test]
+    #[ignore]
+    fn test_adjust_boost_suppress_factor_restake() {
+        let mut test_env = init_unit_env();
+
+        testing_env!(test_env.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
+        test_env.contract.adjust_boost_staking_policy(MIN_DURATION_SEC, MAX_DURATION_SEC, 120000);
+
+        test_env.skip_time_to_by_sec(10);
+
+        let booster_amount = d(50, 18);
+        test_env.deposit(booster_token_id(), alice(), booster_amount);
+        
+        testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
+        test_env.contract.account_stake_booster(Some(d(5, 18).into()), MAX_DURATION_SEC);
+
+        let account = test_env.contract.get_account(alice()).unwrap();
+        let booster_staking = account.booster_staking.unwrap();
+        assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
+        assert_eq!(booster_staking.x_booster_amount, d(60, 18));
+        assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC));
+
+        test_env.skip_time_to_by_sec(10 + MIN_DURATION_SEC * 2);
+
+        testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
+        test_env.contract.account_stake_booster(Some(d(5, 18).into()), MAX_DURATION_SEC);
+        let account = test_env.contract.get_account(alice()).unwrap();
+        let booster_staking = account.booster_staking.unwrap();
+        assert_eq!(booster_staking.staked_booster_amount, d(10, 18));
+        assert_eq!(booster_staking.x_booster_amount, d(120, 18));
+        assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MIN_DURATION_SEC * 2 + MAX_DURATION_SEC));
+
+        testing_env!(test_env.context.predecessor_account_id(owner_id()).build());
+        test_env.contract.adjust_boost_staking_policy(MIN_DURATION_SEC, MIN_DURATION_SEC * 3, 30000);
+
+        testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
+        test_env.contract.account_stake_booster(Some(d(5, 18).into()), MIN_DURATION_SEC * 3);
+        let account = test_env.contract.get_account(alice()).unwrap();
+        let booster_staking = account.booster_staking.unwrap();
+        assert_eq!(booster_staking.staked_booster_amount, d(15, 18));
+        assert_eq!(booster_staking.x_booster_amount, d(45, 18));
+        assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MIN_DURATION_SEC * 5));
+
+        test_env.skip_time_to_by_sec(10 + MIN_DURATION_SEC * 4);
+
+        testing_env!(test_env.context.predecessor_account_id(owner_id()).build());
+        test_env.contract.adjust_boost_staking_policy(MIN_DURATION_SEC, MAX_DURATION_SEC, 120000);
+
+        testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
+        test_env.contract.account_stake_booster(Some(d(5, 18).into()), MAX_DURATION_SEC);
+        let account = test_env.contract.get_account(alice()).unwrap();
+        let booster_staking = account.booster_staking.unwrap();
+        assert_eq!(booster_staking.staked_booster_amount, d(20, 18));
+        assert_eq!(booster_staking.x_booster_amount, d(240, 18));
+        assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MIN_DURATION_SEC * 4 + MAX_DURATION_SEC));
+
         clean_assets_cache();
         clean_assets_farm_cache();
     }
@@ -1348,7 +1651,7 @@ mod farms {
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
         test_env.contract.account_stake_booster(Some(booster_amount.into()), MAX_DURATION_SEC);
 
-        test_env.skip_time_to_by_sec(10 + MAX_DURATION_SEC);
+        test_env.skip_time_to_by_sec(10 + MAX_DURATION_SEC - ONE_DAY_SEC * 3);
 
         let reward_per_day = d(100, 18);
         let total_reward = d(3000, 18);
@@ -1385,7 +1688,7 @@ mod farms {
         );
         assert_eq!(account.farms[0].rewards[0].unclaimed_amount, 0);
 
-        test_env.skip_time_to_by_sec(10 + MAX_DURATION_SEC + ONE_DAY_SEC * 3);
+        test_env.skip_time_to_by_sec(10 + MAX_DURATION_SEC);
 
         let farmed_amount = reward_per_day * 3;
         let asset = test_env.get_asset(ndai_token_id());
@@ -1970,6 +2273,65 @@ mod farms {
 
     #[test]
     #[ignore]
+    fn test_farm_token_net_tvl_price_change() {
+        let mut test_env = init_unit_env();
+
+        test_env.skip_time_to_by_sec(10);
+
+        let reward_per_day = d(100, 18);
+        let total_reward = d(3000, 18);
+
+        let farm_id = FarmId::TokenNetBalance(wnear_token_id());
+        test_env.add_farm(farm_id.clone(), nusdc_token_id(), reward_per_day, d(100, 18), total_reward);
+
+        let asset_farm = test_env.get_asset_farm(farm_id.clone());
+        let reward = asset_farm
+            .rewards
+            .get(&nusdc_token_id())
+            .cloned()
+            .unwrap();
+        assert_eq!(reward.remaining_rewards, total_reward);
+
+        let amount = d(100, 24);
+        test_env.supply_to_collateral(wnear_token_id(), alice(), amount.into());
+
+        let borrow_amount = d(2, 24);
+        test_env.borrow_and_withdraw(alice(), wnear_token_id(), borrow_amount, unit_price_data(10, Some(100000), None));
+
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert_eq!(account.farms.len(), 1);
+        assert_eq!(account.farms[0].farm_id, farm_id);
+        assert_eq!(
+            account.farms[0].rewards[0].reward_token_id,
+            nusdc_token_id()
+        );
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(98, 24));
+        assert_eq!(account.farms[0].rewards[0].unclaimed_amount, 0);
+
+        let borrow_amount = d(2, 24);
+        test_env.borrow_and_withdraw(alice(), wnear_token_id(), borrow_amount, unit_price_data(10, Some(1000000), None));
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(96, 24));
+
+        let borrow_amount = d(2, 18);
+        test_env.borrow_and_withdraw(alice(), ndai_token_id(), borrow_amount, unit_price_data(10, Some(1000000), None));
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(96, 24));
+
+        let reward_per_day = d(100, 18);
+        let total_reward = d(3000, 18);
+
+        let farm_id = FarmId::TokenNetBalance(ndai_token_id());
+        test_env.add_farm(farm_id.clone(), nusdc_token_id(), reward_per_day, d(100, 18), total_reward);
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert!(!account.has_non_farmed_assets);
+
+        clean_assets_cache();
+        clean_assets_farm_cache();
+    }
+    
+    #[test]
+    #[ignore]
     fn test_farm_net_tvl_bad_debt() {
         let mut test_env = init_unit_env();
 
@@ -2081,6 +2443,9 @@ mod farms {
             can_use_as_collateral: true,
             can_borrow: true,
             net_tvl_multiplier: 8000,
+            max_change_rate: None,
+            supplied_limit: Some(u128::MAX.into()),
+            borrowed_limit: Some(u128::MAX.into()),
         });
 
         let amount = d(100, 18);
@@ -2321,5 +2686,79 @@ mod liquidation {
 
         let asset = test_env.get_asset(wnear_token_id());
         assert_eq!(asset.reserved, wnear_reserve - borrow_amount);
+    }
+
+    #[test]
+    fn test_get_old_account_without_set() {
+        let mut test_env = init_unit_env();
+        let mut supplied = UnorderedMap::new(b"a");
+        supplied.insert(&AccountId::new_unchecked("token_id".to_string()), &VAccountAsset::Current(AccountAsset{
+            shares: U128(100000)
+        }));
+        let mut farms = UnorderedMap::new(b"b");
+        farms.insert(&FarmId::NetTvl, &VAccountFarm::Current(AccountFarm{
+            block_timestamp: 12345,
+            rewards: HashMap::new(),
+        }));
+        test_env.contract.accounts.insert(&AccountId::new_unchecked("storage".to_string()), &VAccount::V1(AccountV1{
+            account_id: AccountId::new_unchecked("storage".to_string()),
+            supplied,
+            collateral: vec![],
+            borrowed: vec![],
+            farms,
+            booster_staking: None,
+        }));
+        test_env.contract.internal_get_account(&AccountId::new_unchecked("storage".to_string()), true).expect("Account is not registered");
+    }
+
+    #[test]
+    #[should_panic(expected = "Bug, non-tracked storage change")]
+    fn test_get_old_account_without_set_failed1() {
+        let mut test_env = init_unit_env();
+        let mut supplied = UnorderedMap::new(b"a");
+        supplied.insert(&AccountId::new_unchecked("token_id".to_string()), &VAccountAsset::Current(AccountAsset{
+            shares: U128(100000)
+        }));
+        let mut farms = UnorderedMap::new(b"b");
+        farms.insert(&FarmId::NetTvl, &VAccountFarm::Current(AccountFarm{
+            block_timestamp: 12345,
+            rewards: HashMap::new(),
+        }));
+        test_env.contract.accounts.insert(&AccountId::new_unchecked("storage".to_string()), &VAccount::V1(AccountV1{
+            account_id: AccountId::new_unchecked("storage".to_string()),
+            supplied,
+            collateral: vec![],
+            borrowed: vec![],
+            farms,
+            booster_staking: None,
+        }));
+        test_env.contract.internal_unwrap_account(&AccountId::new_unchecked("storage".to_string()));
+    }
+
+    #[test]
+    #[should_panic(expected = "Bug, non-tracked storage change")]
+    fn test_get_old_account_without_set_failed2() {
+        let mut test_env = init_unit_env();
+        let mut supplied = UnorderedMap::new(b"a");
+        supplied.insert(&AccountId::new_unchecked("token_id".to_string()), &VAccountAsset::Current(AccountAsset{
+            shares: U128(100000)
+        }));
+        let mut farms = UnorderedMap::new(b"b");
+        farms.insert(&FarmId::NetTvl, &VAccountFarm::Current(AccountFarm{
+            block_timestamp: 12345,
+            rewards: HashMap::new(),
+        }));
+        test_env.contract.accounts.insert(&AccountId::new_unchecked("storage".to_string()), &VAccount::V1(AccountV1{
+            account_id: AccountId::new_unchecked("storage".to_string()),
+            supplied,
+            collateral: vec![],
+            borrowed: vec![],
+            farms,
+            booster_staking: None,
+        }));
+        let account = test_env.contract.internal_unwrap_account(&AccountId::new_unchecked("storage".to_string()));
+        test_env.contract.storage.insert(&AccountId::new_unchecked("storage".to_string()), &VStorage::Current(Storage { storage_balance: 10u128.pow(25), used_bytes: 1000, storage_tracker: Default::default() }));
+        let _tmp_account = account.clone();
+        test_env.contract.internal_set_account(&AccountId::new_unchecked("storage".to_string()), account);
     }
 }

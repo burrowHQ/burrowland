@@ -62,6 +62,9 @@ pub struct Config {
     pub enable_price_oracle: bool,
     /// Whether to use the price of pyth oracle
     pub enable_pyth_oracle: bool,
+    /// The factor that suppresses the effect of boost.
+    /// E.g. 1000 means that in the calculation, the actual boost amount will be divided by 1000.
+    pub boost_suppress_factor: u128,
 }
 
 impl Config {
@@ -74,6 +77,8 @@ impl Config {
             self.x_booster_multiplier_at_maximum_staking_duration >= MIN_BOOSTER_MULTIPLIER,
             "xBooster multiplier should be no less than 100%"
         );
+        assert!(self.boost_suppress_factor > 0, "The boost_suppress_factor must be greater than 0");
+        assert!(self.enable_price_oracle == !self.enable_pyth_oracle, "Only one oracle can be started at a time");
     }
 }
 
@@ -123,6 +128,35 @@ impl Contract {
         self.config.set(&config);
     }
 
+    /// Adjust boost staking policy.
+    /// - Panics if minimum_staking_duration_sec >= maximum_staking_duration_sec.
+    /// - Panics if x_booster_multiplier_at_maximum_staking_duration < MIN_BOOSTER_MULTIPLIER.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    pub fn adjust_boost_staking_policy(&mut self, minimum_staking_duration_sec: DurationSec, maximum_staking_duration_sec: DurationSec, x_booster_multiplier_at_maximum_staking_duration: u32) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        let mut config = self.internal_config();
+        config.minimum_staking_duration_sec = minimum_staking_duration_sec;
+        config.maximum_staking_duration_sec = maximum_staking_duration_sec;
+        config.x_booster_multiplier_at_maximum_staking_duration = x_booster_multiplier_at_maximum_staking_duration;
+        config.assert_valid();
+        self.config.set(&config);
+    }
+
+    /// Adjust boost suppress factor.
+    /// - Panics if boost_suppress_factor <= 0.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    pub fn adjust_boost_suppress_factor(&mut self, boost_suppress_factor: u128) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut config = self.internal_config();
+        config.boost_suppress_factor = boost_suppress_factor;
+        config.assert_valid();
+        self.config.set(&config);
+    }
+
     /// Adds an asset with a given token_id and a given asset_config.
     /// - Panics if the asset config is invalid.
     /// - Panics if an asset with the given token_id already exists.
@@ -158,6 +192,38 @@ impl Contract {
         self.internal_set_asset(&token_id, asset);
     }
 
+    /// Updates the limit for the asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn update_asset_limit(&mut self, token_id: AccountId, supplied_limit: Option<U128>, borrowed_limit: Option<U128>) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        if supplied_limit.is_some() {
+            asset.config.supplied_limit = supplied_limit;
+        }
+        if borrowed_limit.is_some() {
+            asset.config.borrowed_limit = borrowed_limit;
+        }
+        self.internal_set_asset(&token_id, asset);
+    }
+    
+    /// Updates the max_change_rate for the asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn update_asset_max_change_rate(&mut self, token_id: AccountId, max_change_rate: Option<u32>) {
+        assert_one_yocto();
+        self.assert_owner();
+        assert!(max_change_rate.is_none() || max_change_rate.unwrap() <= MAX_RATIO);
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        asset.config.max_change_rate = max_change_rate;
+        self.internal_set_asset(&token_id, asset);
+    }
+
     /// Updates the prot_ratio for the asset with the a given token_id.
     /// - Panics if the prot_ratio is invalid.
     /// - Panics if an asset with the given token_id doesn't exist.
@@ -179,7 +245,7 @@ impl Contract {
     #[payable]
     pub fn enable_oracle(&mut self, enable_price_oracle: bool, enable_pyth_oracle: bool) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         assert!(enable_price_oracle == !enable_pyth_oracle, "Only one oracle can be started at a time");
         let mut config = self.internal_config();
         config.enable_price_oracle = enable_price_oracle;
@@ -253,7 +319,7 @@ impl Contract {
     #[payable]
     pub fn update_asset_net_tvl_multiplier(&mut self, token_id: AccountId, net_tvl_multiplier: u32) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         assert!(net_tvl_multiplier <= MAX_RATIO);
         let mut asset = self.internal_unwrap_asset(&token_id);
         asset.config.net_tvl_multiplier = net_tvl_multiplier;
@@ -282,7 +348,7 @@ impl Contract {
         assert_one_yocto();
         self.assert_owner();
         match &farm_id {
-            FarmId::Supplied(token_id) | FarmId::Borrowed(token_id) => {
+            FarmId::Supplied(token_id) | FarmId::Borrowed(token_id) | FarmId::TokenNetBalance(token_id) => {
                 assert!(self.assets.contains_key(token_id));
             }
             FarmId::NetTvl => {}
@@ -323,11 +389,11 @@ impl Contract {
     /// Claim prot_fee from asset with the a given token_id.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
-    /// - Requires to be called by the contract owner.
+    /// - Requires to be called by the contract owner or guardians.
     #[payable]
     pub fn claim_prot_fee(&mut self, token_id: AccountId, stdd_amount: Option<U128>) {
         assert_one_yocto();
-        self.assert_owner();
+        self.assert_owner_or_guardians();
         let mut asset = self.internal_unwrap_asset(&token_id);
         let stdd_amount: u128 = stdd_amount.map(|v| v.into()).unwrap_or(asset.prot_fee);
         
@@ -344,7 +410,7 @@ impl Contract {
     /// Decrease reserved from asset with the a given token_id.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
-    /// - Requires to be called by the contract owner.
+    /// - Requires to be called by the contract owner or guardians.
     #[payable]
     pub fn decrease_reserved(&mut self, token_id: AccountId, stdd_amount: Option<U128>) {
         assert_one_yocto();
@@ -371,11 +437,11 @@ impl Contract {
     /// Increase reserved from asset with the a given token_id.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
-    /// - Requires to be called by the contract owner.
+    /// - Requires to be called by the contract owner or guardians.
     #[payable]
     pub fn increase_reserved(&mut self, asset_amount: AssetAmount) {
         assert_one_yocto();
-        self.assert_owner();
+        self.assert_owner_or_guardians();
         let owner_id = self.internal_config().owner_id;
         let mut account = self.internal_unwrap_account(&owner_id);
         let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);

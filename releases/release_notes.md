@@ -1,4 +1,37 @@
 # Release Notes
+
+Version 0.11.0
+```bash=
+# codehash: 5r4GsfdDATmriAdT6ZteFpPjDNSfPn4NneETiNuckUc6
+```
+- Improve boost algorithm  
+  Even with the max log base (u128::MAX), 1M xboost can have the lowest boost ratio of 29.2%, which couldn't meet the product side demand.  
+  To address this issue, we introduce a config item boost_suppress_factor: u128, and let xboost be divided by this factor before participating in the boost algorithm.  
+  Say if we set boost_suppress_factor to 1K, we could get 14.6% as the lowest boost ratio for 1M xboost.
+ 
+- Adjustment of boost staking period  
+  When we reduce the boost token staking period, there should be a way to deal with those existing staking.
+  We will re-calculate xboost and follow these criteria:
+  - assume users staking their boost token as early as possible;
+  - the unlock ts shouldn't exceed the max staking period in the current configuration;
+  - the new xboost shouldn't exceed the max xboost in the current configuration;
+  - Users get the best xboost if not violate previous criteria;
+ 
+- farmer blacklist  
+  Those accounts in the farmer blacklist won't get any further reward from farming. This is used for the possible requirement that relative parties won't compete for farm rewards with regular farmers.
+
+Version 0.10.0
+```bssh=
+# codehash: GcntYxNjD6y4XhiJuyd6ar4FQoTY3ZA1wQ3VJfraX4pC 
+```
+- Support pyth oracle and switch between pyth and priceoracle.
+
+Version 0.9.1
+```bssh=
+# codehash: 8wSzoqHRtNXdV1xTwT6JvD7HYXLqKwqJyskeR9BkCdcv 
+```
+- fix an old account auto-upgradation issue in liquidation.
+
 Version 0.9.0
 ```bssh=
 # codehash: DUBWfFT1h3NNtvngw22SenyDpeUGN5PRLcNxaopMUpNe 

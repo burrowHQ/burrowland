@@ -25,7 +25,7 @@ async fn test_margin_trading() -> Result<()> {
     }
 
     let oracle_contract = deploy_oralce(&root).await?;
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));
     check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
@@ -178,7 +178,7 @@ async fn test_margin_trading_with_pyth() -> Result<()> {
         check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![nusdt_token_contract.0.id(), wrap_token_contract.0.id()]));
     }
 
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));
     check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
@@ -346,7 +346,7 @@ async fn test_margin_trading_liquidate() -> Result<()> {
     }
 
     let oracle_contract = deploy_oralce(&root).await?;
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.storage_deposit(&root));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));
@@ -466,7 +466,7 @@ async fn test_margin_trading_liquidate_with_pyth() -> Result<()> {
         check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![nusdt_token_contract.0.id(), wrap_token_contract.0.id()]));
     }
 
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     check!(burrowland_contract.storage_deposit(&root));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));
@@ -610,7 +610,7 @@ async fn test_margin_trading_forceclose() -> Result<()> {
     }
 
     let oracle_contract = deploy_oralce(&root).await?;
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.storage_deposit(&root));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));
@@ -729,7 +729,7 @@ async fn test_margin_trading_forceclose_with_pyth() -> Result<()> {
         check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![nusdt_token_contract.0.id(), wrap_token_contract.0.id()]));
     }
 
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     check!(burrowland_contract.storage_deposit(&root));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));
@@ -871,7 +871,7 @@ async fn test_margin_trading_dcl() -> Result<()> {
         check!(wrap_token_contract.ft_storage_deposit(dcl_exchange_contract.0.id()));
     }
 
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));
     check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
@@ -1022,7 +1022,7 @@ async fn test_margin_trading_liquidate_dcl() -> Result<()> {
         check!(wrap_token_contract.ft_storage_deposit(dcl_exchange_contract.0.id()));
     }
 
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     check!(burrowland_contract.storage_deposit(&root));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));
@@ -1155,7 +1155,7 @@ async fn test_margin_trading_forceclose_dcl() -> Result<()> {
         check!(wrap_token_contract.ft_storage_deposit(dcl_exchange_contract.0.id()));
     }
 
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
     check!(burrowland_contract.storage_deposit(&root));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));

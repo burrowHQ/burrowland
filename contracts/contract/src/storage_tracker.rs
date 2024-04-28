@@ -57,4 +57,11 @@ impl StorageTracker {
     pub fn is_empty(&self) -> bool {
         self.bytes_added == 0 && self.bytes_released == 0 && self.initial_storage_usage.is_none()
     }
+
+    /// Used when its account is a temp object
+    pub fn clean(&mut self) {
+        self.bytes_added = 0;
+        self.bytes_released = 0;
+        self.initial_storage_usage = None;
+    }
 }

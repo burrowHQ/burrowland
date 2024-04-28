@@ -167,7 +167,7 @@ impl Contract {
                         account_id, &liquidation_account_id,
                         "Can't liquidate yourself"
                     );
-                    assert!(!self.internal_unwrap_account(&liquidation_account_id).is_locked, "Liquidation account is locked!");
+                    assert!(!self.internal_get_account(&liquidation_account_id, true).expect("Account is not registered").is_locked, "Liquidation account is locked!");
                     let position = position.unwrap_or(REGULAR_POSITION.to_string());
                     if position == REGULAR_POSITION {
                         assert!(!in_assets.is_empty() && !out_assets.is_empty());
@@ -188,6 +188,7 @@ impl Contract {
                         let mut in_asset_tokens = HashSet::new();
                         in_assets.iter().for_each(|v| assert!(in_asset_tokens.insert(&v.token_id), "Duplicate assets!"));
                         let mut temp_account = account.clone();
+                        temp_account.storage_tracker.clean();
                         self.internal_shadow_liquidate(
                             &position,
                             account_id,
@@ -213,7 +214,7 @@ impl Contract {
                         account_id, &liquidation_account_id,
                         "Can't liquidate yourself"
                     );
-                    assert!(!self.internal_unwrap_account(&liquidation_account_id).is_locked, "Liquidation account is locked!");
+                    assert!(!self.internal_get_account(&liquidation_account_id, true).expect("Account is not registered").is_locked, "Liquidation account is locked!");
                     let position = position.unwrap_or(REGULAR_POSITION.to_string());
                     if position == REGULAR_POSITION {
                         assert!(min_token_amounts.is_none());
@@ -463,6 +464,7 @@ impl Contract {
 
         for asset_amount in in_assets {
             liquidation_account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
+            liquidation_account.add_affected_farm(FarmId::TokenNetBalance(asset_amount.token_id.clone()));
             let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
             let amount =
                 self.internal_repay(&position, &mut account_asset, &mut liquidation_account, &asset_amount);
@@ -480,6 +482,7 @@ impl Contract {
         for asset_amount in out_assets {
             let asset = self.internal_unwrap_asset(&asset_amount.token_id);
             liquidation_account.add_affected_farm(FarmId::Supplied(asset_amount.token_id.clone()));
+            liquidation_account.add_affected_farm(FarmId::TokenNetBalance(asset_amount.token_id.clone()));
             let mut account_asset = account.internal_get_asset_or_default(&asset_amount.token_id);
             let amount = self.internal_decrease_collateral(
                 &position,
@@ -557,7 +560,8 @@ impl Contract {
                         asset.config.extra_decimals,
                     );
                 self.internal_set_asset(&token_id, asset);
-                affected_farms.push(FarmId::Supplied(token_id));
+                affected_farms.push(FarmId::Supplied(token_id.clone()));
+                affected_farms.push(FarmId::TokenNetBalance(token_id));
             }
     
             for (token_id, shares) in regular_position.borrowed.drain() {
@@ -578,7 +582,8 @@ impl Contract {
                         asset.config.extra_decimals,
                     );
                 self.internal_set_asset(&token_id, asset);
-                affected_farms.push(FarmId::Borrowed(token_id));
+                affected_farms.push(FarmId::Borrowed(token_id.clone()));
+                affected_farms.push(FarmId::TokenNetBalance(token_id));
             }
     
             assert!(
@@ -657,7 +662,7 @@ pub fn asset_amount_to_shares(
 
 #[near_bindgen]
 impl Contract {
-    /// Executes a given list actions on behalf of the predecessor account.
+    /// Executes a given list actions on behalf of the predecessor account without price.
     /// - Requires one yoctoNEAR.
     #[payable]
     pub fn execute(&mut self, actions: Vec<Action>) {

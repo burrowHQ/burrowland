@@ -1,5 +1,5 @@
 use crate::*;
-use std::collections::HashSet;
+use std::{cmp::{max, min}, collections::HashSet};
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
@@ -112,15 +112,20 @@ impl Account {
         let mut potential_farms = HashSet::new();
         potential_farms.insert(FarmId::NetTvl);
         potential_farms.extend(self.supplied.keys().cloned().map(FarmId::Supplied));
+        potential_farms.extend(self.supplied.keys().cloned().map(FarmId::TokenNetBalance));
         self.positions.iter().for_each(|(position, position_info)| {
             match position_info {
                 Position::RegularPosition(regular_position) => {
                     potential_farms.extend(regular_position.collateral.keys().cloned().map(FarmId::Supplied));
+                    potential_farms.extend(regular_position.collateral.keys().cloned().map(FarmId::TokenNetBalance));
                     potential_farms.extend(regular_position.borrowed.keys().cloned().map(FarmId::Borrowed));
+                    potential_farms.extend(regular_position.borrowed.keys().cloned().map(FarmId::TokenNetBalance));
                 }
                 Position::LPTokenPosition(lp_token_position) => {
                     potential_farms.insert(FarmId::Supplied(AccountId::new_unchecked(position.clone())));
+                    potential_farms.insert(FarmId::TokenNetBalance(AccountId::new_unchecked(position.clone())));
                     potential_farms.extend(lp_token_position.borrowed.keys().cloned().map(FarmId::Borrowed));
+                    potential_farms.extend(lp_token_position.borrowed.keys().cloned().map(FarmId::TokenNetBalance));
                 }
             }
         });
@@ -174,20 +179,39 @@ impl Account {
             }
         }) as u32
     }
-}
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct CollateralAsset {
-    pub token_id: TokenId,
-    pub shares: Shares,
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct BorrowedAsset {
-    pub token_id: TokenId,
-    pub shares: Shares,
+    pub fn sync_booster_policy(&mut self, config: &Config) {
+        if let Some(booster_staking) = self.booster_staking.as_mut() {
+            let timestamp = env::block_timestamp();
+            if booster_staking.unlock_timestamp > timestamp {
+                let remain_duration_ns = booster_staking.unlock_timestamp - timestamp;
+                let maximum_staking_duration_ns = to_nano(config.maximum_staking_duration_sec);
+                let max_x_booster_amount = compute_x_booster_amount(
+                    config,
+                    booster_staking.staked_booster_amount,
+                    maximum_staking_duration_ns,
+                );
+                let recount_duration_ns = max(
+                    to_nano(config.minimum_staking_duration_sec),
+                    min(remain_duration_ns, maximum_staking_duration_ns)
+                );
+                let recount_x_booster_amount = compute_x_booster_amount(
+                    config,
+                    booster_staking.staked_booster_amount,
+                    recount_duration_ns,
+                );
+                booster_staking.x_booster_amount = min(
+                    max_x_booster_amount,
+                    max(booster_staking.x_booster_amount, recount_x_booster_amount)
+                );
+                if remain_duration_ns > maximum_staking_duration_ns {
+                    booster_staking.unlock_timestamp = timestamp + maximum_staking_duration_ns;
+                }
+            } else {
+                booster_staking.x_booster_amount = 0;
+            }
+        }
+    }
 }
 
 impl Contract {

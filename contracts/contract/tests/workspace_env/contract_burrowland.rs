@@ -188,6 +188,26 @@ impl Burrowland {
         }).await
     }
 
+    pub async fn borrow_and_withdraw_with_pyth(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        borrow_amount: u128,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "execute_with_pyth")
+            .args_json(json!({
+                "actions": vec![
+                    Action::Borrow(asset_amount(token_id, borrow_amount)),
+                    Action::Withdraw(asset_amount(token_id, borrow_amount)),
+                ],
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
+
     pub async fn deposit_increase_collateral_borrow_withdraw_with_pyth (
         &self,
         token_contract: &FtContract,
@@ -317,6 +337,31 @@ impl Burrowland {
                 Action::Withdraw(asset_amount(token_id, withdraw_amount)),
             ],
         }).await
+    }
+
+    pub async fn position_borrow_and_withdraw_with_pyth(
+        &self,
+        caller: &Account,
+        position: String,
+        token_id: &AccountId,
+        borrow_amount: u128,
+        withdraw_amount: u128
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "execute_with_pyth")
+            .args_json(json!({
+                "actions": vec![
+                    Action::PositionBorrow{
+                        position,
+                        asset_amount: asset_amount(token_id, borrow_amount)
+                    },
+                    Action::Withdraw(asset_amount(token_id, withdraw_amount)),
+                ],
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
     }
 
     pub async fn liquidate(
@@ -750,6 +795,26 @@ impl Burrowland {
             .json::<ConfigV0>()
     }
 
+    pub async fn get_config_v1(
+        &self,
+    ) -> Result<ConfigV1> {
+        self.0
+            .call("get_config")
+            .view()
+            .await?
+            .json::<ConfigV1>()
+    }
+
+    pub async fn get_config_v0100(
+        &self,
+    ) -> Result<ConfigV0100> {
+        self.0
+            .call("get_config")
+            .view()
+            .await?
+            .json::<ConfigV0100>()
+    }
+
     pub async fn get_version(
         &self,
     ) -> Result<String> {
@@ -808,6 +873,63 @@ impl Burrowland {
                 can_use_as_collateral: false,
                 can_borrow: false,
                 net_tvl_multiplier: 10000,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
+            },
+            "linear.test.near" => AssetConfig {
+                reserve_ratio: 2500,
+                prot_ratio: 0,
+                target_utilization: 8000,
+                target_utilization_rate: U128(1000000000003593629036885046),
+                max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
+                volatility_ratio: 5000,
+                extra_decimals: 0,
+                can_deposit: true,
+                can_withdraw: true,
+                can_use_as_collateral: true,
+                can_borrow: true,
+                net_tvl_multiplier: 2500,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
+            },
+            "stnear.test.near" => AssetConfig {
+                reserve_ratio: 2500,
+                prot_ratio: 0,
+                target_utilization: 8000,
+                target_utilization_rate: U128(1000000000003593629036885046),
+                max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
+                volatility_ratio: 7000,
+                extra_decimals: 0,
+                can_deposit: true,
+                can_withdraw: true,
+                can_use_as_collateral: true,
+                can_borrow: true,
+                net_tvl_multiplier: 2500,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
+            },
+            "nearx.test.near" => AssetConfig {
+                reserve_ratio: 2500,
+                prot_ratio: 0,
+                target_utilization: 8000,
+                target_utilization_rate: U128(1000000000003593629036885046),
+                max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
+                volatility_ratio: 7000,
+                extra_decimals: 0,
+                can_deposit: true,
+                can_withdraw: true,
+                can_use_as_collateral: true,
+                can_borrow: false,
+                net_tvl_multiplier: 0,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
             },
             "wrap.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -823,6 +945,9 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 10000,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
             },
             "neth.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -838,6 +963,9 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 10000,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
             },
             "ndai.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -853,6 +981,9 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 10000,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
             },
             "nusdt.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -868,6 +999,9 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 10000,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
             },
             "nusdc.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -883,6 +1017,9 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 10000,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
             },
             _ => {
                 panic!("unsupported token: {:?}", token_id);
@@ -912,6 +1049,9 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 2500,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
             },
             "stnear.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -927,6 +1067,9 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 2500,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
             },
             "nearx.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -942,6 +1085,9 @@ impl Burrowland {
                 can_use_as_collateral: true,
                 can_borrow: false,
                 net_tvl_multiplier: 0,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
             },
             _ => {
                 panic!("unsupported token: {:?}", token_id);
