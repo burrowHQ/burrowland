@@ -78,6 +78,7 @@ impl Config {
             "xBooster multiplier should be no less than 100%"
         );
         assert!(self.boost_suppress_factor > 0, "The boost_suppress_factor must be greater than 0");
+        assert!(self.enable_price_oracle == !self.enable_pyth_oracle, "Only one oracle can be started at a time");
     }
 }
 
@@ -191,6 +192,38 @@ impl Contract {
         self.internal_set_asset(&token_id, asset);
     }
 
+    /// Updates the limit for the asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn update_asset_limit(&mut self, token_id: AccountId, supplied_limit: Option<U128>, borrowed_limit: Option<U128>) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        if supplied_limit.is_some() {
+            asset.config.supplied_limit = supplied_limit;
+        }
+        if borrowed_limit.is_some() {
+            asset.config.borrowed_limit = borrowed_limit;
+        }
+        self.internal_set_asset(&token_id, asset);
+    }
+    
+    /// Updates the max_change_rate for the asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn update_asset_max_change_rate(&mut self, token_id: AccountId, max_change_rate: Option<u32>) {
+        assert_one_yocto();
+        self.assert_owner();
+        assert!(max_change_rate.is_none() || max_change_rate.unwrap() <= MAX_RATIO);
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        asset.config.max_change_rate = max_change_rate;
+        self.internal_set_asset(&token_id, asset);
+    }
+
     /// Updates the prot_ratio for the asset with the a given token_id.
     /// - Panics if the prot_ratio is invalid.
     /// - Panics if an asset with the given token_id doesn't exist.
@@ -212,7 +245,7 @@ impl Contract {
     #[payable]
     pub fn enable_oracle(&mut self, enable_price_oracle: bool, enable_pyth_oracle: bool) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         assert!(enable_price_oracle == !enable_pyth_oracle, "Only one oracle can be started at a time");
         let mut config = self.internal_config();
         config.enable_price_oracle = enable_price_oracle;
@@ -286,7 +319,7 @@ impl Contract {
     #[payable]
     pub fn update_asset_net_tvl_multiplier(&mut self, token_id: AccountId, net_tvl_multiplier: u32) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         assert!(net_tvl_multiplier <= MAX_RATIO);
         let mut asset = self.internal_unwrap_asset(&token_id);
         asset.config.net_tvl_multiplier = net_tvl_multiplier;

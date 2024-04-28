@@ -500,6 +500,12 @@ pub struct AssetConfig {
     /// Example: a multiplier of 5000 means the asset in TVL should only counted as 50%, e.g. if an
     /// asset is not useful for borrowing, but only useful as a collateral.
     pub net_tvl_multiplier: u32,
+    /// The price change obtained in two consecutive retrievals cannot exceed this ratio.
+    pub max_change_rate: Option<u32>,
+    /// Allowed supplied upper limit of assets
+    pub supplied_limit: Option<U128>,
+    /// Allowed borrowed upper limit of assets
+    pub borrowed_limit: Option<U128>,
 }
 
 pub struct AssetAmount {

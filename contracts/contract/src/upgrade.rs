@@ -7,7 +7,33 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     pub fn migrate_state() -> Self {
-        env::state_read().unwrap()
+        let ContractV0110 { 
+            accounts, 
+            storage, 
+            assets, 
+            asset_farms, 
+            asset_ids, 
+            config, 
+            guardians,
+            last_prices,
+            last_lp_token_infos,
+            token_pyth_info,
+            blacklist_of_farmers,
+        } = env::state_read().unwrap();
+        Self { 
+            accounts, 
+            storage, 
+            assets, 
+            asset_farms, 
+            asset_ids, 
+            config,
+            guardians,
+            last_prices, 
+            last_lp_token_infos,
+            token_pyth_info,
+            blacklist_of_farmers,
+            last_staking_token_prices: HashMap::new(),
+        }
     }
 
     /// Returns semver of this contract.

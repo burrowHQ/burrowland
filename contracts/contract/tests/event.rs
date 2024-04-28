@@ -12,7 +12,7 @@ async fn test_deposit_event() -> Result<()> {
     let amount = d(100, 18);
     let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
 
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
 

@@ -70,6 +70,12 @@ pub struct AssetConfig {
     /// Example: a multiplier of 5000 means the asset in TVL should only counted as 50%, e.g. if an
     /// asset is not useful for borrowing, but only useful as a collateral.
     pub net_tvl_multiplier: u32,
+    /// The price change obtained in two consecutive retrievals cannot exceed this ratio.
+    pub max_change_rate: Option<u32>,
+    /// Allowed supplied upper limit of assets
+    pub supplied_limit: Option<U128>,
+    /// Allowed borrowed upper limit of assets
+    pub borrowed_limit: Option<U128>,
 }
 
 impl AssetConfig {
@@ -81,6 +87,9 @@ impl AssetConfig {
         // The volatility ratio can't be 100% to avoid free liquidations of such assets.
         assert!(self.volatility_ratio < MAX_RATIO);
         assert!(self.net_tvl_multiplier <= MAX_RATIO);
+        assert!(self.max_change_rate.is_none() || self.max_change_rate.unwrap() <= MAX_RATIO);
+        assert!(self.supplied_limit.is_some());
+        assert!(self.borrowed_limit.is_some());
     }
 
     pub fn get_rate(
@@ -128,6 +137,9 @@ mod tests {
             can_use_as_collateral: true,
             can_borrow: true,
             net_tvl_multiplier: 10000,
+            max_change_rate: None,
+            supplied_limit: None,
+            borrowed_limit: None,
         }
     }
 

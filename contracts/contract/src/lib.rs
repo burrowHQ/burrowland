@@ -54,6 +54,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::json_types::{I64, U64, U128};
 use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::PromiseError;
 use near_sdk::{
     assert_one_yocto, env, ext_contract, log, near_bindgen, AccountId, Balance, BorshStorageKey,
     Duration, Gas, PanicOnDefault, Promise, Timestamp,
@@ -93,6 +94,7 @@ pub struct Contract {
     pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
     pub token_pyth_info: HashMap<TokenId, TokenPythInfo>,
     pub blacklist_of_farmers: UnorderedSet<AccountId>,
+    pub last_staking_token_prices: HashMap<TokenId, U128>,
 }
 
 #[near_bindgen]
@@ -113,6 +115,7 @@ impl Contract {
             last_lp_token_infos: HashMap::new(),
             token_pyth_info: HashMap::new(),
             blacklist_of_farmers: UnorderedSet::new(StorageKey::BlacklistOfFarmers),
+            last_staking_token_prices: HashMap::new(),
         }
     }
 
@@ -149,7 +152,7 @@ impl Contract {
     #[payable]
     pub fn add_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         assert!(!self.token_pyth_info.contains_key(&token_id), "Already exist");
         self.token_pyth_info.insert(token_id, token_pyth_info);
     }
@@ -159,7 +162,7 @@ impl Contract {
     #[payable]
     pub fn update_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         assert!(self.token_pyth_info.contains_key(&token_id), "Invalid token_id");
         self.token_pyth_info.insert(token_id, token_pyth_info);
     }
@@ -196,7 +199,7 @@ impl Contract {
     #[payable]
     pub fn remove_blacklist_of_farmers(&mut self, farmers: Vec<AccountId>) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         for farmer in farmers {
             let is_success = self.blacklist_of_farmers.remove(&farmer);
             assert!(is_success, "Invalid farmer");
@@ -213,10 +216,36 @@ impl Contract {
     pub fn get_blacklist_of_farmers(&self) -> Vec<AccountId> {
         self.blacklist_of_farmers.to_vec()
     }
+
+    /// Sync the price of the specified token.
+    pub fn sync_staking_token_price(&mut self, token_id: TokenId) {
+        let function_name = self.get_pyth_info_by_token(&token_id).extra_call.clone().expect("Not extra_call token");
+        Promise::new(token_id.clone())
+            .function_call(function_name, vec![], 0, Gas::ONE_TERA * 5)
+            .then(Self::ext(env::current_account_id())
+                .callback_sync_staking_token_price(token_id)
+            );
+    }
+
+    #[private]
+    pub fn callback_sync_staking_token_price(
+        &mut self,
+        token_id: TokenId,
+        #[callback_result] price_result: Result<U128, PromiseError>,
+    ) {
+        if let Ok(price) = price_result {
+            log!(format!("sync {token_id} price Successful: {price:?}"));
+            self.last_staking_token_prices.insert(token_id, price);
+        } else {
+            log!(format!("sync {token_id} price failed"));
+        }
+    }
+
+    /// Returns last_staking_token_prices.
+    pub fn get_last_staking_token_prices(&self) -> HashMap<TokenId, U128> {
+        self.last_staking_token_prices.clone()
+    }
 }
-
-
-
 
 #[cfg(test)]
 mod unit_env {
@@ -264,6 +293,9 @@ mod unit_env {
                     can_use_as_collateral: false,
                     can_borrow: false,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(booster_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -282,6 +314,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(neth_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -300,6 +335,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(ndai_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -318,6 +356,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(nusdt_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -336,6 +377,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(nusdc_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -354,6 +398,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(wnear_token_id(), owner_id(), d(10000, 24));
         }
@@ -2362,6 +2409,9 @@ mod farms {
             can_use_as_collateral: true,
             can_borrow: true,
             net_tvl_multiplier: 8000,
+            max_change_rate: None,
+            supplied_limit: Some(u128::MAX.into()),
+            borrowed_limit: Some(u128::MAX.into()),
         });
 
         let amount = d(100, 18);
