@@ -2,10 +2,11 @@ use near_sdk::{serde_json, require, PromiseResult};
 
 use crate::*;
 
-pub const GAS_FOR_CALLBACK_EXECUTE_WITH_PYTH: Gas = Gas(200 * Gas::ONE_TERA.0);
+/// set static gas consumption for quering pyth
 pub const GAS_FOR_GET_PRICE: Gas = Gas(3_500_000_000_000);
+/// set static gas consumption for generating promises
 pub const GAS_FOR_BUFFER: Gas = Gas(30 * Gas::ONE_TERA.0);
-
+/// set MAX PROMISE numbers in case out of gas
 pub const GET_PRICE_PROMISES_LIMIT: usize = 20;
 
 pub const FLAG_PARTITION: &str = "@";

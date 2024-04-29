@@ -1,6 +1,7 @@
 use crate::*;
 
 pub const MIN_BOOSTER_MULTIPLIER: u32 = 10000;
+pub const MAX_NUM_ASSETS: u32 = 32;
 
 /// Contract config
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -69,6 +70,7 @@ pub struct Config {
 
 impl Config {
     pub fn assert_valid(&self) {
+        assert!(self.max_num_assets <= MAX_NUM_ASSETS, "Invalid max_num_assets");
         assert!(
             self.minimum_staking_duration_sec < self.maximum_staking_duration_sec,
             "The maximum staking duration must be greater than minimum staking duration"
