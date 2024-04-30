@@ -135,14 +135,45 @@ impl Contract {
         &self,
         mt: &MarginTradingPosition,
         prices: &Prices,
-        safty_buffer_rate: u32,
+        safety_buffer_rate: u32,
     ) -> bool {
         let total_cap =
-            self.get_mtp_collateral_value(&mt, prices) + self.get_mtp_position_value(&mt, prices);
-        let total_debt = self.get_mtp_debt_value(&mt, prices);
-        let total_hp_fee = self.get_mtp_hp_fee_value(&mt, prices);
+            self.get_mtp_collateral_value(mt, prices) + self.get_mtp_position_value(mt, prices);
+        let total_debt = self.get_mtp_debt_value(mt, prices);
+        let total_hp_fee = self.get_mtp_hp_fee_value(mt, prices);
         total_cap >= total_debt + total_hp_fee && 
-            total_cap - total_cap.mul_ratio(safty_buffer_rate) < total_debt + total_hp_fee
+            total_cap - total_cap.mul_ratio(safety_buffer_rate) < total_debt + total_hp_fee
+    }
+
+    pub(crate) fn is_open_position_liquidatable(
+        &self,
+        token_c_amount: Balance,
+        token_c_price: &Price,
+        token_c_extra_decimals: u8, 
+        token_d_amount: Balance,
+        token_d_price: &Price,
+        token_d_extra_decimals: u8,
+        token_p_amount: Balance,
+        token_p_price: &Price,
+        token_p_extra_decimals: u8,
+        safety_buffer_rate: u32,
+    ) -> bool {
+        let total_cap = BigDecimal::from_balance_price(
+            token_c_amount,
+            token_c_price,
+            token_c_extra_decimals,
+        ) + BigDecimal::from_balance_price(
+            token_p_amount,
+            token_p_price,
+            token_p_extra_decimals,
+        );
+        let total_debt = BigDecimal::from_balance_price(
+            token_d_amount,
+            token_d_price,
+            token_d_extra_decimals,
+        );
+        total_cap >= total_debt && 
+            total_cap - total_cap.mul_ratio(safety_buffer_rate) < total_debt
     }
 
     pub(crate) fn is_mt_forcecloseable(
@@ -151,10 +182,39 @@ impl Contract {
         prices: &Prices,
     ) -> bool {
         let total_cap =
-            self.get_mtp_collateral_value(&mt, prices) + self.get_mtp_position_value(&mt, prices);
-        let total_debt = self.get_mtp_debt_value(&mt, prices);
-        let total_hp_fee = self.get_mtp_hp_fee_value(&mt, prices);
+            self.get_mtp_collateral_value(mt, prices) + self.get_mtp_position_value(mt, prices);
+        let total_debt = self.get_mtp_debt_value(mt, prices);
+        let total_hp_fee = self.get_mtp_hp_fee_value(mt, prices);
         total_cap < total_debt + total_hp_fee
+    }
+
+    pub(crate) fn is_open_position_forcecloseable(
+        &self,
+        token_c_amount: Balance,
+        token_c_price: &Price,
+        token_c_extra_decimals: u8, 
+        token_d_amount: Balance,
+        token_d_price: &Price,
+        token_d_extra_decimals: u8,
+        token_p_amount: Balance,
+        token_p_price: &Price,
+        token_p_extra_decimals: u8,
+    ) -> bool {
+        let total_cap = BigDecimal::from_balance_price(
+            token_c_amount,
+            token_c_price,
+            token_c_extra_decimals,
+        ) + BigDecimal::from_balance_price(
+            token_p_amount,
+            token_p_price,
+            token_p_extra_decimals,
+        );
+        let total_debt = BigDecimal::from_balance_price(
+            token_d_amount,
+            token_d_price,
+            token_d_extra_decimals,
+        );
+        total_cap < total_debt
     }
 
     pub(crate) fn get_mtp_lr(
@@ -165,7 +225,31 @@ impl Contract {
         if mt.token_c_shares.0 == 0 || mt.token_d_shares.0 == 0 {
             None
         } else {
-            Some(self.get_mtp_debt_value(&mt, prices) / self.get_mtp_collateral_value(&mt, prices))
+            Some((self.get_mtp_debt_value(mt, prices) + self.get_mtp_hp_fee_value(mt, prices)) / self.get_mtp_collateral_value(mt, prices))
+        }
+    }
+
+    pub(crate) fn get_open_position_lr(
+        &self,
+        token_c_amount: Balance,
+        token_c_price: &Price,
+        token_c_extra_decimals: u8, 
+        token_d_amount: Balance,
+        token_d_price: &Price,
+        token_d_extra_decimals: u8, 
+    ) -> Option<BigDecimal> {
+        if token_c_amount == 0 || token_d_amount == 0 {
+            None
+        } else {
+            Some(BigDecimal::from_balance_price(
+                token_d_amount,
+                token_d_price,
+                token_d_extra_decimals,
+            ) / BigDecimal::from_balance_price(
+                token_c_amount,
+                token_c_price,
+                token_c_extra_decimals,
+            ))
         }
     }
 }
@@ -184,9 +268,10 @@ impl Contract {
         swap_indication: &SwapIndication,
         prices: &Prices,
     ) -> EventDataMarginOpen {
-        let pos_id = format!("{}_{}", account.account_id.clone(), ts);
+        let pos_id = format!("{}_{}_{}", account.account_id.clone(), ts, self.accumulated_margin_position_num);
+        self.accumulated_margin_position_num += 1;
         assert!(
-            !account.margin_positions.contains_key(&pos_id),
+            account.margin_positions.get(&pos_id).is_none(),
             "Margin position already exist"
         );
 
@@ -210,7 +295,7 @@ impl Contract {
             "token_out check failed"
         );
 
-        // check safty:
+        // check safety:
         //   min_position_amount reasonable
         assert!(
             is_min_amount_out_reasonable(
@@ -224,29 +309,56 @@ impl Contract {
             ),
             "min_position_amount is too low"
         );
-        //   margin_hf more than 1 + safty_buffer_rate(10%)
-        let mut mt = MarginTradingPosition::new(
+        assert!(
+            !self.is_open_position_liquidatable(
+                token_c_amount,
+                prices.get_unwrap(&token_c_id),
+                asset_c.config.extra_decimals,
+                token_d_amount,
+                prices.get_unwrap(&token_d_id),
+                asset_d.config.extra_decimals,
+                min_token_p_amount,
+                prices.get_unwrap(&token_p_id),
+                asset_p.config.extra_decimals,
+                margin_config.min_safety_buffer,
+            ),
+            "Debt is too much"
+        );
+        assert!(
+            !self.is_open_position_forcecloseable(
+                token_c_amount,
+                prices.get_unwrap(&token_c_id),
+                asset_c.config.extra_decimals,
+                token_d_amount,
+                prices.get_unwrap(&token_d_id),
+                asset_d.config.extra_decimals,
+                min_token_p_amount,
+                prices.get_unwrap(&token_p_id),
+                asset_p.config.extra_decimals,
+            ),
+            "Debt is too much"
+        );
+        //   leverage rate less than max leverage rate
+        assert!(
+            self.get_open_position_lr(
+                token_c_amount,
+                prices.get_unwrap(&token_c_id),
+                asset_c.config.extra_decimals,
+                token_d_amount,
+                prices.get_unwrap(&token_d_id),
+                asset_d.config.extra_decimals,
+            ).unwrap()
+                <= BigDecimal::from(margin_config.max_leverage_rate as u32),
+            "Leverage rate is too high"
+        );
+
+        //   margin_hf more than 1 + safety_buffer_rate(10%)
+        let mt = MarginTradingPosition::new(
             ts,
             token_c_id.clone(),
             asset_c.supplied.amount_to_shares(token_c_amount, false),
             token_d_id.clone(),
             token_p_id.clone(),
-        );
-        mt.token_d_shares = asset_d.margin_debt.amount_to_shares(token_d_amount, true);
-        mt.token_p_amount = min_token_p_amount;
-        assert!(
-            !self.is_mt_liquidatable(&mt, prices, margin_config.min_safty_buffer),
-            "Debt is too much"
-        );
-        assert!(
-            !self.is_mt_forcecloseable(&mt, prices),
-            "Debt is too much"
-        );
-        //   leverage rate less than max leverage rate
-        assert!(
-            self.get_mtp_lr(&mt, prices).unwrap()
-                <= BigDecimal::from(margin_config.max_leverage_rate as u32),
-            "Leverage rate is too high"
         );
 
         // passes all check, start to open
@@ -262,12 +374,9 @@ impl Contract {
             token_p_amount: min_token_p_amount,
         };
         account.withdraw_supply_shares(token_c_id, &mt.token_c_shares);
-        mt.token_d_shares.0 = 0;
-        mt.token_p_amount = 0;
         asset_d.increase_margin_pending_debt(token_d_amount, margin_config.pending_debt_scale);
         self.internal_set_asset(token_d_id, asset_d);
-        // TODO: may need to change to store in an unorderedmap in user Account
-        account.margin_positions.insert(pos_id.clone(), mt);
+        account.margin_positions.insert(&pos_id, &mt);
 
         // step 4: call dex to trade and wait for callback
         // organize swap action
@@ -317,7 +426,7 @@ impl Contract {
     ) -> EventDataMarginDecrease {
         let mut mt = account
             .margin_positions
-            .get_mut(pos_id)
+            .get(pos_id)
             .expect("Position not exist");
         assert!(
             !mt.is_locking,
@@ -384,7 +493,7 @@ impl Contract {
 
         if op == "liquidate" {
             assert!(
-                self.is_mt_liquidatable(&mt, prices, margin_config.min_safty_buffer),
+                self.is_mt_liquidatable(&mt, prices, margin_config.min_safety_buffer),
                 "Margin position is not liquidatable"
             );
         } else if op == "forceclose" {
@@ -421,7 +530,7 @@ impl Contract {
         // prepare to close
         mt.is_locking = true;
         self.internal_set_asset(&mt.token_p_id, asset_p);
-        // TODO: mt may be needed to change to store in an unorderedmap in user Account
+        account.margin_positions.insert(&pos_id, &mt);
 
         let event = EventDataMarginDecrease {
             account_id: account.account_id.clone(),
@@ -499,7 +608,7 @@ impl Contract {
                 events::emit::margin_open_failed(&account_id, &pos_id);
                 
             } else if op == "decrease" {
-                let mut mt = account.margin_positions.get_mut(&pos_id).unwrap();
+                let mut mt = account.margin_positions.get(&pos_id).unwrap();
                 let mut asset_p = self.internal_unwrap_asset(&mt.token_p_id);
                 let amount_in: Balance = amount_in.into();
                 let pre_token_p_amount: Balance = pre_token_p_amount.into();
@@ -516,9 +625,8 @@ impl Contract {
                 self.internal_set_asset(&mt.token_p_id, asset_p);
                 mt.is_locking = false;
                 mt.token_p_amount = pre_token_p_amount;
+                account.margin_positions.insert(&pos_id, &mt);
                 events::emit::margin_decrease_failed(&account_id, &pos_id);
-                // Note: hashmap item got from a get_mut doesn't need to insert back
-                // account.margin_positions.insert(pos_id, mt.clone());
             }
             self.internal_set_margin_account(&account_id, account);
         }

@@ -747,6 +747,7 @@ impl From<ConfigV0> for Config {
             enable_price_oracle: true,
             enable_pyth_oracle: false,
             boost_suppress_factor: 1,
+            dcl_id: None,
         }
     }
 }
@@ -834,7 +835,8 @@ impl From<ConfigV1> for Config {
             force_closing_enabled,
             enable_price_oracle: true,
             enable_pyth_oracle: false,
-            boost_suppress_factor: 1
+            boost_suppress_factor: 1,
+            dcl_id: None,
         }
     }
 }
@@ -842,7 +844,7 @@ impl From<ConfigV1> for Config {
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
-pub struct ConfigV0100 {
+pub struct ConfigV2 {
     /// The account ID of the oracle contract
     pub oracle_account_id: AccountId,
 
@@ -900,9 +902,9 @@ pub struct ConfigV0100 {
     pub enable_pyth_oracle: bool,
 }
 
-impl From<ConfigV0100> for Config {
-    fn from(a: ConfigV0100) -> Self {
-        let ConfigV0100 { 
+impl From<ConfigV2> for Config {
+    fn from(a: ConfigV2) -> Self {
+        let ConfigV2 { 
             oracle_account_id, 
             pyth_oracle_account_id,
             ref_exchange_id,
@@ -939,7 +941,118 @@ impl From<ConfigV0100> for Config {
             force_closing_enabled,
             enable_price_oracle,
             enable_pyth_oracle,
-            boost_suppress_factor: 1
+            boost_suppress_factor: 1,
+            dcl_id: None,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+#[serde(crate = "near_sdk::serde")]
+pub struct ConfigV3 {
+    /// The account ID of the oracle contract
+    pub oracle_account_id: AccountId,
+
+    /// The account ID of the pyth oracle contract
+    pub pyth_oracle_account_id: AccountId,
+
+    /// The account ID of the ref_exchange contract
+    pub ref_exchange_id: AccountId,
+
+    /// The account ID of the contract owner that allows to modify config, assets and use reserves.
+    pub owner_id: AccountId,
+
+    /// The account ID of the booster token contract.
+    pub booster_token_id: TokenId,
+
+    /// The number of decimals of the booster fungible token.
+    pub booster_decimals: u8,
+
+    /// The total number of different assets
+    pub max_num_assets: u32,
+
+    /// The maximum number of seconds expected from the oracle price call.
+    pub maximum_recency_duration_sec: DurationSec,
+
+    /// Maximum staleness duration of the price data timestamp.
+    /// Because NEAR protocol doesn't implement the gas auction right now, the only reason to
+    /// delay the price updates are due to the shard congestion.
+    /// This parameter can be updated in the future by the owner.
+    pub maximum_staleness_duration_sec: DurationSec,
+
+    /// The valid duration to lp tokens info in seconds.
+    pub lp_tokens_info_valid_duration_sec: DurationSec,
+
+    /// The valid duration to pyth price in seconds.
+    pub pyth_price_valid_duration_sec: DurationSec,
+
+    /// The minimum duration to stake booster token in seconds.
+    pub minimum_staking_duration_sec: DurationSec,
+
+    /// The maximum duration to stake booster token in seconds.
+    pub maximum_staking_duration_sec: DurationSec,
+
+    /// The rate of xBooster for the amount of Booster given for the maximum staking duration.
+    /// Assuming the 100% multiplier at the minimum staking duration. Should be no less than 100%.
+    /// E.g. 20000 means 200% multiplier (or 2X).
+    pub x_booster_multiplier_at_maximum_staking_duration: u32,
+
+    /// Whether an account with bad debt can be liquidated using reserves.
+    /// The account should have borrowed sum larger than the collateral sum.
+    pub force_closing_enabled: bool,
+
+    /// Whether to use the price of price oracle
+    pub enable_price_oracle: bool,
+    /// Whether to use the price of pyth oracle
+    pub enable_pyth_oracle: bool,
+    /// The factor that suppresses the effect of boost.
+    /// E.g. 1000 means that in the calculation, the actual boost amount will be divided by 1000.
+    pub boost_suppress_factor: u128,
+}
+
+impl From<ConfigV3> for Config {
+    fn from(a: ConfigV3) -> Self {
+        let ConfigV3 { 
+            oracle_account_id, 
+            pyth_oracle_account_id,
+            ref_exchange_id,
+            owner_id, 
+            booster_token_id, 
+            booster_decimals, 
+            max_num_assets, 
+            maximum_recency_duration_sec, 
+            maximum_staleness_duration_sec, 
+            lp_tokens_info_valid_duration_sec,
+            pyth_price_valid_duration_sec,
+            minimum_staking_duration_sec, 
+            maximum_staking_duration_sec, 
+            x_booster_multiplier_at_maximum_staking_duration,
+            force_closing_enabled,
+            enable_price_oracle,
+            enable_pyth_oracle,
+            boost_suppress_factor,
+        } = a;
+        Self {
+            oracle_account_id, 
+            pyth_oracle_account_id,
+            ref_exchange_id,
+            owner_id, 
+            booster_token_id, 
+            booster_decimals, 
+            max_num_assets, 
+            maximum_recency_duration_sec, 
+            maximum_staleness_duration_sec, 
+            lp_tokens_info_valid_duration_sec,
+            pyth_price_valid_duration_sec,
+            minimum_staking_duration_sec, 
+            maximum_staking_duration_sec, 
+            x_booster_multiplier_at_maximum_staking_duration, 
+            force_closing_enabled,
+            enable_price_oracle,
+            enable_pyth_oracle,
+            boost_suppress_factor,
+            dcl_id: None,
         }
     }
 }
@@ -977,7 +1090,7 @@ pub struct ContractV0100 {
     pub assets: LookupMap<TokenId, VAsset>,
     pub asset_farms: LookupMap<FarmId, VAssetFarm>,
     pub asset_ids: UnorderedSet<TokenId>,
-    pub config: LazyOption<ConfigV0100>,
+    pub config: LazyOption<ConfigV2>,
     pub guardians: UnorderedSet<AccountId>,
     /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
     pub last_prices: HashMap<TokenId, Price>,
@@ -992,7 +1105,7 @@ pub struct ContractV0110 {
     pub assets: LookupMap<TokenId, VAsset>,
     pub asset_farms: LookupMap<FarmId, VAssetFarm>,
     pub asset_ids: UnorderedSet<TokenId>,
-    pub config: LazyOption<Config>,
+    pub config: LazyOption<ConfigV3>,
     pub guardians: UnorderedSet<AccountId>,
     /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
     pub last_prices: HashMap<TokenId, Price>,
@@ -1008,7 +1121,7 @@ pub struct ContractV0120 {
     pub assets: LookupMap<TokenId, VAsset>,
     pub asset_farms: LookupMap<FarmId, VAssetFarm>,
     pub asset_ids: UnorderedSet<TokenId>,
-    pub config: LazyOption<Config>,
+    pub config: LazyOption<ConfigV3>,
     pub guardians: UnorderedSet<AccountId>,
     /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
     pub last_prices: HashMap<TokenId, Price>,

@@ -39,6 +39,7 @@ async fn test_upgrade() -> Result<()> {
         .max_gas()
         .deposit(1)
         .transact());
+    check!(view previous_burrowland_contract.get_config_v3());
 
     check!(print root
         .call(previous_burrowland_contract.0.id(), "upgrade")

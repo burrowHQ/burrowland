@@ -86,6 +86,8 @@ impl FungibleTokenReceiver for Contract {
                     return PromiseOrValue::Value(U128(0));
                 }
                 TokenReceiverMsg::SwapReference { swap_ref } => {
+                    let config = self.internal_config();
+                    assert!(sender_id == config.ref_exchange_id || sender_id == config.dcl_id.expect("Missing dcl id"), "Not allow");
                     let mut account = self.internal_unwrap_margin_account(&swap_ref.account_id);
                     if swap_ref.op == "open" {
                         self.on_open_trade_return(&mut account, amount, &swap_ref);

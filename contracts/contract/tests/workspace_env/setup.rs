@@ -53,6 +53,7 @@ pub async fn deploy_burrowland_with_pyth(
                 enable_price_oracle: false,
                 enable_pyth_oracle: true,
                 boost_suppress_factor: 1,
+                dcl_id: Some(near_sdk::AccountId::new_unchecked("dcl.test.near".to_string())),
             },
         }))
         .max_gas()
@@ -96,6 +97,7 @@ pub async fn deploy_burrowland_with_price_oracle(
                 enable_price_oracle: true,
                 enable_pyth_oracle: false,
                 boost_suppress_factor: 1,
+                dcl_id: Some(near_sdk::AccountId::new_unchecked("dcl.test.near".to_string())),
             },
         }))
         .max_gas()
@@ -120,7 +122,7 @@ pub async fn deploy_previous_version_burrowland(
         .unwrap();
     check!(burrowland.call("new")
     .args_json(json!({
-        "config": Config {
+        "config": ConfigV3 {
             oracle_account_id: near_sdk::AccountId::new_unchecked(ORACLE_ID.to_string()),
             pyth_oracle_account_id: near_sdk::AccountId::new_unchecked(PYTH_ID.to_string()),
             ref_exchange_id: near_sdk::AccountId::new_unchecked("ref_exchange.test.near".to_string()),

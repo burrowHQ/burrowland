@@ -14,8 +14,8 @@ pub struct MarginConfig {
     /// Eg: 1000 means we allow a max slippage of 10%.
     pub max_slippage_rate: u32,
     /// The position will be liquidated when (margin + position) is less than 
-    ///   (debt + hp_fee) * (1 + min_safty_buffer_rate).
-    pub min_safty_buffer: u32,
+    ///   (debt + hp_fee) * (1 + min_safety_buffer_rate).
+    pub min_safety_buffer: u32,
     /// Compare to regular borrowing, margin borrow enjoy a discount.
     /// Eg: 7000 means margin debt equals 70% of regular debt.
     pub margin_debt_discount_rate: u32,
@@ -69,6 +69,7 @@ impl Contract {
     pub fn update_max_leverage_rate(&mut self, max_leverage_rate: u8) {
         assert_one_yocto();
         self.assert_owner();
+        assert!(max_leverage_rate > 1, "Invalid max_leverage_rate");
         let mut mc = self.internal_margin_config();
         mc.max_leverage_rate = max_leverage_rate;
         self.margin_config.set(&mc);
@@ -78,6 +79,7 @@ impl Contract {
     pub fn update_pending_debt_scale(&mut self, pending_debt_scale: u32) {
         assert_one_yocto();
         self.assert_owner();
+        assert!(pending_debt_scale < MAX_RATIO, "Invalid pending_debt_scale");
         let mut mc = self.internal_margin_config();
         mc.pending_debt_scale = pending_debt_scale;
         self.margin_config.set(&mc);
@@ -87,17 +89,19 @@ impl Contract {
     pub fn update_max_slippage_rate(&mut self, max_slippage_rate: u32) {
         assert_one_yocto();
         self.assert_owner();
+        assert!(max_slippage_rate < MAX_RATIO, "Invalid max_slippage_rate");
         let mut mc = self.internal_margin_config();
         mc.max_slippage_rate = max_slippage_rate;
         self.margin_config.set(&mc);
     }
 
     #[payable]
-    pub fn update_min_safty_buffer(&mut self, min_safty_buffer: u32) {
+    pub fn update_min_safety_buffer(&mut self, min_safety_buffer: u32) {
         assert_one_yocto();
         self.assert_owner();
+        assert!(min_safety_buffer < MAX_RATIO, "Invalid min_safety_buffer");
         let mut mc = self.internal_margin_config();
-        mc.min_safty_buffer = min_safty_buffer;
+        mc.min_safety_buffer = min_safety_buffer;
         self.margin_config.set(&mc);
     }
 
@@ -105,6 +109,7 @@ impl Contract {
     pub fn update_margin_debt_discount_rate(&mut self, margin_debt_discount_rate: u32) {
         assert_one_yocto();
         self.assert_owner();
+        assert!(margin_debt_discount_rate < MAX_RATIO, "Invalid margin_debt_discount_rate");
         let mut mc = self.internal_margin_config();
         mc.margin_debt_discount_rate = margin_debt_discount_rate;
         self.margin_config.set(&mc);
@@ -114,6 +119,7 @@ impl Contract {
     pub fn update_open_position_fee_rate(&mut self, open_position_fee_rate: u32) {
         assert_one_yocto();
         self.assert_owner();
+        assert!(open_position_fee_rate < MAX_RATIO, "Invalid open_position_fee_rate");
         let mut mc = self.internal_margin_config();
         mc.open_position_fee_rate = open_position_fee_rate;
         self.margin_config.set(&mc);

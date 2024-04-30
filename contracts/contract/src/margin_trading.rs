@@ -132,7 +132,7 @@ impl RefV2TokenReceiverMessage {
                 skip_unwrap_near.clone(),
             )
         } else {
-            env::panic_str("Invalid RefV1TokenReceiverMessage");
+            env::panic_str("Invalid RefV2TokenReceiverMessage");
         }
     }
 
@@ -336,7 +336,7 @@ impl Contract {
         mt.is_locking = false;
         account
             .margin_positions
-            .insert(sr.pos_id.clone(), mt.clone());
+            .insert(&sr.pos_id, &mt);
 
         self.internal_set_asset(&mt.token_d_id, asset_debt);
         self.internal_set_asset(&mt.token_p_id, asset_position);
@@ -451,7 +451,7 @@ impl Contract {
                 let remain_debt_balance = asset_debt
                     .margin_debt
                     .shares_to_amount(mt.token_d_shares, true);
-                if asset_debt.reserved > remain_debt_balance {
+                if asset_debt.reserved >= remain_debt_balance {
                     asset_debt.reserved -= remain_debt_balance;
                     asset_debt
                         .margin_debt
@@ -464,7 +464,7 @@ impl Contract {
         mt.is_locking = false;
         account
             .margin_positions
-            .insert(sr.pos_id.clone(), mt.clone());
+            .insert(&sr.pos_id, &mt);
 
         let event = EventDataMarginDecreaseResult {
             account_id: account.account_id.clone(),
@@ -555,20 +555,4 @@ impl Contract {
 
         event
     }
-}
-
-#[test]
-fn aa() {
-    #[derive(Serialize)]
-    #[serde(crate = "near_sdk::serde")]
-    pub struct Temp {
-        pub aa: u128,
-    }
-
-    // let message = serde_json::from_str::<TokenReceiverMessage>(&msg).expect(E600_INVALID_MSG);
-
-    println!(
-        "{}",
-        near_sdk::serde_json::to_string(&Temp { aa: 100 }).unwrap()
-    );
 }

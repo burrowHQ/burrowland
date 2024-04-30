@@ -217,7 +217,7 @@ impl Contract {
         let actual_amount = asset.supplied.shares_to_amount(shares, false);
         account.withdraw_supply_shares(&mt.token_c_id, &shares);
         mt.token_c_shares.0 += shares.0;
-        account.margin_positions.insert(pos_id.clone(), mt);
+        account.margin_positions.insert(&pos_id, &mt);
         (asset_id, actual_amount)
     }
 
@@ -234,6 +234,10 @@ impl Contract {
             .get(pos_id)
             .expect("Position not exist")
             .clone();
+        assert!(
+            !mt.is_locking,
+            "Position is currently waiting for a trading result."
+        );
         let token_id = mt.token_c_id.clone();
         let asset = self.internal_unwrap_asset(&mt.token_c_id);
         let shares = asset.supplied.amount_to_shares(amount, true);
@@ -246,7 +250,7 @@ impl Contract {
         mt.token_c_shares.0 -= shares.0;
 
         assert!(
-            !self.is_mt_liquidatable(&mt, prices, margin_config.min_safty_buffer),
+            !self.is_mt_liquidatable(&mt, prices, margin_config.min_safety_buffer),
             "Margin position would be below liquidation line"
         );
         assert!(
@@ -261,7 +265,7 @@ impl Contract {
         );
 
         account.deposit_supply_shares(&mt.token_c_id, &shares);
-        account.margin_positions.insert(pos_id.clone(), mt);
+        account.margin_positions.insert(&pos_id, &mt);
 
         token_id
     }

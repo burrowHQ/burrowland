@@ -92,6 +92,7 @@ enum StorageKey {
     BlacklistOfFarmers,
     MarginAccounts,
     MarginConfig,
+    MarginPositions { account_id: AccountId },
 }
 
 #[near_bindgen]
@@ -112,6 +113,7 @@ pub struct Contract {
     pub last_staking_token_prices: HashMap<TokenId, U128>,
     pub margin_accounts: UnorderedMap<AccountId, VMarginAccount>,
     pub margin_config: LazyOption<MarginConfig>,
+    pub accumulated_margin_position_num: u64
 }
 
 #[near_bindgen]
@@ -130,20 +132,21 @@ impl Contract {
             guardians: UnorderedSet::new(StorageKey::Guardian),
             last_prices: HashMap::new(),
             last_lp_token_infos: HashMap::new(),
+            token_pyth_info: HashMap::new(),
+            blacklist_of_farmers: UnorderedSet::new(StorageKey::BlacklistOfFarmers),
+            last_staking_token_prices: HashMap::new(),
             margin_accounts: UnorderedMap::new(StorageKey::MarginAccounts),
             margin_config: LazyOption::new(StorageKey::MarginConfig, Some(&MarginConfig {
                 max_leverage_rate: 10_u8,
                 pending_debt_scale: 1000_u32,
                 max_slippage_rate: 1000_u32,
-                min_safty_buffer: 1000_u32,
+                min_safety_buffer: 1000_u32,
                 margin_debt_discount_rate: 5000_u32,
                 open_position_fee_rate: 0_u32,
                 registered_dexes: HashMap::new(),
                 registered_tokens: HashMap::new(),
             })),
-            token_pyth_info: HashMap::new(),
-            blacklist_of_farmers: UnorderedSet::new(StorageKey::BlacklistOfFarmers),
-            last_staking_token_prices: HashMap::new(),
+            accumulated_margin_position_num: 0,
         }
     }
 
@@ -626,6 +629,9 @@ mod unit_env {
         }
     }
 
+    pub fn dcl_id() -> AccountId {
+        AccountId::new_unchecked("dcl".to_string())
+    }
     pub fn oracle_id() -> AccountId {
         AccountId::new_unchecked("oracle_id".to_string())
     }
@@ -691,6 +697,7 @@ mod unit_env {
             enable_price_oracle: true,
             enable_pyth_oracle: false,
             boost_suppress_factor: 1,
+            dcl_id: Some(dcl_id())
         });
         let mut test_env = UnitEnv{
             contract,

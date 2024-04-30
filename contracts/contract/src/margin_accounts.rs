@@ -1,7 +1,6 @@
 use crate::*;
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Clone)]
-#[serde(crate = "near_sdk::serde")]
+#[derive(BorshSerialize, BorshDeserialize)]
 pub struct MarginAccount {
     /// A copy of an account ID. Saves one storage_read when iterating on accounts.
     pub account_id: AccountId,
@@ -9,11 +8,7 @@ pub struct MarginAccount {
     /// It's not returned for account pagination.
     pub supplied: HashMap<TokenId, Shares>,
     // margin trading related
-    pub margin_positions: HashMap<PosId, MarginTradingPosition>,
-    /// Tracks changes in storage usage by persistent collections in this account.
-    #[borsh_skip]
-    #[serde(skip)]
-    pub storage_tracker: StorageTracker,
+    pub margin_positions: UnorderedMap<PosId, MarginTradingPosition>,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -40,8 +35,9 @@ impl MarginAccount {
         Self {
             account_id: account_id.clone(),
             supplied: HashMap::new(),
-            margin_positions: HashMap::new(),
-            storage_tracker: Default::default(),
+            margin_positions: UnorderedMap::new(StorageKey::MarginPositions { 
+                account_id: account_id.clone()
+            }),
         }
     }
 
@@ -85,15 +81,8 @@ impl Contract {
         }
     }
 
-    pub(crate) fn internal_set_margin_account(&mut self, account_id: &AccountId, mut account: MarginAccount) {
-        let mut storage = self.internal_unwrap_storage(account_id);
-        storage
-            .storage_tracker
-            .consume(&mut account.storage_tracker);
-        storage.storage_tracker.start();
+    pub(crate) fn internal_set_margin_account(&mut self, account_id: &AccountId, account: MarginAccount) {
         self.margin_accounts.insert(account_id, &account.into());
-        storage.storage_tracker.stop();
-        self.internal_set_storage(account_id, storage);
     }
 }
 
