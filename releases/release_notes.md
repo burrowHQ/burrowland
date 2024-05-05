@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.12.0
+```bssh=
+# codehash: Bbxjd4ASnHmJBi3dVhVqGvXfz1TBgdp3TArfSurm7nZE 
+```
+- Add TokenNetBalance farm type.
+
 Version 0.11.0
 ```bash=
 # codehash: 5r4GsfdDATmriAdT6ZteFpPjDNSfPn4NneETiNuckUc6
