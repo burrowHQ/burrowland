@@ -2,14 +2,12 @@
 
 Version 0.12.0
 ```bssh=
-# codehash: Bbxjd4ASnHmJBi3dVhVqGvXfz1TBgdp3TArfSurm7nZE 
+# codehash: ETJfCuj8UC7bBjPoD8nwoFP2szYoiZFoE5TKj6SWyh5v 
 ```
+- Improve gas usage for querying pyth oracle. 
+
 - Add TokenNetBalance farm type.
 
-Version 0.11.0
-```bash=
-# codehash: 5r4GsfdDATmriAdT6ZteFpPjDNSfPn4NneETiNuckUc6
-```
 - Improve boost algorithm  
   Even with the max log base (u128::MAX), 1M xboost can have the lowest boost ratio of 29.2%, which couldn't meet the product side demand.  
   To address this issue, we introduce a config item boost_suppress_factor: u128, and let xboost be divided by this factor before participating in the boost algorithm.  
