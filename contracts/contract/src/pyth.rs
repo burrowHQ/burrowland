@@ -3,7 +3,7 @@ use near_sdk::{serde_json, require, PromiseResult};
 use crate::*;
 
 /// set static gas consumption for quering pyth
-pub const GAS_FOR_GET_PRICE: Gas = Gas(3_500_000_000_000);
+pub const GAS_FOR_GET_PRICE: Gas = Gas(5 * Gas::ONE_TERA.0);
 /// set static gas consumption for generating promises
 pub const GAS_FOR_BUFFER: Gas = Gas(40 * Gas::ONE_TERA.0);
 /// set MAX PROMISE numbers in case out of gas
