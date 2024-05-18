@@ -2,7 +2,7 @@
 
 Version 0.12.0
 ```bssh=
-# codehash: ETJfCuj8UC7bBjPoD8nwoFP2szYoiZFoE5TKj6SWyh5v 
+# codehash: MozRqmM6agrrtLNdWaW852iuATCnRcL3PgxfYdzmb77 
 ```
 - Improve gas usage for querying pyth oracle. 
 

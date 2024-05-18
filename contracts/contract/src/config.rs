@@ -135,6 +135,7 @@ impl Contract {
     /// - Panics if x_booster_multiplier_at_maximum_staking_duration < MIN_BOOSTER_MULTIPLIER.
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner or guardians.
+    #[payable]
     pub fn adjust_boost_staking_policy(&mut self, minimum_staking_duration_sec: DurationSec, maximum_staking_duration_sec: DurationSec, x_booster_multiplier_at_maximum_staking_duration: u32) {
         assert_one_yocto();
         self.assert_owner_or_guardians();
@@ -150,6 +151,7 @@ impl Contract {
     /// - Panics if boost_suppress_factor <= 0.
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner.
+    #[payable]
     pub fn adjust_boost_suppress_factor(&mut self, boost_suppress_factor: u128) {
         assert_one_yocto();
         self.assert_owner();
