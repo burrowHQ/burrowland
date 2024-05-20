@@ -26,7 +26,9 @@ pub struct MarginConfig {
     /// Token and its party side, such as 1 and 2 are in different parties,
     /// hence they can be a debt and a position. In other word,
     /// Tokens in the same party, can NOT exist in the same position.
-    pub registered_tokens: HashMap<AccountId, u8>,
+    pub registered_tokens: HashMap<AccountId, u8>, 
+    /// Maximum amount of margin position allowed for users to hold.
+    pub max_active_user_margin_position: u8
 }
 
 impl MarginConfig {

@@ -268,6 +268,8 @@ impl Contract {
         swap_indication: &SwapIndication,
         prices: &Prices,
     ) -> EventDataMarginOpen {
+        let margin_config = self.internal_margin_config();
+        assert!(account.margin_positions.len() < margin_config.max_active_user_margin_position as u64, "The number of margin positions exceeds the limit.");
         let pos_id = format!("{}_{}_{}", account.account_id.clone(), ts, self.accumulated_margin_position_num);
         self.accumulated_margin_position_num += 1;
         assert!(
@@ -278,7 +280,6 @@ impl Contract {
         let asset_c = self.internal_unwrap_asset(token_c_id);
         let asset_p = self.internal_unwrap_asset(token_p_id);
         let mut asset_d = self.internal_unwrap_asset(token_d_id);
-        let margin_config = self.internal_margin_config();
 
         // check legitimacy: assets legal; swap_indication matches;
         margin_config.check_pair(&token_d_id, &token_p_id, &token_c_id);

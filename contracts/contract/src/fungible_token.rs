@@ -125,6 +125,7 @@ impl Contract {
         account_id: &AccountId,
         token_id: &TokenId,
         amount: Balance,
+        is_margin_asset: bool,
     ) -> Promise {
         let asset = self.internal_unwrap_asset(token_id);
         let ft_amount = amount / 10u128.pow(asset.config.extra_decimals as u32);
@@ -133,9 +134,15 @@ impl Contract {
             .with_static_gas(GAS_FOR_FT_TRANSFER)
             .ft_transfer(account_id.clone(), ft_amount.into(), None)
             .then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
-                    .after_ft_transfer(account_id.clone(), token_id.clone(), amount.into()),
+                if is_margin_asset {
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
+                        .after_margin_asset_ft_transfer(account_id.clone(), token_id.clone(), amount.into())
+                } else {
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
+                        .after_ft_transfer(account_id.clone(), token_id.clone(), amount.into())
+                }
             )
     }
 }
@@ -143,6 +150,8 @@ impl Contract {
 #[ext_contract(ext_self)]
 trait ExtSelf {
     fn after_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
+        -> bool;
+    fn after_margin_asset_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
         -> bool;
 }
 
@@ -158,11 +167,30 @@ impl ExtSelf for Contract {
         let promise_success = is_promise_success();
         if !promise_success {
             let mut account = self.internal_unwrap_account(&account_id);
-            self.internal_deposit_without_check_min_reserve_shares(&mut account, &token_id, amount.0);
+            self.internal_deposit_without_asset_basic_check(&mut account, &token_id, amount.0);
             events::emit::withdraw_failed(&account_id, amount.0, &token_id);
             self.internal_set_account(&account_id, account);
         } else {
             events::emit::withdraw_succeeded(&account_id, amount.0, &token_id);
+        }
+        promise_success
+    }
+
+    #[private]
+    fn after_margin_asset_ft_transfer(
+        &mut self,
+        account_id: AccountId,
+        token_id: TokenId,
+        amount: U128,
+    ) -> bool {
+        let promise_success = is_promise_success();
+        if !promise_success {
+            let mut margin_account = self.internal_unwrap_margin_account(&account_id);
+            self.internal_margin_deposit_without_asset_basic_check(&mut margin_account, &token_id, amount.0);
+            events::emit::margin_asset_withdraw_failed(&account_id, amount.0, &token_id);
+            self.internal_set_margin_account(&account_id, margin_account);
+        } else {
+            events::emit::margin_asset_withdraw_succeeded(&account_id, amount.0, &token_id);
         }
         promise_success
     }

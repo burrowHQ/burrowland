@@ -173,7 +173,26 @@ impl StorageManagement for Contract {
     #[allow(unused_variables)]
     #[payable]
     fn storage_unregister(&mut self, force: Option<bool>) -> bool {
-        env::panic_str("The account can't be unregistered");
+        assert_one_yocto();
+        let account_id = env::predecessor_account_id();
+        if let Some(account) = self.internal_get_account(&account_id, false) {
+            assert!(!account.is_locked, "Account is locked!");
+            assert!(account.supplied.is_empty(), "still has supplied");
+            assert!(account.positions.is_empty(), "still has positions");
+            assert!(account.farms.is_empty(), "still has farms");
+            assert!(account.booster_staking.is_none(), "still has booster_staking");
+            if let Some(margin_account) = self.internal_get_margin_account(&account_id) {
+                assert!(margin_account.supplied.is_empty(), "still has margin supplied");
+                assert!(margin_account.margin_positions.is_empty(), "still has margin positions");
+                self.margin_accounts.remove(&account_id);
+            }
+            self.accounts.remove(&account_id);
+            let account_storage: Storage = self.storage.remove(&account_id).unwrap().into();
+            Promise::new(account_id.clone()).transfer(account_storage.storage_balance);
+            true
+        } else {
+            false
+        }
     }
 
     fn storage_balance_bounds(&self) -> StorageBalanceBounds {

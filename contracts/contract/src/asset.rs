@@ -255,7 +255,7 @@ impl Contract {
         self.assets.insert(token_id, &asset.into());
     }
 
-    pub fn internal_set_asset_without_check_min_reserve_shares(&mut self, token_id: &TokenId, mut asset: Asset) {
+    pub fn internal_set_asset_without_asset_basic_check(&mut self, token_id: &TokenId, mut asset: Asset) {
         if asset.supplied.shares.0 == 0 && asset.supplied.balance > 0 {
             asset.reserved += asset.supplied.balance;
             asset.supplied.balance = 0;

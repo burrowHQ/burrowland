@@ -145,6 +145,7 @@ impl Contract {
                 open_position_fee_rate: 0_u32,
                 registered_dexes: HashMap::new(),
                 registered_tokens: HashMap::new(),
+                max_active_user_margin_position: 64,
             })),
             accumulated_margin_position_num: 0,
         }

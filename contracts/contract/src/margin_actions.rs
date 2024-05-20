@@ -188,13 +188,15 @@ impl Contract {
                     events::emit::margin_decrease_started("margin_forceclose_started", event);
                 }
                 MarginAction::Withdraw { token_id, amount } => {
-                    let amount = self.internal_margin_withdraw_supply(
-                        account,
-                        &token_id,
-                        amount.map(|a| a.into()),
-                    );
-                    self.internal_ft_transfer(account_id, &token_id, amount);
-                    events::emit::margin_withdraw_started(&account_id, amount, &token_id);
+                    if account.supplied.get(&token_id).is_some() {
+                        let amount = self.internal_margin_withdraw_supply(
+                            account,
+                            &token_id,
+                            amount.map(|a| a.into()),
+                        );
+                        self.internal_ft_transfer(account_id, &token_id, amount, true);
+                        events::emit::margin_asset_withdraw_started(&account_id, amount, &token_id);
+                    }
                 }
             }
         }
@@ -281,6 +283,20 @@ impl Contract {
         account.deposit_supply_shares(token_id, &shares);
         asset.supplied.deposit(shares, amount);
         self.internal_set_asset(token_id, asset);
+        shares
+    }
+
+    pub(crate) fn internal_margin_deposit_without_asset_basic_check(
+        &mut self,
+        account: &mut MarginAccount,
+        token_id: &TokenId,
+        amount: Balance,
+    ) -> Shares {
+        let mut asset = self.internal_unwrap_asset(token_id);
+        let shares: Shares = asset.supplied.amount_to_shares(amount, false);
+        account.deposit_supply_shares(token_id, &shares);
+        asset.supplied.deposit(shares, amount);
+        self.internal_set_asset_without_asset_basic_check(token_id, asset);
         shares
     }
 

@@ -263,9 +263,31 @@ pub mod emit {
         );
     }
 
-    pub fn margin_withdraw_started(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+    pub fn margin_asset_withdraw_started(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
         log_event(
-            "withdraw_started_margin",
+            "withdraw_started_margin_asset",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn margin_asset_withdraw_failed(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_failed_margin_asset",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn margin_asset_withdraw_succeeded(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_succeeded_margin_asset",
             AccountAmountToken {
                 account_id: &account_id,
                 amount,

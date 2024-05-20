@@ -402,7 +402,7 @@ impl Contract {
                 asset_amount_to_shares(&collateral_asset.supplied, collateral_shares, &out_assets[0], false);
             liquidation_account.decrease_collateral(&position, &out_assets[0].token_id, shares);
             collateral_asset.supplied.withdraw(shares, amount);
-            self.internal_set_asset_without_check_min_reserve_shares(&out_assets[0].token_id, collateral_asset);
+            self.internal_set_asset_without_asset_basic_check(&out_assets[0].token_id, collateral_asset);
 
             self.internal_account_apply_affected_farms(&mut account);
             self.internal_account_apply_affected_farms(&mut liquidation_account);
@@ -441,7 +441,7 @@ impl Contract {
                     if asset.reserved >= amount {
                         asset.reserved -= amount;
                         asset.borrowed.withdraw(shares, amount);
-                        self.internal_set_asset_without_check_min_reserve_shares(&token_id, asset);
+                        self.internal_set_asset_without_asset_basic_check(&token_id, asset);
                         liquidation_account.add_affected_farm(FarmId::Borrowed(token_id.clone()));
                         liquidation_account.add_affected_farm(FarmId::TokenNetBalance(token_id));
                     } else {
