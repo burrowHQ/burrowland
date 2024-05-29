@@ -35,6 +35,38 @@ pub enum RefV1Action {
     Swap(RefV1SwapAction),
 }
 
+impl RefV1Action {
+    pub fn get_token_in(&self) -> AccountId {
+        match self {
+            RefV1Action::Swap(action) => {
+                action.token_in.clone()
+            }
+        }
+    }
+    pub fn get_amount_in(&self) -> u128 {
+        match self {
+            RefV1Action::Swap(action) => {
+                action.amount_in.expect("Action missing amount_in").0
+            }
+        }
+    }
+    
+    pub fn get_token_out(&self) -> AccountId {
+        match self {
+            RefV1Action::Swap(action) => {
+                action.token_out.clone()
+            }
+        }
+    }
+    pub fn get_min_amount_out(&self) -> u128 {
+        match self {
+            RefV1Action::Swap(action) => {
+                action.min_amount_out.0
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 #[serde(untagged)]
@@ -59,8 +91,9 @@ impl RefV1TokenReceiverMessage {
             client_echo: _,
         } = self;
         let action = actions.first().unwrap();
-        let RefV1Action::Swap(sa) = action;
-        (sa.token_in.clone(), sa.amount_in.unwrap().0)
+        let token_in = action.get_token_in();
+        let amount_in = actions.iter().filter(|a| a.get_token_in() == token_in).map(|a| a.get_amount_in()).sum();
+        (token_in, amount_in)
     }
 
     // get token_out, min_amount_out
@@ -71,8 +104,9 @@ impl RefV1TokenReceiverMessage {
             client_echo: _,
         } = self;
         let action = actions.last().unwrap();
-        let RefV1Action::Swap(sa) = action;
-        (sa.token_out.clone(), sa.min_amount_out.0)
+        let token_out = action.get_token_out();
+        let min_amount_out = actions.iter().filter(|a| a.get_token_out() == token_out).map(|a| a.get_min_amount_out()).sum();
+        (token_out, min_amount_out)
     }
 
     pub fn get_client_echo(&self) -> Option<String> {
