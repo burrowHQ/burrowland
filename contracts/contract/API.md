@@ -56,6 +56,12 @@ trait Contract {
     /// Returns all farmers in the blacklist.
     fn get_blacklist_of_farmers(&self) -> Vec<AccountId>;
 
+    /// Sync the price of the specified token.
+    fn sync_staking_token_price(&mut self, token_id: TokenId);
+
+    /// Returns last_staking_token_prices.
+    fn get_last_staking_token_prices(&self) -> HashMap<TokenId, U128>;
+
     /// Returns detailed information about an account for a given account_id.
     /// The information includes all supplied assets, collateral and borrowed.
     /// Each asset includes the current balance and the number of shares.
@@ -120,12 +126,14 @@ trait Contract {
     /// - Panics if x_booster_multiplier_at_maximum_staking_duration < MIN_BOOSTER_MULTIPLIER.
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner or guardians.
+    #[payable]
     fn adjust_boost_staking_policy(&mut self, minimum_staking_duration_sec: DurationSec, maximum_staking_duration_sec: DurationSec, x_booster_multiplier_at_maximum_staking_duration: u32);
 
     /// Adjust boost suppress factor.
     /// - Panics if boost_suppress_factor <= 0.
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner.
+    #[payable]
     fn adjust_boost_suppress_factor(&mut self, boost_suppress_factor: u128);
 
     /// Adds an asset with a given token_id and a given asset_config.
@@ -143,6 +151,20 @@ trait Contract {
     /// - Requires to be called by the contract owner.
     #[payable]
     fn update_asset(&mut self, token_id: ValidAccountId, asset_config: AssetConfig);
+
+    /// Updates the limit for the asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    fn update_asset_limit(&mut self, token_id: AccountId, supplied_limit: Option<U128>, borrowed_limit: Option<U128>);
+
+    /// Updates the max_change_rate for the asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    fn update_asset_max_change_rate(&mut self, token_id: AccountId, max_change_rate: Option<u32>);
 
     /// Updates the prot_ratio for the asset with the a given token_id.
     /// - Panics if the prot_ratio is invalid.
@@ -282,6 +304,7 @@ pub enum FarmId {
     Supplied(TokenId),
     Borrowed(TokenId),
     NetTvl,
+    TokenNetBalance(TokenId),
 }
 
 pub struct AccountFarmView {
@@ -454,6 +477,9 @@ pub struct Pool {
 ///   "can_use_as_collateral": true,
 ///   "can_borrow": true,
 ///   "net_tvl_multiplier": 0
+///   "max_change_rate": None,
+///   "supplied_limit": "340282366920938463463374607431768211455",
+///   "borrowed_limit": "340282366920938463463374607431768211455",
 /// }
 /// ```
 pub struct AssetConfig {
@@ -499,6 +525,12 @@ pub struct AssetConfig {
     /// Example: a multiplier of 5000 means the asset in TVL should only counted as 50%, e.g. if an
     /// asset is not useful for borrowing, but only useful as a collateral.
     pub net_tvl_multiplier: u32,
+    /// The price change obtained in two consecutive retrievals cannot exceed this ratio.
+    pub max_change_rate: Option<u32>,
+    /// Allowed supplied upper limit of assets
+    pub supplied_limit: Option<U128>,
+    /// Allowed borrowed upper limit of assets
+    pub borrowed_limit: Option<U128>,
 }
 
 pub struct AssetAmount {

@@ -388,6 +388,7 @@ impl Contract {
         if is_promise_success() {
             for asset_amount in in_assets {
                 liquidation_account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
+                liquidation_account.add_affected_farm(FarmId::TokenNetBalance(asset_amount.token_id.clone()));
                 let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
                 self.internal_repay(&position, &mut account_asset, &mut liquidation_account, &asset_amount);
                 account.internal_set_asset(&asset_amount.token_id, account_asset);
@@ -395,6 +396,7 @@ impl Contract {
 
             let mut collateral_asset = self.internal_unwrap_asset(&out_assets[0].token_id);
             liquidation_account.add_affected_farm(FarmId::Supplied(out_assets[0].token_id.clone()));
+            liquidation_account.add_affected_farm(FarmId::TokenNetBalance(out_assets[0].token_id.clone()));
             let collateral_shares = liquidation_account.internal_unwrap_collateral(&position, &out_assets[0].token_id);
             let (shares, amount) =
                 asset_amount_to_shares(&collateral_asset.supplied, collateral_shares, &out_assets[0], false);
@@ -432,6 +434,7 @@ impl Contract {
             if let Position::LPTokenPosition(position_info) = liquidation_account.positions.remove(&position).unwrap(){
                 let mut remain_borrowed = HashMap::new();
                 liquidation_account.add_affected_farm(FarmId::Supplied(AccountId::new_unchecked(position_info.lpt_id.clone())));
+                liquidation_account.add_affected_farm(FarmId::TokenNetBalance(AccountId::new_unchecked(position_info.lpt_id.clone())));
                 for (token_id, shares) in position_info.borrowed {
                     let mut asset = self.internal_unwrap_asset(&token_id);
                     let amount = asset.borrowed.shares_to_amount(shares, true);
@@ -439,7 +442,8 @@ impl Contract {
                         asset.reserved -= amount;
                         asset.borrowed.withdraw(shares, amount);
                         self.internal_set_asset_without_check_min_reserve_shares(&token_id, asset);
-                        liquidation_account.add_affected_farm(FarmId::Borrowed(token_id));
+                        liquidation_account.add_affected_farm(FarmId::Borrowed(token_id.clone()));
+                        liquidation_account.add_affected_farm(FarmId::TokenNetBalance(token_id));
                     } else {
                         remain_borrowed.insert(token_id, shares);
                     }

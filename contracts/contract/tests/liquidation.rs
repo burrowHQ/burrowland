@@ -17,7 +17,7 @@ async fn test_liquidation_decrease_health_factor() -> Result<()> {
     check!(nusdt_token_contract.ft_mint(&root, &root, nusdt_reserve_amount));
 
     let oracle_contract = deploy_oralce(&root).await?;
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &nusdc_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));
@@ -131,7 +131,7 @@ async fn test_force_close() -> Result<()> {
     check!(wrap_token_contract.ft_mint(&root, &root, wrap_reserve_amount));
 
     let oracle_contract = deploy_oralce(&root).await?;
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &nusdc_token_contract));
     check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
     check!(nusdc_token_contract.ft_storage_deposit(burrowland_contract.0.id()));

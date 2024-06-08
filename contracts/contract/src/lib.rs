@@ -23,6 +23,7 @@ mod utils;
 mod shadow_actions;
 mod position;
 mod pyth;
+mod actions_pyth;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -54,6 +55,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::json_types::{I64, U64, U128};
 use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::PromiseError;
 use near_sdk::{
     assert_one_yocto, env, ext_contract, log, near_bindgen, AccountId, Balance, BorshStorageKey,
     Duration, Gas, PanicOnDefault, Promise, Timestamp,
@@ -93,6 +95,7 @@ pub struct Contract {
     pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
     pub token_pyth_info: HashMap<TokenId, TokenPythInfo>,
     pub blacklist_of_farmers: UnorderedSet<AccountId>,
+    pub last_staking_token_prices: HashMap<TokenId, U128>,
 }
 
 #[near_bindgen]
@@ -113,6 +116,7 @@ impl Contract {
             last_lp_token_infos: HashMap::new(),
             token_pyth_info: HashMap::new(),
             blacklist_of_farmers: UnorderedSet::new(StorageKey::BlacklistOfFarmers),
+            last_staking_token_prices: HashMap::new(),
         }
     }
 
@@ -149,7 +153,7 @@ impl Contract {
     #[payable]
     pub fn add_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         assert!(!self.token_pyth_info.contains_key(&token_id), "Already exist");
         self.token_pyth_info.insert(token_id, token_pyth_info);
     }
@@ -159,7 +163,7 @@ impl Contract {
     #[payable]
     pub fn update_token_pyth_info(&mut self, token_id: TokenId, token_pyth_info: TokenPythInfo) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         assert!(self.token_pyth_info.contains_key(&token_id), "Invalid token_id");
         self.token_pyth_info.insert(token_id, token_pyth_info);
     }
@@ -196,7 +200,7 @@ impl Contract {
     #[payable]
     pub fn remove_blacklist_of_farmers(&mut self, farmers: Vec<AccountId>) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         for farmer in farmers {
             let is_success = self.blacklist_of_farmers.remove(&farmer);
             assert!(is_success, "Invalid farmer");
@@ -213,10 +217,36 @@ impl Contract {
     pub fn get_blacklist_of_farmers(&self) -> Vec<AccountId> {
         self.blacklist_of_farmers.to_vec()
     }
+
+    /// Sync the price of the specified token.
+    pub fn sync_staking_token_price(&mut self, token_id: TokenId) {
+        let function_name = self.get_pyth_info_by_token(&token_id).extra_call.clone().expect("Not extra_call token");
+        Promise::new(token_id.clone())
+            .function_call(function_name, vec![], 0, Gas::ONE_TERA * 5)
+            .then(Self::ext(env::current_account_id())
+                .callback_sync_staking_token_price(token_id)
+            );
+    }
+
+    #[private]
+    pub fn callback_sync_staking_token_price(
+        &mut self,
+        token_id: TokenId,
+        #[callback_result] price_result: Result<U128, PromiseError>,
+    ) {
+        if let Ok(U128(price)) = price_result {
+            self.update_staking_token_price_record(&token_id, price, "The return value is out of the valid range".to_string());
+            log!(format!("sync {token_id} price Successful: {price}"));
+        } else {
+            log!(format!("sync {token_id} price failed"));
+        }
+    }
+
+    /// Returns last_staking_token_prices.
+    pub fn get_last_staking_token_prices(&self) -> HashMap<TokenId, U128> {
+        self.last_staking_token_prices.clone()
+    }
 }
-
-
-
 
 #[cfg(test)]
 mod unit_env {
@@ -264,6 +294,9 @@ mod unit_env {
                     can_use_as_collateral: false,
                     can_borrow: false,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(booster_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -282,6 +315,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(neth_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -300,6 +336,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(ndai_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -318,6 +357,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(nusdt_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -336,6 +378,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(nusdc_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -354,6 +399,9 @@ mod unit_env {
                     can_use_as_collateral: true,
                     can_borrow: true,
                     net_tvl_multiplier: 10000,
+                    max_change_rate: None,
+                    supplied_limit: Some(u128::MAX.into()),
+                    borrowed_limit: Some(u128::MAX.into()),
                 });
             self.deposit_to_reserve(wnear_token_id(), owner_id(), d(10000, 24));
         }
@@ -2193,6 +2241,65 @@ mod farms {
 
     #[test]
     #[ignore]
+    fn test_farm_token_net_tvl_price_change() {
+        let mut test_env = init_unit_env();
+
+        test_env.skip_time_to_by_sec(10);
+
+        let reward_per_day = d(100, 18);
+        let total_reward = d(3000, 18);
+
+        let farm_id = FarmId::TokenNetBalance(wnear_token_id());
+        test_env.add_farm(farm_id.clone(), nusdc_token_id(), reward_per_day, d(100, 18), total_reward);
+
+        let asset_farm = test_env.get_asset_farm(farm_id.clone());
+        let reward = asset_farm
+            .rewards
+            .get(&nusdc_token_id())
+            .cloned()
+            .unwrap();
+        assert_eq!(reward.remaining_rewards, total_reward);
+
+        let amount = d(100, 24);
+        test_env.supply_to_collateral(wnear_token_id(), alice(), amount.into());
+
+        let borrow_amount = d(2, 24);
+        test_env.borrow_and_withdraw(alice(), wnear_token_id(), borrow_amount, unit_price_data(10, Some(100000), None));
+
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert_eq!(account.farms.len(), 1);
+        assert_eq!(account.farms[0].farm_id, farm_id);
+        assert_eq!(
+            account.farms[0].rewards[0].reward_token_id,
+            nusdc_token_id()
+        );
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(98, 24));
+        assert_eq!(account.farms[0].rewards[0].unclaimed_amount, 0);
+
+        let borrow_amount = d(2, 24);
+        test_env.borrow_and_withdraw(alice(), wnear_token_id(), borrow_amount, unit_price_data(10, Some(1000000), None));
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(96, 24));
+
+        let borrow_amount = d(2, 18);
+        test_env.borrow_and_withdraw(alice(), ndai_token_id(), borrow_amount, unit_price_data(10, Some(1000000), None));
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert_eq!(account.farms[0].rewards[0].boosted_shares, d(96, 24));
+
+        let reward_per_day = d(100, 18);
+        let total_reward = d(3000, 18);
+
+        let farm_id = FarmId::TokenNetBalance(ndai_token_id());
+        test_env.add_farm(farm_id.clone(), nusdc_token_id(), reward_per_day, d(100, 18), total_reward);
+        let account = test_env.contract.get_account(alice()).unwrap();
+        assert!(!account.has_non_farmed_assets);
+
+        clean_assets_cache();
+        clean_assets_farm_cache();
+    }
+    
+    #[test]
+    #[ignore]
     fn test_farm_net_tvl_bad_debt() {
         let mut test_env = init_unit_env();
 
@@ -2303,6 +2410,9 @@ mod farms {
             can_use_as_collateral: true,
             can_borrow: true,
             net_tvl_multiplier: 8000,
+            max_change_rate: None,
+            supplied_limit: Some(u128::MAX.into()),
+            borrowed_limit: Some(u128::MAX.into()),
         });
 
         let amount = d(100, 18);

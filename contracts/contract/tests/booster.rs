@@ -13,7 +13,7 @@ async fn test_booster_stake_bad_args() -> Result<()> {
     let amount = d(100, 18);
     let booster_token_contract = deploy_mock_ft(&root, "booster", 18).await?;
 
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &booster_token_contract));
     check!(booster_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
 
@@ -38,7 +38,7 @@ async fn test_booster_stake_all() -> Result<()> {
     let amount = d(100, 18);
     let booster_token_contract = deploy_mock_ft(&root, "booster", 18).await?;
 
-    let burrowland_contract = deploy_burrowland(&root).await?;
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset_handler(&root, &booster_token_contract));
     check!(booster_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
 

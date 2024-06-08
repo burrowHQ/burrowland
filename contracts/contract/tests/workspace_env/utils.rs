@@ -4,6 +4,10 @@ use contract::AssetAmount;
 
 pub const EVENT_JSON: &str = "EVENT_JSON:";
 
+pub const EXTRA_CALL_GET_ST_NEAR_PRICE: &str = "get_st_near_price";
+pub const EXTRA_CALL_GET_NEARX_PRICE: &str = "get_nearx_price";
+pub const EXTRA_CALL_FT_PRICE: &str = "ft_price";
+
 pub fn d(value: Balance, decimals: u8) -> Balance {
     value * 10u128.pow(decimals as _)
 }

@@ -17,7 +17,7 @@ impl Contract {
             guardians,
             last_prices,
             last_lp_token_infos,
-            token_pyth_info 
+            token_pyth_info,
         } = env::state_read().unwrap();
         let config_v0100 = config.get().unwrap();
         Self { 
@@ -32,7 +32,7 @@ impl Contract {
             last_lp_token_infos,
             token_pyth_info,
             blacklist_of_farmers: UnorderedSet::new(StorageKey::BlacklistOfFarmers),
-
+            last_staking_token_prices: HashMap::new(),
         }
     }
 

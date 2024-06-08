@@ -464,6 +464,7 @@ impl Contract {
 
         for asset_amount in in_assets {
             liquidation_account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
+            liquidation_account.add_affected_farm(FarmId::TokenNetBalance(asset_amount.token_id.clone()));
             let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
             let amount =
                 self.internal_repay(&position, &mut account_asset, &mut liquidation_account, &asset_amount);
@@ -481,6 +482,7 @@ impl Contract {
         for asset_amount in out_assets {
             let asset = self.internal_unwrap_asset(&asset_amount.token_id);
             liquidation_account.add_affected_farm(FarmId::Supplied(asset_amount.token_id.clone()));
+            liquidation_account.add_affected_farm(FarmId::TokenNetBalance(asset_amount.token_id.clone()));
             let mut account_asset = account.internal_get_asset_or_default(&asset_amount.token_id);
             let amount = self.internal_decrease_collateral(
                 &position,
@@ -558,7 +560,8 @@ impl Contract {
                         asset.config.extra_decimals,
                     );
                 self.internal_set_asset(&token_id, asset);
-                affected_farms.push(FarmId::Supplied(token_id));
+                affected_farms.push(FarmId::Supplied(token_id.clone()));
+                affected_farms.push(FarmId::TokenNetBalance(token_id));
             }
     
             for (token_id, shares) in regular_position.borrowed.drain() {
@@ -579,7 +582,8 @@ impl Contract {
                         asset.config.extra_decimals,
                     );
                 self.internal_set_asset(&token_id, asset);
-                affected_farms.push(FarmId::Borrowed(token_id));
+                affected_farms.push(FarmId::Borrowed(token_id.clone()));
+                affected_farms.push(FarmId::TokenNetBalance(token_id));
             }
     
             assert!(

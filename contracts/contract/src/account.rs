@@ -112,15 +112,20 @@ impl Account {
         let mut potential_farms = HashSet::new();
         potential_farms.insert(FarmId::NetTvl);
         potential_farms.extend(self.supplied.keys().cloned().map(FarmId::Supplied));
+        potential_farms.extend(self.supplied.keys().cloned().map(FarmId::TokenNetBalance));
         self.positions.iter().for_each(|(position, position_info)| {
             match position_info {
                 Position::RegularPosition(regular_position) => {
                     potential_farms.extend(regular_position.collateral.keys().cloned().map(FarmId::Supplied));
+                    potential_farms.extend(regular_position.collateral.keys().cloned().map(FarmId::TokenNetBalance));
                     potential_farms.extend(regular_position.borrowed.keys().cloned().map(FarmId::Borrowed));
+                    potential_farms.extend(regular_position.borrowed.keys().cloned().map(FarmId::TokenNetBalance));
                 }
                 Position::LPTokenPosition(lp_token_position) => {
                     potential_farms.insert(FarmId::Supplied(AccountId::new_unchecked(position.clone())));
+                    potential_farms.insert(FarmId::TokenNetBalance(AccountId::new_unchecked(position.clone())));
                     potential_farms.extend(lp_token_position.borrowed.keys().cloned().map(FarmId::Borrowed));
+                    potential_farms.extend(lp_token_position.borrowed.keys().cloned().map(FarmId::TokenNetBalance));
                 }
             }
         });
