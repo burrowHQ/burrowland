@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.13.0
+```bssh=
+# codehash: 4PyMoBRnTT8q2BTLAVdGH8u3hea21dbsEnyzAYeRWWhd 
+```
+- margin trading
+
 Version 0.12.0
 ```bssh=
 # codehash: MozRqmM6agrrtLNdWaW852iuATCnRcL3PgxfYdzmb77 
