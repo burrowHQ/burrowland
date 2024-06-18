@@ -1,5 +1,5 @@
 
-use mock_ref_exchange::{ContractMetadata, StablePoolInfo, ShadowRecordInfo, RefStorageState, ShadowActions, AccountBaseInfo, UnitShareCumulativeInfoView};
+use mock_ref_exchange::{ContractMetadata, StablePoolInfo, ShadowRecordInfo, RefStorageState, ShadowActions, AccountBaseInfo, UnitShareCumulativeInfoView, PoolInfo};
 
 use crate::*;
 
@@ -329,6 +329,20 @@ impl RefExchange {
             .view()
             .await?
             .json::<U128>()
+    }
+
+    pub async fn get_pool(
+        &self,
+        pool_id: u64,
+    ) -> Result<PoolInfo> {
+        self.0
+            .call("get_pool")
+            .args_json(json!({
+                "pool_id": pool_id
+            }))
+            .view()
+            .await?
+            .json::<PoolInfo>()
     }
 
     pub async fn get_stable_pool(

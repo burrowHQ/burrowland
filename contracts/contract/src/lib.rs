@@ -22,6 +22,12 @@ mod upgrade;
 mod utils;
 mod shadow_actions;
 mod position;
+mod margin_position;
+mod margin_accounts;
+mod margin_actions;
+mod margin_trading;
+mod margin_config;
+mod margin_pyth;
 mod pyth;
 mod actions_pyth;
 
@@ -47,6 +53,12 @@ use crate::storage_tracker::*;
 pub use crate::utils::*;
 pub use crate::shadow_actions::*;
 pub use crate::position::*;
+pub use crate::margin_position::*;
+pub use crate::margin_accounts::*;
+pub use crate::margin_actions::*;
+pub use crate::margin_trading::*;
+pub use crate::margin_config::*;
+pub use crate::margin_pyth::*;
 pub use crate::pyth::*;
 
 use common::*;
@@ -78,6 +90,9 @@ enum StorageKey {
     Config,
     Guardian,
     BlacklistOfFarmers,
+    MarginAccounts,
+    MarginConfig,
+    MarginPositions { account_id: AccountId },
 }
 
 #[near_bindgen]
@@ -96,6 +111,9 @@ pub struct Contract {
     pub token_pyth_info: HashMap<TokenId, TokenPythInfo>,
     pub blacklist_of_farmers: UnorderedSet<AccountId>,
     pub last_staking_token_prices: HashMap<TokenId, U128>,
+    pub margin_accounts: UnorderedMap<AccountId, VMarginAccount>,
+    pub margin_config: LazyOption<MarginConfig>,
+    pub accumulated_margin_position_num: u64
 }
 
 #[near_bindgen]
@@ -117,6 +135,19 @@ impl Contract {
             token_pyth_info: HashMap::new(),
             blacklist_of_farmers: UnorderedSet::new(StorageKey::BlacklistOfFarmers),
             last_staking_token_prices: HashMap::new(),
+            margin_accounts: UnorderedMap::new(StorageKey::MarginAccounts),
+            margin_config: LazyOption::new(StorageKey::MarginConfig, Some(&MarginConfig {
+                max_leverage_rate: 10_u8,
+                pending_debt_scale: 1000_u32,
+                max_slippage_rate: 1000_u32,
+                min_safety_buffer: 1000_u32,
+                margin_debt_discount_rate: 5000_u32,
+                open_position_fee_rate: 0_u32,
+                registered_dexes: HashMap::new(),
+                registered_tokens: HashMap::new(),
+                max_active_user_margin_position: 64,
+            })),
+            accumulated_margin_position_num: 0,
         }
     }
 
@@ -287,6 +318,7 @@ mod unit_env {
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000008319516250272147),
                     max_utilization_rate: U128(1000000000039724853136740579),
+                    holding_position_fee_rate: U128(1000000000000000000000000000),
                     volatility_ratio: 2000,
                     extra_decimals: 0,
                     can_deposit: true,
@@ -308,6 +340,7 @@ mod unit_env {
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000001547125956667610),
                     max_utilization_rate: U128(1000000000039724853136740579),
+                    holding_position_fee_rate: U128(1000000000000000000000000000),
                     volatility_ratio: 6000,
                     extra_decimals: 0,
                     can_deposit: true,
@@ -329,6 +362,7 @@ mod unit_env {
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000002440418605283556),
                     max_utilization_rate: U128(1000000000039724853136740579),
+                    holding_position_fee_rate: U128(1000000000000000000000000000),
                     volatility_ratio: 9500,
                     extra_decimals: 0,
                     can_deposit: true,
@@ -350,6 +384,7 @@ mod unit_env {
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000002440418605283556),
                     max_utilization_rate: U128(1000000000039724853136740579),
+                    holding_position_fee_rate: U128(1000000000000000000000000000),
                     volatility_ratio: 9500,
                     extra_decimals: 12,
                     can_deposit: true,
@@ -371,6 +406,7 @@ mod unit_env {
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000002440418605283556),
                     max_utilization_rate: U128(1000000000039724853136740579),
+                    holding_position_fee_rate: U128(1000000000000000000000000000),
                     volatility_ratio: 9500,
                     extra_decimals: 12,
                     can_deposit: true,
@@ -392,6 +428,7 @@ mod unit_env {
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000003593629036885046),
                     max_utilization_rate: U128(1000000000039724853136740579),
+                    holding_position_fee_rate: U128(1000000000000000000000000000),
                     volatility_ratio: 6000,
                     extra_decimals: 0,
                     can_deposit: true,
@@ -593,6 +630,9 @@ mod unit_env {
         }
     }
 
+    pub fn dcl_id() -> AccountId {
+        AccountId::new_unchecked("dcl".to_string())
+    }
     pub fn oracle_id() -> AccountId {
         AccountId::new_unchecked("oracle_id".to_string())
     }
@@ -658,6 +698,7 @@ mod unit_env {
             enable_price_oracle: true,
             enable_pyth_oracle: false,
             boost_suppress_factor: 1,
+            dcl_id: Some(dcl_id())
         });
         let mut test_env = UnitEnv{
             contract,
@@ -2403,6 +2444,7 @@ mod farms {
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046.into(),
             max_utilization_rate: 1000000000039724853136740579.into(),
+            holding_position_fee_rate: U128(1000000000000000000000000000),
             volatility_ratio: 6000,
             extra_decimals: 0,
             can_deposit: true,

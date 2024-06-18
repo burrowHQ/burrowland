@@ -1,6 +1,6 @@
 [package]
 name = "contract"
-version = "0.12.0"
+version = "0.13.0"
 authors = ["Eugene The Dream <ek@proximity.dev>", "MagicGordon <gordon@ref.finance>"]
 edition = "2018"
 
@@ -29,3 +29,4 @@ mock-ref-exchange = { path = "../mock-ref-exchange" }
 mock-boost-farming = { path = "../mock-boost-farming" }
 mock-pyth = { path = "../mock-pyth" }
 mock-rated-token = { path = "../mock-rated-token" }
+mock-dcl = { path = "../mock-dcl" }

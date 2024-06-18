@@ -167,6 +167,7 @@ async fn test_modify_config() -> Result<()> {
         target_utilization: 8000,
         target_utilization_rate: 1000000000003593629036885046u128.into(),
         max_utilization_rate: 1000000000039724853136740579u128.into(),
+        holding_position_fee_rate: U128(1000000000000000000000000000),
         volatility_ratio: 9999,
         extra_decimals: 0,
         can_deposit: true,

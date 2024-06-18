@@ -7,7 +7,7 @@ pub const PYTH_ID: &str = "pyth.test.near";
 pub const BOOSTER_TOKEN_ID: &str = "booster.test.near";
 pub const BOOSTER_TOKEN_DECIMALS: u8 = 18;
 
-const PREVIOUS_BURROWLAND_WASM: &str = "../../releases/burrowland_0.10.0.wasm";
+const PREVIOUS_BURROWLAND_WASM: &str = "../../releases/burrowland_0.12.0.wasm";
 pub const BURROWLAND_WASM: &str = "../../res/burrowland.wasm";
 const REF_EXCHANGE_WASM: &str = "../../res/mock_ref_exchange.wasm";
 pub const BOOST_FARMING_WASM: &str = "../../res/mock_boost_farming.wasm";
@@ -17,6 +17,7 @@ const ORACLE_WASM: &str = "../../res/test_oracle.wasm";
 const FT_WASM: &str = "../../res/mock_ft.wasm";
 const RATED_TOKEN_WASM: &str = "../../res/mock_rated_token.wasm";
 const PYTH_WASM: &str = "../../res/mock_pyth.wasm";
+const DCL_WASM: &str = "../../res/mock_dcl.wasm";
 
 pub async fn deploy_burrowland_with_pyth(
     root: &Account,
@@ -52,6 +53,7 @@ pub async fn deploy_burrowland_with_pyth(
                 enable_price_oracle: false,
                 enable_pyth_oracle: true,
                 boost_suppress_factor: 1,
+                dcl_id: Some(near_sdk::AccountId::new_unchecked("dcl.test.near".to_string())),
             },
         }))
         .max_gas()
@@ -95,6 +97,7 @@ pub async fn deploy_burrowland_with_price_oracle(
                 enable_price_oracle: true,
                 enable_pyth_oracle: false,
                 boost_suppress_factor: 1,
+                dcl_id: Some(near_sdk::AccountId::new_unchecked("dcl.test.near".to_string())),
             },
         }))
         .max_gas()
@@ -117,32 +120,31 @@ pub async fn deploy_previous_version_burrowland(
         .deploy(&std::fs::read(PREVIOUS_BURROWLAND_WASM).unwrap())
         .await?
         .unwrap();
-    assert!(burrowland.call("new")
-        .args_json(json!({
-            "config": ConfigV0100 {
-                oracle_account_id: near_sdk::AccountId::new_unchecked(ORACLE_ID.to_string()),
-                pyth_oracle_account_id: near_sdk::AccountId::new_unchecked(PYTH_ID.to_string()),
-                ref_exchange_id: near_sdk::AccountId::new_unchecked("ref_exchange.test.near".to_string()),
-                owner_id: near_sdk::AccountId::new_unchecked(root.id().to_string()),
-                booster_token_id: near_sdk::AccountId::new_unchecked(BOOSTER_TOKEN_ID.to_string()),
-                booster_decimals: BOOSTER_TOKEN_DECIMALS,
-                max_num_assets: 10,
-                maximum_recency_duration_sec: 90,
-                maximum_staleness_duration_sec: 15,
-                lp_tokens_info_valid_duration_sec: 600,
-                pyth_price_valid_duration_sec: 60,
-                minimum_staking_duration_sec: 2678400,
-                maximum_staking_duration_sec: 31536000,
-                x_booster_multiplier_at_maximum_staking_duration: 40000,
-                force_closing_enabled: true,
-                enable_price_oracle: true,
-                enable_pyth_oracle: true,
-            },
-        }))
-        .max_gas()
-        .transact()
-        .await?
-        .is_success());
+    check!(burrowland.call("new")
+    .args_json(json!({
+        "config": ConfigV3 {
+            oracle_account_id: near_sdk::AccountId::new_unchecked(ORACLE_ID.to_string()),
+            pyth_oracle_account_id: near_sdk::AccountId::new_unchecked(PYTH_ID.to_string()),
+            ref_exchange_id: near_sdk::AccountId::new_unchecked("ref_exchange.test.near".to_string()),
+            owner_id: near_sdk::AccountId::new_unchecked(root.id().to_string()),
+            booster_token_id: near_sdk::AccountId::new_unchecked(BOOSTER_TOKEN_ID.to_string()),
+            booster_decimals: BOOSTER_TOKEN_DECIMALS,
+            max_num_assets: 10,
+            maximum_recency_duration_sec: 90,
+            maximum_staleness_duration_sec: 15,
+            lp_tokens_info_valid_duration_sec: 600,
+            pyth_price_valid_duration_sec: 60,
+            minimum_staking_duration_sec: 2678400,
+            maximum_staking_duration_sec: 31536000,
+            x_booster_multiplier_at_maximum_staking_duration: 40000,
+            force_closing_enabled: true,
+            enable_price_oracle: false,
+            enable_pyth_oracle: true,
+            boost_suppress_factor: 1,
+        },
+    }))
+    .max_gas()
+    .transact());
     Ok(Burrowland(burrowland))
 }
 
@@ -323,4 +325,31 @@ pub async fn deploy_mock_pyth(
         .await?
         .is_success());
     Ok(PythContract(mock_pyth))
+}
+
+pub async fn deploy_mock_dcl(
+    root: &Account,
+) -> Result<DclExchange> {
+    let dcl = root
+        .create_subaccount("dcl")
+        .initial_balance(parse_near!("50 N"))
+        .transact()
+        .await?
+        .unwrap();
+    let dcl = dcl
+        .deploy(&std::fs::read(DCL_WASM).unwrap())
+        .await?
+        .unwrap();
+    assert!(dcl.call("new")
+        .args_json(json!({
+            "owner_id": root.id(),
+            "wnear_id": "wnear.test.near".to_string(),
+            "farming_contract_id": "boost_farming.test.near".to_string(),
+        }))
+        .gas(300_000_000_000_000)
+        .transact()
+        .await?
+        .is_success());
+    
+    Ok(DclExchange(dcl))
 }

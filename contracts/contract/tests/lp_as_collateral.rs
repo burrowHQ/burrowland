@@ -192,6 +192,7 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
+            holding_position_fee_rate: U128(1000000000000000000000000000),
             volatility_ratio: 9999,
             extra_decimals: 0,
             can_deposit: true,
@@ -285,6 +286,7 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
     let token_asset = burrowland_contract.get_asset(&token_id).await?;
     assert_eq!(token_asset.supplied.balance, d(30000, 18));
     let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
+    
     let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
     assert_eq!(alice_burrowland_account.supplied[0].balance, d(25000, 18));
     assert_eq!(position_info.collateral[0].balance, d(5000, 18));
@@ -340,6 +342,7 @@ async fn test_position_liquidate() -> Result<()> {
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
+            holding_position_fee_rate: U128(1000000000000000000000000000),
             volatility_ratio: 9999,
             extra_decimals: 0,
             can_deposit: true,
@@ -409,6 +412,7 @@ async fn test_position_liquidate() -> Result<()> {
     check!(ref_exchange_contract.mft_register( &bob, ":0".to_string(), bob.id()));
 
     let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
+    
     let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
     assert_eq!(position_info.collateral[0].balance, d(30000, 18));
     assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
@@ -442,6 +446,7 @@ async fn test_position_liquidate() -> Result<()> {
 
     let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
     assert!(!alice_burrowland_account.is_locked);
+    
     let position_info = alice_burrowland_account.positions.get(&token_id.to_string()).unwrap();
     assert_eq!(position_info.collateral[0].balance, d(30000 - 13, 18));
     assert_eq!(position_info.collateral[0].token_id.to_string(), token_id.to_string());
@@ -512,6 +517,7 @@ async fn test_position_force_close() -> Result<()> {
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
+            holding_position_fee_rate: U128(1000000000000000000000000000),
             volatility_ratio: 9999,
             extra_decimals: 0,
             can_deposit: true,
@@ -670,6 +676,7 @@ async fn test_position_farming_with_force_close() -> Result<()> {
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
+            holding_position_fee_rate: U128(1000000000000000000000000000),
             volatility_ratio: 9999,
             extra_decimals: 0,
             can_deposit: true,
@@ -792,6 +799,7 @@ async fn test_position_farming_liquidate() -> Result<()> {
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
+            holding_position_fee_rate: U128(1000000000000000000000000000),
             volatility_ratio: 9999,
             extra_decimals: 0,
             can_deposit: true,
@@ -916,6 +924,7 @@ async fn test_twap() -> Result<()> {
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
+            holding_position_fee_rate: 1000000000000000000000000000.into(),
             volatility_ratio: 9999,
             extra_decimals: 0,
             can_deposit: true,

@@ -3,6 +3,7 @@ use near_sdk::borsh::maybestd::io::Write;
 use near_sdk::json_types::U128;
 use near_sdk::serde::Serializer;
 use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Div, Mul, Sub};
 use std::str::FromStr;
@@ -22,6 +23,28 @@ const BIG_DIVISOR: u128 = 10u128.pow(NUM_DECIMALS as u32);
 const HALF_DIVISOR: u128 = BIG_DIVISOR / 2;
 
 pub type LowU128 = U128;
+
+/// Error type for conversion.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Error {
+	/// Overflow encountered.
+	Overflow,
+}
+
+// impl TryFrom<U384> for u128 {
+// 	type Error = Error;
+
+// 	fn try_from(value: U384) -> Result<u128, Error> {
+// 		let U384(ref arr) = value;
+// 		if arr[2] | arr[3] | arr[4] | arr[5] != 0 {
+// 			return Err(Error::Overflow)
+// 		}
+// 		let mut ret = [0; 2];
+// 		ret[0] = arr[0];
+// 		ret[1] = arr[1];
+// 		Ok(ret[1] as u128 * u64::MAX as u128 + ret[0] as u128)
+// 	}
+// }
 
 #[derive(Copy, Clone)]
 pub struct BigDecimal(U384);
@@ -190,6 +213,17 @@ impl BigDecimal {
         } else {
             Self(num * U384::exp10((NUM_DECIMALS - denominator_decimals) as usize))
         }
+    }
+
+    pub fn to_balance_in_price(&self, price: &Price, extra_decimals: u8) -> Balance {
+        let denominator_decimals = price.decimals + extra_decimals;
+        let num = if denominator_decimals > NUM_DECIMALS {
+            self.0 * U384::exp10((denominator_decimals - NUM_DECIMALS) as usize)
+        } else {
+            self.0 / U384::exp10((NUM_DECIMALS - denominator_decimals) as usize)
+        };
+        let b = num / U384::from(price.multiplier);
+        u128::try_from(b).unwrap()
     }
 
     pub fn round_u128(&self) -> u128 {

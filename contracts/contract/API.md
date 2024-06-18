@@ -90,6 +90,16 @@ trait Contract {
     #[payable]
     pub fn execute_with_pyth(&mut self, actions: Vec<Action>);
 
+    /// Executes a given list margin actions on behalf of the predecessor account.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    pub fn margin_execute(&mut self, actions: Vec<MarginAction>);
+
+    /// Executes a given list margin actions on behalf of the predecessor account with pyth oracle price.
+    /// - Requires one yoctoNEAR.
+    #[payable]
+    pub fn margin_execute_with_pyth(&mut self, actions: Vec<MarginAction>);
+
     /// Returns a detailed view asset for a given token_id.
     /// The detailed view includes current APR and corresponding farms.
     fn get_asset(&self, token_id: ValidAccountId) -> Option<AssetDetailedView>;
@@ -643,11 +653,64 @@ pub enum Action {
     },
 }
 
+pub enum MarginAction {
+    Withdraw {
+        token_id: AccountId,
+        amount: Option<U128>,
+    },
+    IncreaseCollateral {
+        pos_id: PosId,
+        amount: U128,
+    },
+    DecreaseCollateral {
+        pos_id: PosId,
+        amount: U128,
+    },
+    OpenPosition {
+        token_c_id: AccountId,
+        token_c_amount: U128,
+        token_d_id: AccountId,
+        token_d_amount: U128,
+        token_p_id: AccountId,
+        min_token_p_amount: U128,
+        swap_indication: SwapIndication,
+    },
+    DecreaseMTPosition {
+        pos_id: PosId,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
+        swap_indication: SwapIndication,
+    },
+    CloseMTPosition {
+        pos_id: PosId,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
+        swap_indication: SwapIndication,
+    },
+    LiquidateMTPosition {
+        pos_owner_id: AccountId,
+        pos_id: PosId,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
+        swap_indication: SwapIndication,
+    },
+    ForceCloseMTPosition {
+        pos_owner_id: AccountId,
+        pos_id: PosId,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
+        swap_indication: SwapIndication,
+    },
+}
+
 pub enum TokenReceiverMsg {
     Execute { actions: Vec<Action> },
     ExecuteWithPyth { actions: Vec<Action> },
-    /// The entire amount will be deposited to the asset reserve. 
     DepositToReserve,
+    DepositToMargin,
+    MarginExecute { actions: Vec<MarginAction> },
+    MarginExecuteWithPyth { actions: Vec<MarginAction> },
+    SwapReference { swap_ref: SwapReference },
 }
 
 enum PriceReceiverMsg {

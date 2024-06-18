@@ -66,11 +66,14 @@ pub struct Config {
     /// The factor that suppresses the effect of boost.
     /// E.g. 1000 means that in the calculation, the actual boost amount will be divided by 1000.
     pub boost_suppress_factor: u128,
+    /// The account ID of the dcl contract
+    pub dcl_id: Option<AccountId>,
 }
 
 impl Config {
     pub fn assert_valid(&self) {
         assert!(self.max_num_assets <= MAX_NUM_ASSETS, "Invalid max_num_assets");
+        assert!(self.dcl_id.is_some(), "Missing dcl id");
         assert!(
             self.minimum_staking_duration_sec < self.maximum_staking_duration_sec,
             "The maximum staking duration must be greater than minimum staking duration"
@@ -258,7 +261,19 @@ impl Contract {
         self.config.set(&config);
     }
 
-    /// Updates the capacity for the asset with the a given token_id.
+    /// Update dcl contract id
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn update_dcl_id(&mut self, dcl_id: AccountId) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut config = self.internal_config();
+        config.dcl_id = Some(dcl_id);
+        self.config.set(&config);
+    }
+
+    /// Enable the capacity for the asset with the a given token_id.
     /// - Panics if the capacity is invalid.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.

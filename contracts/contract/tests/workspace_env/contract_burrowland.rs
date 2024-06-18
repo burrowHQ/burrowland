@@ -805,14 +805,24 @@ impl Burrowland {
             .json::<ConfigV1>()
     }
 
-    pub async fn get_config_v0100(
+    pub async fn get_config_v2(
         &self,
-    ) -> Result<ConfigV0100> {
+    ) -> Result<ConfigV2> {
         self.0
             .call("get_config")
             .view()
             .await?
-            .json::<ConfigV0100>()
+            .json::<ConfigV2>()
+    }
+
+    pub async fn get_config_v3(
+        &self,
+    ) -> Result<ConfigV3> {
+        self.0
+            .call("get_config")
+            .view()
+            .await?
+            .json::<ConfigV3>()
     }
 
     pub async fn get_version(
@@ -865,6 +875,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000008319516250272147),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 2000,
                 extra_decimals: 0,
                 can_deposit: true,
@@ -882,6 +893,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 5000,
                 extra_decimals: 0,
                 can_deposit: true,
@@ -899,6 +911,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 7000,
                 extra_decimals: 0,
                 can_deposit: true,
@@ -916,6 +929,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 7000,
                 extra_decimals: 0,
                 can_deposit: true,
@@ -933,6 +947,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 6000,
                 extra_decimals: 0,
                 can_deposit: true,
@@ -950,6 +965,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000001547125956667610),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 6000,
                 extra_decimals: 0,
                 can_deposit: true,
@@ -967,6 +983,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000002440418605283556),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 9500,
                 extra_decimals: 0,
                 can_deposit: true,
@@ -984,6 +1001,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000002440418605283556),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 9500,
                 extra_decimals: 12,
                 can_deposit: true,
@@ -1001,6 +1019,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000002440418605283556),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 9500,
                 extra_decimals: 12,
                 can_deposit: true,
@@ -1032,6 +1051,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 5000,
                 extra_decimals: 0,
                 can_deposit: true,
@@ -1049,6 +1069,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 7000,
                 extra_decimals: 0,
                 can_deposit: true,
@@ -1066,6 +1087,7 @@ impl Burrowland {
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
                 volatility_ratio: 7000,
                 extra_decimals: 0,
                 can_deposit: true,
@@ -1083,4 +1105,366 @@ impl Burrowland {
         };
         self.add_asset(root, token_id, asset_config).await
     }
+}
+
+// margin trading
+impl Burrowland {
+    pub async fn deposit_to_margin(
+        &self,
+        token_contract: &FtContract,
+        caller: &Account,
+        amount: u128,
+    ) -> Result<ExecutionFinalResult> {
+        token_contract.ft_transfer_call(caller, self.0.id(), amount, "\"DepositToMargin\"".to_string()).await
+    }
+
+    pub async fn register_margin_token(&self, 
+        caller: &Account,
+        token_id: &AccountId, 
+        token_party: u8
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "register_margin_token")
+            .args_json(json!({
+                "token_id": token_id, 
+                "token_party": token_party
+            }))
+            .deposit(1)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn register_margin_dex(
+        &self, 
+        caller: &Account,
+        dex_id: &AccountId, 
+        dex_version: u8
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "register_margin_dex")
+            .args_json(json!({
+                "dex_id": dex_id, 
+                "dex_version": dex_version
+            }))
+            .deposit(1)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn margin_execute_with_pyth(
+        &self,
+        caller: &Account,
+        actions: Vec<MarginAction>,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "margin_execute_with_pyth")
+            .args_json(json!({
+                "actions": actions,
+            }))
+            .max_gas()
+            .deposit(1)
+            .transact()
+            .await
+    }
+
+    pub async fn margin_trading_open_position_by_oracle_call(
+        &self,
+        oracle: &Oralce,
+        price_data: PriceData,
+        caller: &Account,
+        token_c_id: &AccountId,
+        token_c_amount: U128,
+        token_d_id: &AccountId,
+        token_d_amount: U128,
+        token_p_id: &AccountId,
+        min_token_p_amount: U128,
+        swap_indication: SwapIndication,
+    ) -> Result<ExecutionFinalResult> {
+        oracle.oracle_call(caller, self.0.id(), price_data, PriceReceiverMsg::MarginExecute {
+            actions: vec![
+                MarginAction::OpenPosition { 
+                    token_c_id: near_sdk::AccountId::new_unchecked(token_c_id.to_string()), 
+                    token_c_amount, 
+                    token_d_id: near_sdk::AccountId::new_unchecked(token_d_id.to_string()), 
+                    token_d_amount, 
+                    token_p_id: near_sdk::AccountId::new_unchecked(token_p_id.to_string()), 
+                    min_token_p_amount, 
+                    swap_indication 
+                }
+            ],
+        }).await
+    }
+
+    pub async fn margin_trading_open_position_by_pyth(
+        &self,
+        caller: &Account,
+        token_c_id: &AccountId,
+        token_c_amount: U128,
+        token_d_id: &AccountId,
+        token_d_amount: U128,
+        token_p_id: &AccountId,
+        min_token_p_amount: U128,
+        swap_indication: SwapIndication,
+    ) -> Result<ExecutionFinalResult> {
+        self.margin_execute_with_pyth(caller, vec![
+            MarginAction::OpenPosition { 
+                token_c_id: near_sdk::AccountId::new_unchecked(token_c_id.to_string()), 
+                token_c_amount, 
+                token_d_id: near_sdk::AccountId::new_unchecked(token_d_id.to_string()), 
+                token_d_amount, 
+                token_p_id: near_sdk::AccountId::new_unchecked(token_p_id.to_string()), 
+                min_token_p_amount, 
+                swap_indication 
+            }
+        ]).await
+    }
+
+    pub async fn margin_trading_decrease_mtposition_by_oracle_call(
+        &self,
+        oracle: &Oralce,
+        price_data: PriceData,
+        caller: &Account,
+        pos_id: &String,
+        token_p_amount: u128,
+        min_token_d_amount: u128,
+        swap_indication: SwapIndication,
+    ) -> Result<ExecutionFinalResult> {
+        oracle.oracle_call(caller, self.0.id(), price_data, PriceReceiverMsg::MarginExecute {
+            actions: vec![
+                MarginAction::DecreaseMTPosition { 
+                    pos_id: pos_id.clone(),
+                    token_p_amount: token_p_amount.into(),
+                    min_token_d_amount: min_token_d_amount.into(),
+                    swap_indication: swap_indication,
+                }
+            ],
+        }).await
+    }
+
+    pub async fn margin_trading_decrease_mtposition_by_pyth(
+        &self,
+        caller: &Account,
+        pos_id: &String,
+        token_p_amount: u128,
+        min_token_d_amount: u128,
+        swap_indication: SwapIndication,
+    ) -> Result<ExecutionFinalResult> {
+        self.margin_execute_with_pyth(caller, vec![
+            MarginAction::DecreaseMTPosition { 
+                pos_id: pos_id.clone(),
+                token_p_amount: token_p_amount.into(),
+                min_token_d_amount: min_token_d_amount.into(),
+                swap_indication: swap_indication,
+            }
+        ]).await
+    }
+
+    pub async fn margin_trading_close_mtposition_by_oracle_call(
+        &self,
+        oracle: &Oralce,
+        price_data: PriceData,
+        caller: &Account,
+        pos_id: &String,
+        token_p_amount: u128,
+        min_token_d_amount: u128,
+        swap_indication: SwapIndication,
+    ) -> Result<ExecutionFinalResult> {
+        oracle.oracle_call(caller, self.0.id(), price_data, PriceReceiverMsg::MarginExecute {
+            actions: vec![
+                MarginAction::CloseMTPosition { 
+                    pos_id: pos_id.clone(),
+                    token_p_amount: token_p_amount.into(),
+                    min_token_d_amount: min_token_d_amount.into(),
+                    swap_indication: swap_indication,
+                }
+            ],
+        }).await
+    }
+
+    pub async fn margin_trading_withdraw(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        amount: Option<U128>,
+    ) -> Result<ExecutionFinalResult> {
+        self.margin_execute_with_pyth(caller, vec![
+            MarginAction::Withdraw { 
+                token_id: near_sdk::AccountId::new_unchecked(token_id.to_string()),
+                amount: amount,
+            }
+        ]).await
+    }
+
+    pub async fn margin_trading_close_mtposition_by_pyth(
+        &self,
+        caller: &Account,
+        pos_id: &String,
+        token_p_amount: u128,
+        min_token_d_amount: u128,
+        swap_indication: SwapIndication,
+    ) -> Result<ExecutionFinalResult> {
+        self.margin_execute_with_pyth(caller,  vec![
+            MarginAction::CloseMTPosition {
+                pos_id: pos_id.clone(),
+                token_p_amount: token_p_amount.into(),
+                min_token_d_amount: min_token_d_amount.into(),
+                swap_indication: swap_indication,
+            }
+        ]).await
+    }
+
+    pub async fn margin_trading_liquidate_mtposition_by_oracle_call(
+        &self,
+        oracle: &Oralce,
+        price_data: PriceData,
+        caller: &Account,
+        pos_owner_id: &AccountId,
+        pos_id: &String,
+        token_p_amount: u128,
+        min_token_d_amount: u128,
+        swap_indication: SwapIndication,
+    ) -> Result<ExecutionFinalResult> {
+        oracle.oracle_call(caller, self.0.id(), price_data, PriceReceiverMsg::MarginExecute {
+            actions: vec![
+                MarginAction::LiquidateMTPosition { 
+                    pos_owner_id: near_sdk::AccountId::new_unchecked(pos_owner_id.to_string()),
+                    pos_id: pos_id.clone(),
+                    token_p_amount: token_p_amount.into(),
+                    min_token_d_amount: min_token_d_amount.into(),
+                    swap_indication: swap_indication,
+                }
+            ],
+        }).await
+    }
+
+    pub async fn margin_trading_liquidate_mtposition_by_pyth(
+        &self,
+        caller: &Account,
+        pos_owner_id: &AccountId,
+        pos_id: &String,
+        token_p_amount: u128,
+        min_token_d_amount: u128,
+        swap_indication: SwapIndication,
+    ) -> Result<ExecutionFinalResult> {
+        self.margin_execute_with_pyth(caller, vec![
+            MarginAction::LiquidateMTPosition {
+                pos_owner_id: near_sdk::AccountId::new_unchecked(pos_owner_id.to_string()),
+                pos_id: pos_id.clone(),
+                token_p_amount: token_p_amount.into(),
+                min_token_d_amount: min_token_d_amount.into(),
+                swap_indication: swap_indication,
+            }
+        ]).await
+    }
+
+    pub async fn margin_trading_force_close_mtposition_by_oracle_call(
+        &self,
+        oracle: &Oralce,
+        price_data: PriceData,
+        caller: &Account,
+        pos_owner_id: &AccountId,
+        pos_id: &String,
+        token_p_amount: u128,
+        min_token_d_amount: u128,
+        swap_indication: SwapIndication,
+    ) -> Result<ExecutionFinalResult> {
+        oracle.oracle_call(caller, self.0.id(), price_data, PriceReceiverMsg::MarginExecute {
+            actions: vec![
+                MarginAction::ForceCloseMTPosition { 
+                    pos_owner_id: near_sdk::AccountId::new_unchecked(pos_owner_id.to_string()),
+                    pos_id: pos_id.clone(),
+                    token_p_amount: token_p_amount.into(),
+                    min_token_d_amount: min_token_d_amount.into(),
+                    swap_indication: swap_indication,
+                }
+            ],
+        }).await
+    }
+
+    pub async fn margin_trading_force_close_mtposition_by_pyth(
+        &self,
+        caller: &Account,
+        pos_owner_id: &AccountId,
+        pos_id: &String,
+        token_p_amount: u128,
+        min_token_d_amount: u128,
+        swap_indication: SwapIndication,
+    ) -> Result<ExecutionFinalResult> {
+        self.margin_execute_with_pyth(caller, vec![
+            MarginAction::ForceCloseMTPosition { 
+                pos_owner_id: near_sdk::AccountId::new_unchecked(pos_owner_id.to_string()),
+                pos_id: pos_id.clone(),
+                token_p_amount: token_p_amount.into(),
+                min_token_d_amount: min_token_d_amount.into(),
+                swap_indication: swap_indication,
+            }
+        ]).await
+    }
+
+    pub async fn margin_trading_increase_collateral_by_ft_transfer_call(
+        &self,
+        token_contract: &FtContract,
+        caller: &Account,
+        ft_amount: u128,
+        pos_id: &String,
+        amount: u128,
+    ) -> Result<ExecutionFinalResult> {
+        token_contract.ft_transfer_call(caller, self.0.id(), ft_amount, serde_json::to_string(&TokenReceiverMsg::MarginExecute {
+            actions: vec![
+                MarginAction::IncreaseCollateral { pos_id: pos_id.clone(), amount: amount.into() }
+            ]
+        }).unwrap()).await
+    }
+
+    pub async fn margin_trading_decrease_collateral_by_oracle_call(
+        &self,
+        oracle: &Oralce,
+        price_data: PriceData,
+        caller: &Account,
+        pos_id: &String,
+        amount: u128,
+    ) -> Result<ExecutionFinalResult> {
+        oracle.oracle_call(caller, self.0.id(), price_data, PriceReceiverMsg::MarginExecute {
+            actions: vec![
+                MarginAction::DecreaseCollateral { 
+                    pos_id: pos_id.clone(), amount: amount.into()
+                }
+            ],
+        }).await
+    }
+
+    pub async fn margin_trading_decrease_collateral_by_pyth(
+        &self,
+        caller: &Account,
+        pos_id: &String,
+        amount: u128,
+    ) -> Result<ExecutionFinalResult> {
+        self.margin_execute_with_pyth(caller, vec![
+            MarginAction::DecreaseCollateral { 
+                pos_id: pos_id.clone(), amount: amount.into()
+            }
+        ]).await
+    }
+
+}
+
+
+
+impl Burrowland {
+    pub async fn get_margin_account(
+        &self,
+        account: &Account
+    ) -> Result<Option<MarginAccountDetailedView>> {
+        self.0
+            .call("get_margin_account")
+            .args_json(json!({
+                "account_id": account.id()
+            }))
+            .view()
+            .await?
+            .json::<Option<MarginAccountDetailedView>>()
+    }
+
 }

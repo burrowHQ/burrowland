@@ -10,7 +10,7 @@ use near_sdk::{
     AccountId, Balance, PromiseResult, StorageUsage,
 };
 use crate::legacy::{AccountV1, AccountV2};
-use crate::utils::{GAS_FOR_FT_TRANSFER, GAS_FOR_RESOLVE_TRANSFER, ext_fungible_token};
+use crate::utils::{GAS_FOR_FT_TRANSFER, GAS_FOR_RESOLVE_TRANSFER, GAS_FOR_FT_TRANSFER_CALL, ext_fungible_token};
 use crate::*;
 
 // [AUDIT_01]
@@ -539,6 +539,33 @@ impl Contract {
             sender_id.clone(),
             U128(amount),
             None,
+        )
+        .then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
+                .exchange_callback_post_withdraw(
+                    token_id.clone(),
+                    sender_id.clone(),
+                    U128(amount),
+                )
+        )
+    }
+
+    pub(crate) fn internal_send_token_with_msg(
+        &self,
+        sender_id: &AccountId,
+        token_id: &AccountId,
+        amount: Balance,
+        msg: String
+    ) -> Promise {
+        ext_fungible_token::ext(token_id.clone())
+        .with_attached_deposit(1)
+        .with_static_gas(GAS_FOR_FT_TRANSFER_CALL)
+        .ft_transfer_call(
+            sender_id.clone(),
+            U128(amount),
+            None,
+            msg
         )
         .then(
             Self::ext(env::current_account_id())

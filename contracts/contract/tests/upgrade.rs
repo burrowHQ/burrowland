@@ -2,8 +2,8 @@ mod workspace_env;
 
 use crate::workspace_env::*;
 
-const PREVIOUS_VERSION: &'static str = "0.10.0";
-const LATEST_VERSION: &'static str = "0.12.0";
+const PREVIOUS_VERSION: &'static str = "0.12.0";
+const LATEST_VERSION: &'static str = "0.13.0";
 
 #[tokio::test]
 async fn test_upgrade() -> Result<()> {
@@ -18,7 +18,7 @@ async fn test_upgrade() -> Result<()> {
     check!(root.call(previous_burrowland_contract.0.id(), "add_asset")
         .args_json(json!({
             "token_id": token_id,
-            "asset_config": AssetConfigV2 {
+            "asset_config": AssetConfigV3 {
                 reserve_ratio: 2500,
                 prot_ratio: 0,
                 target_utilization: 8000,
@@ -31,11 +31,15 @@ async fn test_upgrade() -> Result<()> {
                 can_use_as_collateral: true,
                 can_borrow: true,
                 net_tvl_multiplier: 2500,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
             },
         }))
         .max_gas()
         .deposit(1)
         .transact());
+    check!(view previous_burrowland_contract.get_config_v3());
 
     check!(print root
         .call(previous_burrowland_contract.0.id(), "upgrade")

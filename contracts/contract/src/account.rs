@@ -24,7 +24,7 @@ pub struct Account {
 
     /// Staking of booster token.
     pub booster_staking: Option<BoosterStaking>,
-    pub is_locked: bool
+    pub is_locked: bool,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -62,7 +62,7 @@ impl Account {
             affected_farms: HashSet::new(),
             storage_tracker: Default::default(),
             booster_staking: None,
-            is_locked: false
+            is_locked: false,
         }
     }
 

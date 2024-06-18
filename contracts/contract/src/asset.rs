@@ -15,6 +15,14 @@ pub struct Asset {
     pub supplied: Pool,
     /// Total borrowed.
     pub borrowed: Pool,
+    /// Total margin debt.
+    pub margin_debt: Pool,
+    /// borrowed by margin position and currently in trading process
+    #[serde(with = "u128_dec_format")]
+    pub margin_pending_debt: Balance,
+    /// total position in margin
+    #[serde(with = "u128_dec_format")]
+    pub margin_position: Balance,
     /// The amount reserved for the stability. This amount can also be borrowed and affects
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
@@ -23,6 +31,9 @@ pub struct Asset {
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
     pub prot_fee: Balance,
+    /// The accumulated holding margin position interests till self.last_update_timestamp.
+    #[serde(with = "u128_dec_format")]
+    pub unit_acc_hp_interest: Balance,
     /// When the asset was last updated. It's always going to be the current block timestamp.
     #[serde(with = "u64_dec_format")]
     pub last_update_timestamp: Timestamp,
@@ -35,6 +46,7 @@ pub enum VAsset {
     V0(AssetV0),
     V1(AssetV1),
     V2(AssetV2),
+    V3(AssetV3),
     Current(Asset),
 }
 
@@ -44,6 +56,7 @@ impl From<VAsset> for Asset {
             VAsset::V0(v) => v.into(),
             VAsset::V1(v) => v.into(),
             VAsset::V2(v) => v.into(),
+            VAsset::V3(v) => v.into(),
             VAsset::Current(c) => c,
         }
     }
@@ -60,16 +73,31 @@ impl Asset {
         Self {
             supplied: Pool::new(),
             borrowed: Pool::new(),
+            margin_debt: Pool::new(),
+            margin_pending_debt: 0,
+            margin_position: 0,
             reserved: 0,
             prot_fee: 0,
+            unit_acc_hp_interest: 0,
             last_update_timestamp: timestamp,
             config,
         }
     }
 
     pub fn get_rate(&self) -> BigDecimal {
-        self.config
-            .get_rate(self.borrowed.balance, self.supplied.balance + self.reserved + self.prot_fee)
+        self.config.get_rate(
+            self.borrowed.balance + self.margin_debt.balance + self.margin_pending_debt,
+            self.supplied.balance + self.reserved + self.prot_fee,
+        )
+    }
+
+    pub fn get_margin_debt_rate(&self, margin_debt_discount_rate: u32) -> BigDecimal {
+        (self.get_rate() - BigDecimal::one()) * BigDecimal::from_ratio(margin_debt_discount_rate) + BigDecimal::one()
+    }
+
+    pub fn get_margin_debt_apr(&self, margin_debt_discount_rate: u32) -> BigDecimal {
+        let rate = self.get_margin_debt_rate(margin_debt_discount_rate);
+        rate.pow(MS_PER_YEAR) - BigDecimal::one()
     }
 
     pub fn get_borrow_apr(&self) -> BigDecimal {
@@ -77,19 +105,24 @@ impl Asset {
         rate.pow(MS_PER_YEAR) - BigDecimal::one()
     }
 
-    pub fn get_supply_apr(&self) -> BigDecimal {
-        if self.supplied.balance == 0 || self.borrowed.balance == 0 {
+    pub fn get_supply_apr(&self, margin_debt_discount_rate: u32) -> BigDecimal {
+        if self.supplied.balance == 0 || (self.borrowed.balance == 0 && self.margin_debt.balance == 0) {
             return BigDecimal::zero();
         }
 
         let borrow_apr = self.get_borrow_apr();
-        if borrow_apr == BigDecimal::zero() {
-            return borrow_apr;
+        let margin_debt_apr = self.get_margin_debt_apr(margin_debt_discount_rate);
+        if borrow_apr == BigDecimal::zero() && margin_debt_apr == BigDecimal::zero() {
+            return BigDecimal::zero();
         }
 
-        let interest = borrow_apr.round_mul_u128(self.borrowed.balance);
-        let supply_interest = ratio(interest, MAX_RATIO - self.config.reserve_ratio);
-        BigDecimal::from(supply_interest).div_u128(self.supplied.balance)
+        let borrow_interest = borrow_apr.round_mul_u128(self.borrowed.balance);
+        let supply_interest_borrow_part = ratio(borrow_interest, MAX_RATIO - self.config.reserve_ratio);
+        
+        let margin_debt_interest = margin_debt_apr.round_mul_u128(self.margin_debt.balance);
+        let supply_interest_margin_debt_part = ratio(margin_debt_interest, MAX_RATIO - self.config.reserve_ratio);
+        
+        BigDecimal::from(supply_interest_borrow_part + supply_interest_margin_debt_part).div_u128(self.supplied.balance)
     }
 
     // n = 31536000000 ms in a year (365 days)
@@ -103,7 +136,8 @@ impl Asset {
     // r / n = (x ** (1 / n)) - 1
     // r = n * ((x ** (1 / n)) - 1)
     // n = in millis
-    fn compound(&mut self, time_diff_ms: Duration) {
+    fn compound(&mut self, time_diff_ms: Duration, margin_debt_discount_rate: u32) {
+        // handle common borrowed
         let rate = self.get_rate();
         let interest =
             rate.pow(time_diff_ms).round_mul_u128(self.borrowed.balance) - self.borrowed.balance;
@@ -111,7 +145,7 @@ impl Asset {
         let reserved = ratio(interest, self.config.reserve_ratio);
         if self.supplied.shares.0 > 0 {
             self.supplied.balance += interest - reserved;
-            
+
             let prot_fee = ratio(reserved, self.config.prot_ratio);
             self.reserved += reserved - prot_fee;
             self.prot_fee += prot_fee;
@@ -121,20 +155,57 @@ impl Asset {
             self.prot_fee += prot_fee;
         }
         self.borrowed.balance += interest;
+
+        // handle margin debt
+        let margin_debt_rate = self.get_margin_debt_rate(margin_debt_discount_rate);
+        let interest = margin_debt_rate
+            .pow(time_diff_ms)
+            .round_mul_u128(self.margin_debt.balance)
+            - self.margin_debt.balance;
+        let reserved = ratio(interest, self.config.reserve_ratio);
+        if self.supplied.shares.0 > 0 {
+            self.supplied.balance += interest - reserved;
+
+            let prot_fee = ratio(reserved, self.config.prot_ratio);
+            self.reserved += reserved - prot_fee;
+            self.prot_fee += prot_fee;
+        } else {
+            let prot_fee = ratio(interest, self.config.prot_ratio);
+            self.reserved += interest - prot_fee;
+            self.prot_fee += prot_fee;
+        }
+        self.margin_debt.balance += interest;
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, margin_debt_discount_rate: u32) {
         let timestamp = env::block_timestamp();
         let time_diff_ms = nano_to_ms(timestamp - self.last_update_timestamp);
         if time_diff_ms > 0 {
             // update
             self.last_update_timestamp += ms_to_nano(time_diff_ms);
-            self.compound(time_diff_ms);
+            self.compound(time_diff_ms, margin_debt_discount_rate);
+            // update unit accumulated holding position interest
+            let hp_rate = BigDecimal::from(self.config.holding_position_fee_rate);
+            self.unit_acc_hp_interest += hp_rate.pow(time_diff_ms).round_mul_u128(UNIT) - UNIT;
         }
     }
 
     pub fn available_amount(&self) -> Balance {
-        self.supplied.balance + self.reserved + self.prot_fee - self.borrowed.balance
+        // old version: self.supplied.balance + self.reserved + self.prot_fee - self.borrowed.balance
+        // margin_position can NOT be used for lending, we must ensure a postition can be decreased at any time.
+        self.supplied.balance + self.reserved + self.prot_fee
+            - self.borrowed.balance
+            - self.margin_debt.balance
+            - self.margin_pending_debt
+    }
+
+    pub fn increase_margin_pending_debt(&mut self, amount: Balance, pending_debt_scale: u32) {
+        self.margin_pending_debt += amount;
+        assert!(
+            u128_ratio(self.available_amount(), pending_debt_scale as u128, MAX_RATIO as u128)
+                > self.margin_pending_debt,
+            "Pending debt will overflow"
+        );
     }
 }
 
@@ -148,7 +219,7 @@ impl Contract {
         cache.get(token_id).cloned().unwrap_or_else(|| {
             let asset = self.assets.get(token_id).map(|o| {
                 let mut asset: Asset = o.into();
-                asset.update();
+                asset.update(self.internal_margin_config().margin_debt_discount_rate);
                 asset
             });
             cache.insert(token_id.clone(), asset.clone());
@@ -184,7 +255,7 @@ impl Contract {
         self.assets.insert(token_id, &asset.into());
     }
 
-    pub fn internal_set_asset_without_check_min_reserve_shares(&mut self, token_id: &TokenId, mut asset: Asset) {
+    pub fn internal_set_asset_without_asset_basic_check(&mut self, token_id: &TokenId, mut asset: Asset) {
         if asset.supplied.shares.0 == 0 && asset.supplied.balance > 0 {
             asset.reserved += asset.supplied.balance;
             asset.supplied.balance = 0;
@@ -236,7 +307,7 @@ impl Contract {
             .map(|index| {
                 let key = keys.get(index).unwrap();
                 let mut asset: Asset = self.assets.get(&key).unwrap().into();
-                asset.update();
+                asset.update(self.internal_margin_config().margin_debt_discount_rate);
                 (key, asset)
             })
             .collect()
@@ -254,7 +325,7 @@ impl Contract {
             .map(|index| {
                 let token_id = keys.get(index).unwrap();
                 let mut asset: Asset = self.assets.get(&token_id).unwrap().into();
-                asset.update();
+                asset.update(self.internal_margin_config().margin_debt_discount_rate);
                 self.asset_into_detailed_view(token_id, asset)
             })
             .collect()
@@ -262,7 +333,7 @@ impl Contract {
 }
 
 #[cfg(test)]
-pub fn clean_assets_cache(){
+pub fn clean_assets_cache() {
     let mut cache = ASSETS.lock().unwrap();
     cache.clear();
 }

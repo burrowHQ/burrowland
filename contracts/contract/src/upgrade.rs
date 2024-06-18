@@ -7,7 +7,7 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     pub fn migrate_state() -> Self {
-        let ContractV0100 { 
+        let ContractV0120 { 
             accounts, 
             storage, 
             assets, 
@@ -18,21 +18,36 @@ impl Contract {
             last_prices,
             last_lp_token_infos,
             token_pyth_info,
+            blacklist_of_farmers,
+            last_staking_token_prices,
         } = env::state_read().unwrap();
-        let config_v0100 = config.get().unwrap();
+        let config_v3 = config.get().unwrap();
         Self { 
             accounts, 
             storage, 
             assets, 
             asset_farms, 
             asset_ids, 
-            config: LazyOption::new(StorageKey::Config, Some(&config_v0100.into())),
+            config: LazyOption::new(StorageKey::Config, Some(&config_v3.into())),
             guardians,
-            last_prices, 
+            last_prices,
             last_lp_token_infos,
             token_pyth_info,
-            blacklist_of_farmers: UnorderedSet::new(StorageKey::BlacklistOfFarmers),
-            last_staking_token_prices: HashMap::new(),
+            blacklist_of_farmers,
+            last_staking_token_prices,
+            margin_accounts: UnorderedMap::new(StorageKey::MarginAccounts),
+            margin_config: LazyOption::new(StorageKey::MarginConfig, Some(&MarginConfig {
+                max_leverage_rate: 10_u8,
+                pending_debt_scale: 1000_u32,
+                max_slippage_rate: 1000_u32,
+                min_safety_buffer: 1000_u32,
+                margin_debt_discount_rate: 5000_u32,
+                open_position_fee_rate: 0_u32,
+                registered_dexes: HashMap::new(),
+                registered_tokens: HashMap::new(),
+                max_active_user_margin_position: 64,
+            })),
+            accumulated_margin_position_num: 0,
         }
     }
 

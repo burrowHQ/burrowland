@@ -285,12 +285,12 @@ impl Contract {
         }
     }
 
-    fn get_asset_view(&self, token_id: TokenId, shares: Shares, is_borrowing: bool) -> AssetView {
+    pub fn get_asset_view(&self, token_id: TokenId, shares: Shares, is_borrowing: bool) -> AssetView {
         let asset = self.internal_unwrap_asset(&token_id);
         let apr = if is_borrowing {
             asset.get_borrow_apr()
         } else {
-            asset.get_supply_apr()
+            asset.get_supply_apr(self.internal_margin_config().margin_debt_discount_rate)
         };
         let balance = if is_borrowing {
             asset.borrowed.shares_to_amount(shares, true)
