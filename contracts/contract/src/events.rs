@@ -153,6 +153,8 @@ pub mod emit {
         liquidation_account_id: &AccountId,
         collateral_sum: &BigDecimal,
         repaid_sum: &BigDecimal,
+        old_discount: &BigDecimal,
+        new_discount: &BigDecimal,
         position: &String
     ) {
         log_event(
@@ -162,6 +164,8 @@ pub mod emit {
                 "liquidation_account_id": liquidation_account_id,
                 "collateral_sum": collateral_sum,
                 "repaid_sum": repaid_sum,
+                "old_discount": old_discount,
+                "new_discount": new_discount,
                 "position": position,
             }),
         );
@@ -171,6 +175,7 @@ pub mod emit {
         liquidation_account_id: &AccountId,
         collateral_sum: &BigDecimal,
         repaid_sum: &BigDecimal,
+        old_discount: &BigDecimal,
         position: &String
     ) {
         log_event(
@@ -179,6 +184,7 @@ pub mod emit {
                 "liquidation_account_id": liquidation_account_id,
                 "collateral_sum": collateral_sum,
                 "repaid_sum": repaid_sum,
+                "old_discount": old_discount,
                 "position": position,
             }),
         );
