@@ -175,6 +175,8 @@ pub mod emit {
         liquidation_account_id: &AccountId,
         collateral_sum: &BigDecimal,
         repaid_sum: &BigDecimal,
+        collateral_assets: HashMap<AccountId, U128>,
+        repaid_assets: HashMap<AccountId, U128>,
         old_discount: &BigDecimal,
         position: &String
     ) {
@@ -184,6 +186,8 @@ pub mod emit {
                 "liquidation_account_id": liquidation_account_id,
                 "collateral_sum": collateral_sum,
                 "repaid_sum": repaid_sum,
+                "collateral_assets": collateral_assets,
+                "repaid_assets": repaid_assets,
                 "old_discount": old_discount,
                 "position": position,
             }),
