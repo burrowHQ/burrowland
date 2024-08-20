@@ -529,6 +529,8 @@ impl Contract {
             &liquidation_account_id,
             &collateral_taken_sum,
             &borrowed_repaid_sum,
+            &max_discount,
+            &new_max_discount,
             &position
         );
     }
@@ -542,9 +544,12 @@ impl Contract {
         );
 
         let mut liquidation_account = self.internal_unwrap_account(liquidation_account_id);
+        let discount = self.compute_max_discount(&position, &liquidation_account, &prices);
 
         let mut borrowed_sum = BigDecimal::zero();
         let mut collateral_sum = BigDecimal::zero();
+        let mut collateral_assets = HashMap::new();
+        let mut borrowed_assets = HashMap::new();
 
         let mut affected_farms = vec![];
 
@@ -555,6 +560,7 @@ impl Contract {
                 asset.reserved += amount;
                 asset.supplied.withdraw(shares, amount);
     
+                collateral_assets.insert(token_id.clone(), amount.into());
                 collateral_sum = collateral_sum
                     + BigDecimal::from_balance_price(
                         amount,
@@ -577,6 +583,7 @@ impl Contract {
                 asset.reserved -= amount;
                 asset.borrowed.withdraw(shares, amount);
     
+                borrowed_assets.insert(token_id.clone(), amount.into());
                 borrowed_sum = borrowed_sum
                     + BigDecimal::from_balance_price(
                         amount,
@@ -599,7 +606,7 @@ impl Contract {
             self.internal_account_apply_affected_farms(&mut liquidation_account);
             self.internal_set_account(liquidation_account_id, liquidation_account);
     
-            events::emit::force_close(&liquidation_account_id, &collateral_sum, &borrowed_sum, &position);
+            events::emit::force_close(&liquidation_account_id, &collateral_sum, &borrowed_sum, collateral_assets, borrowed_assets, &discount, &position);
         } else {
             env::panic_str("Internal error");
         }

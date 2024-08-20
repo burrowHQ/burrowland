@@ -265,7 +265,9 @@ impl Contract {
                         in_assets,
                         out_assets,
                         collateral_taken_sum,
-                        borrowed_repaid_sum
+                        borrowed_repaid_sum,
+                        max_discount,
+                        new_max_discount
                     )
             );
 
@@ -280,12 +282,16 @@ impl Contract {
         );
 
         let mut borrowed_sum = BigDecimal::zero();
+        let mut collateral_assets = HashMap::new();
+        let mut borrowed_assets = HashMap::new();
 
         let liquidation_account = self.internal_get_account(liquidation_account_id, true).expect("Account is not registered");
+        let discount = self.compute_max_discount(&position, &liquidation_account, &prices);
         if let Position::LPTokenPosition(position_info) = liquidation_account.positions.get(position).expect("Position not found") {
             let collateral_asset = self.internal_unwrap_asset(&AccountId::new_unchecked(position_info.lpt_id.clone()));
             let collateral_shares = position_info.collateral;
             let collateral_balance = collateral_asset.supplied.shares_to_amount(collateral_shares, false);
+            collateral_assets.insert(AccountId::new_unchecked(position_info.lpt_id.clone()), collateral_balance.into());
 
             let unit_share_tokens = self.last_lp_token_infos.get(position).expect("lp_token_infos not found");
             assert!(env::block_timestamp() - unit_share_tokens.timestamp <= to_nano(config.lp_tokens_info_valid_duration_sec), "LP token info timestamp is too stale");
@@ -313,6 +319,7 @@ impl Contract {
                     token_id
                 );
 
+                borrowed_assets.insert(token_id.clone(), amount.into());
                 borrowed_sum = borrowed_sum
                     + BigDecimal::from_balance_price(
                         amount,
@@ -343,7 +350,10 @@ impl Contract {
                             liquidation_account_id.clone(),
                             position.clone(),
                             collateral_sum,
-                            borrowed_sum
+                            borrowed_sum,
+                            collateral_assets,
+                            borrowed_assets,
+                            discount
                         )
                 );
         } else {
@@ -379,6 +389,8 @@ impl Contract {
         out_assets: Vec<AssetAmount>,
         collateral_sum: BigDecimal,
         repaid_sum: BigDecimal,
+        max_discount: BigDecimal,
+        new_max_discount: BigDecimal
     ) {
         let mut account = self.internal_unwrap_account(&sender_id);
         let mut liquidation_account = self.internal_unwrap_account(&liquidation_account_id);
@@ -412,6 +424,8 @@ impl Contract {
                 &liquidation_account_id,
                 &collateral_sum,
                 &repaid_sum,
+                &max_discount,
+                &new_max_discount,
                 &position
             );
         }
@@ -426,6 +440,9 @@ impl Contract {
         position: String, 
         collateral_sum: BigDecimal,
         repaid_sum: BigDecimal,
+        collateral_assets: HashMap<AccountId, U128>,
+        borrowed_assets: HashMap<AccountId, U128>,
+        discount: BigDecimal
     ) {
         let mut liquidation_account = self.internal_unwrap_account(&liquidation_account_id);
         liquidation_account.is_locked = false;
@@ -457,7 +474,7 @@ impl Contract {
                     }));
                 }
                 self.internal_account_apply_affected_farms(&mut liquidation_account);
-                events::emit::force_close(&liquidation_account_id, &collateral_sum, &repaid_sum, &position);
+                events::emit::force_close(&liquidation_account_id, &collateral_sum, &repaid_sum, collateral_assets, borrowed_assets, &discount, &position);
             }
         }
         self.internal_set_account(&liquidation_account_id, liquidation_account);
