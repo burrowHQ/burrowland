@@ -16,8 +16,8 @@ impl RefExchange {
                 "account_id": Some(account.id()),
                 "registration_only": Option::<bool>::None,
             }))
-            .gas(20_000_000_000_000)
-            .deposit(parse_near!("1 N"))
+            .gas(Gas::from_gas(20_000_000_000_000))
+            .deposit(NearToken::from_near(1))
             .transact()
             .await
     }
@@ -38,8 +38,8 @@ impl RefExchange {
                 "amount": amount,
                 "msg": msg,
             }))
-            .gas(300_000_000_000_000)
-            .deposit(1)
+            .max_gas()
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -77,7 +77,7 @@ impl RefExchange {
                 "tokens": tokens,
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -95,7 +95,7 @@ impl RefExchange {
                 "account_id": account_id
             }))
             .max_gas()
-            .deposit(parse_near!("1 N"))
+            .deposit(NearToken::from_near(1))
             .transact()
             .await
     }
@@ -113,7 +113,7 @@ impl RefExchange {
                 "fee": fee,
             }))
             .max_gas()
-            .deposit(parse_near!("0.01 N"))
+            .deposit(NearToken::from_millinear(10))
             .transact()
             .await
     }
@@ -133,7 +133,7 @@ impl RefExchange {
                 "min_amounts": min_amounts,
             }))
             .max_gas()
-            .deposit(parse_near!("0.01 N"))
+            .deposit(NearToken::from_millinear(10))
             .transact()
             .await
     }
@@ -149,7 +149,7 @@ impl RefExchange {
                 "pool_id": pool_id,
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -164,7 +164,7 @@ impl RefExchange {
             .args_json(json!({
                 "record_interval_sec": record_interval_sec,
             }))
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .max_gas()
             .transact()
             .await
@@ -202,7 +202,7 @@ impl RefExchange {
                 "amp_factor": amp_factor,
             }))
             .max_gas()
-            .deposit(parse_near!("0.01 N"))
+            .deposit(NearToken::from_millinear(10))
             .transact()
             .await
     }
@@ -222,7 +222,7 @@ impl RefExchange {
                 "min_shares": min_shares,
             }))
             .max_gas()
-            .deposit(parse_near!("0.01 N"))
+            .deposit(NearToken::from_millinear(10))
             .transact()
             .await
     }
@@ -244,7 +244,7 @@ impl RefExchange {
                 "amount": amount,
                 "msg": msg,
             }))
-            .deposit(deposit)
+            .deposit(NearToken::from_yoctonear(deposit))
             .max_gas()
             .transact()
             .await

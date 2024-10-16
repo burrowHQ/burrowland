@@ -19,6 +19,7 @@ pub struct NearxRate {
     pub contract_id: AccountId,
 }
 
+#[allow(unused)]
 #[ext_contract(ext_nearx)]
 pub trait ExtNearx {
     //https://github.com/stader-labs/near-liquid-token/blob/1420b7ceb2cd28577f9e89481a98280d8d13739c/contracts/near-x/src/contract/public.rs#L427

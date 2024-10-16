@@ -1,13 +1,23 @@
 # Release Notes
 
+Version 0.14.0
+```bash=
+# codehash: EBrshTxTZNWLJSvWQsUAr55oKbpv8wWmAQj7ykYwJafj
+```
+- fix audit recommendation
+
+- add fee events
+
+- replace workspaces with near-workspaces
+
 Version 0.13.0
-```bssh=
+```bash=
 # codehash: DgDSGmJygsCbtWuAbytjgSH99pPTQhDzRkcxrqTnj4xa 
 ```
 - margin trading
 
 Version 0.12.0
-```bssh=
+```bash=
 # codehash: MozRqmM6agrrtLNdWaW852iuATCnRcL3PgxfYdzmb77 
 ```
 - Improve gas usage for querying pyth oracle. 
@@ -31,19 +41,19 @@ Version 0.12.0
   Those accounts in the farmer blacklist won't get any further reward from farming. This is used for the possible requirement that relative parties won't compete for farm rewards with regular farmers.
 
 Version 0.10.0
-```bssh=
+```bash=
 # codehash: GcntYxNjD6y4XhiJuyd6ar4FQoTY3ZA1wQ3VJfraX4pC 
 ```
 - Support pyth oracle and switch between pyth and priceoracle.
 
 Version 0.9.1
-```bssh=
+```bash=
 # codehash: 8wSzoqHRtNXdV1xTwT6JvD7HYXLqKwqJyskeR9BkCdcv 
 ```
 - fix an old account auto-upgradation issue in liquidation.
 
 Version 0.9.0
-```bssh=
+```bash=
 # codehash: DUBWfFT1h3NNtvngw22SenyDpeUGN5PRLcNxaopMUpNe 
 ```
 - lp as collateral.

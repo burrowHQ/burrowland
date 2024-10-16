@@ -5,7 +5,7 @@ use crate::workspace_env::*;
 /// Bob attemps to liquidate Alice which decreases health factor.
 #[tokio::test]
 async fn test_liquidation_decrease_health_factor() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let nusdc_token_contract = deploy_mock_ft(&root, "nusdc", 18).await?;
@@ -80,7 +80,7 @@ async fn test_liquidation_decrease_health_factor() -> Result<()> {
     vec![asset_amount(wrap_token_contract.0.id(), wnear_amount_in), asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)], None, None).await?;
 
     let logs = outcome.logs();
-    let event = &logs[0];
+    let event = &logs[4];
     assert!(event.starts_with(EVENT_JSON));
 
     let value: serde_json::Value =
@@ -122,7 +122,7 @@ async fn test_liquidation_decrease_health_factor() -> Result<()> {
 /// Force closing the account with bad debt.
 #[tokio::test]
 async fn test_force_close() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let nusdc_token_contract = deploy_mock_ft(&root, "nusdc", 18).await?;
@@ -162,7 +162,7 @@ async fn test_force_close() -> Result<()> {
    let outcome = burrowland_contract.force_close(&bob, &oracle_contract, alice.id(), price_data(current_timestamp, Some(250000)), None, None).await?;
 
     let logs = outcome.logs();
-    let event = &logs[0];
+    let event = &logs[4];
     assert!(event.starts_with(EVENT_JSON));
 
     let value: serde_json::Value =

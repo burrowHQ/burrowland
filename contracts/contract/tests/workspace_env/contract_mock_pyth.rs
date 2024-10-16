@@ -15,7 +15,7 @@ impl PythContract {
                 "price_identifier": price_identifier,
                 "pyth_price": pyth_price,
             }))
-            .gas(20_000_000_000_000)
+            .gas(Gas::from_tgas(20))
             .transact()
             .await
     }

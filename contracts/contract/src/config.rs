@@ -191,7 +191,9 @@ impl Contract {
         let mut asset = self.internal_unwrap_asset(&token_id);
         if asset.config.extra_decimals != asset_config.extra_decimals {
             assert!(
-                asset.borrowed.balance == 0 && asset.supplied.balance == 0 && asset.prot_fee == 0 && asset.reserved == 0,
+                asset.borrowed.balance == 0 && asset.supplied.balance == 0 && 
+                asset.margin_debt.balance == 0 && asset.margin_pending_debt == 0 && asset.margin_position == 0 &&
+                asset.prot_fee == 0 && asset.reserved == 0,
                 "Can't change extra decimals if any of the balances are not 0"
             );
         }
@@ -204,7 +206,7 @@ impl Contract {
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner.
     #[payable]
-    pub fn update_asset_limit(&mut self, token_id: AccountId, supplied_limit: Option<U128>, borrowed_limit: Option<U128>) {
+    pub fn update_asset_limit(&mut self, token_id: AccountId, supplied_limit: Option<U128>, borrowed_limit: Option<U128>, min_borrowed_amount: Option<U128>) {
         assert_one_yocto();
         self.assert_owner();
         let mut asset = self.internal_unwrap_asset(&token_id);
@@ -213,6 +215,9 @@ impl Contract {
         }
         if borrowed_limit.is_some() {
             asset.config.borrowed_limit = borrowed_limit;
+        }
+        if min_borrowed_amount.is_some() {
+            asset.config.min_borrowed_amount = min_borrowed_amount;
         }
         asset.config.assert_valid();
         self.internal_set_asset(&token_id, asset);
@@ -481,6 +486,20 @@ impl Contract {
         self.internal_set_account(&owner_id, account);
 
         events::emit::increase_reserved(&owner_id, increase_amount, &asset_amount.token_id);
+    }
+
+    /// Return the lostfound shares to the margin account.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn return_margin_account_lostfound_supply_shares(&mut self, account_id: AccountId, token_id: AccountId, shares: U128) {
+        assert_one_yocto();
+        self.assert_owner();
+        let asset = self.internal_unwrap_asset(&token_id);
+        assert!(shares.0 <= asset.lostfound_shares, "Invalid shares");
+        let mut margin_account = self.internal_unwrap_margin_account(&account_id);
+        margin_account.deposit_supply_shares(&token_id, &shares);
+        self.internal_set_margin_account(&account_id, margin_account);
     }
 }
 

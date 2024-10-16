@@ -28,7 +28,11 @@ pub struct MarginConfig {
     /// Tokens in the same party, can NOT exist in the same position.
     pub registered_tokens: HashMap<AccountId, u8>, 
     /// Maximum amount of margin position allowed for users to hold.
-    pub max_active_user_margin_position: u8
+    pub max_active_user_margin_position: u8,
+    /// The rate of liquidation benefits allocated to the protocol.
+    pub liq_benefit_protocol_rate: u32,
+    /// The rate of liquidation benefits allocated to the liquidator.
+    pub liq_benefit_liquidator_rate: u32,
 }
 
 impl MarginConfig {
@@ -190,6 +194,17 @@ impl Contract {
         if mc.registered_tokens.remove(&token_id).is_none() {
             env::panic_str("margin token does NOT exist.");
         }
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
+    pub fn update_liquidation_benefits_rates(&mut self, liq_benefit_protocol_rate: u32, liq_benefit_liquidator_rate: u32) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut mc = self.internal_margin_config();
+        assert!(liq_benefit_protocol_rate + liq_benefit_liquidator_rate < MAX_RATIO, "require: liq_benefit_protocol_rate + liq_benefit_liquidator_rate < {}", MAX_RATIO);
+        mc.liq_benefit_protocol_rate = liq_benefit_protocol_rate;
+        mc.liq_benefit_liquidator_rate = liq_benefit_liquidator_rate;
         self.margin_config.set(&mc);
     }
 }

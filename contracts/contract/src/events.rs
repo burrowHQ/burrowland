@@ -432,4 +432,53 @@ pub mod emit {
             data,
         );
     }
+
+    #[derive(Serialize, Clone)]
+    #[serde(crate = "near_sdk::serde")]
+    #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
+    pub struct FeeDetail {
+        // normal or margin
+        pub fee_type: String, 
+        pub token_id: TokenId,
+        #[serde(with = "u128_dec_format")]
+        pub interest: Balance,
+        #[serde(with = "u128_dec_format")]
+        pub reserved: Balance,
+        #[serde(with = "u128_dec_format")]
+        pub prot_fee: Balance,
+    }
+
+    impl FeeDetail {
+        pub fn new(fee_type: String, token_id: TokenId, interest: Balance) -> Self {
+            Self {
+                fee_type,
+                token_id,
+                interest,
+                reserved: 0,
+                prot_fee: 0,
+            }
+        }
+    }
+    
+    pub fn fee_detail(fee_detail: FeeDetail) {
+        log_event(
+            "fee_detail",
+            fee_detail,
+        );
+    }
+
+    #[derive(Serialize)]
+    #[serde(crate = "near_sdk::serde")]
+    pub struct LostfoundSupplyShares {
+        pub account_id: AccountId,
+        pub shares: HashMap<AccountId, U128>
+    }
+
+    pub fn lostfound_supply_shares(lostfound_supply_shares: LostfoundSupplyShares) {
+        log_event(
+            "lostfound_supply_share",
+            lostfound_supply_shares,
+        );
+    }
+
 }

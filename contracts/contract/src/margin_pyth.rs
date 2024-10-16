@@ -29,6 +29,7 @@ impl Contract {
     pub fn internal_margin_execute_with_pyth(&mut self, account_id: &AccountId, account: &mut MarginAccount, actions: Vec<MarginAction>) {
         let margin_involved_tokens = self.margin_involved_tokens(&account, &actions);
         if margin_involved_tokens.len() > 0 {
+            assert!(self.internal_config().enable_pyth_oracle, "Pyth oracle disabled");
             let (promise_token_ids, default_prices) = self.prepare_promise_tokens(&margin_involved_tokens);
             if promise_token_ids.len() > 0 {
                 let (all_promise_flags, promise) = self.generate_flags_and_promise(&promise_token_ids);

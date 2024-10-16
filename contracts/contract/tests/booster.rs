@@ -7,7 +7,7 @@ pub const MAX_DURATION_SEC: DurationSec = 31536000;
 
 #[tokio::test]
 async fn test_booster_stake_bad_args() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let amount = d(100, 18);
@@ -32,7 +32,7 @@ async fn test_booster_stake_bad_args() -> Result<()> {
 
 #[tokio::test]
 async fn test_booster_stake_all() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let amount = d(100, 18);

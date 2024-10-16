@@ -19,6 +19,7 @@ pub struct LinearRate {
     pub contract_id: AccountId,
 }
 
+#[allow(unused)]
 #[ext_contract(ext_linear)]
 pub trait ExtLinear {
     //https://github.com/linear-protocol/LiNEAR/blob/f2471444396891fc6c68523c1a9c75e25eaa4637/contracts/linear/src/fungible_token/custom.rs#L10

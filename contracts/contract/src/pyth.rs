@@ -15,7 +15,7 @@ pub const ONE_NEAR: u128 = 10u128.pow(24);
 
 #[ext_contract(ext_pyth)]
 pub trait Pyth {
-    fn get_price(&self, price_identifier: PriceIdentifier) -> Option<Price>;
+    fn get_price_no_older_than(&self, price_id: PriceIdentifier, age: u64) -> Option<Price>;
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Clone)]
@@ -116,6 +116,7 @@ impl Contract {
     pub fn token_involved_promises(&self, pyth_oracle_account_id: &AccountId, promise_token_ids: &Vec<AccountId>) -> (Vec<String>, Vec<Promise>) {
         let mut promises_flags = vec![];
         let mut promises = vec![];
+        let config = self.internal_config();
         for token_id in promise_token_ids.iter() {
             let token_pyth_info = self.get_pyth_info_by_token(&token_id);
             let price_identifier = token_pyth_info.price_identifier.clone();
@@ -123,7 +124,7 @@ impl Contract {
                 promises_flags.push(price_identifier.to_string());
                 promises.push(ext_pyth::ext(pyth_oracle_account_id.clone())
                     .with_static_gas(GAS_FOR_GET_PRICE)
-                    .get_price(price_identifier));
+                    .get_price_no_older_than(price_identifier, config.pyth_price_valid_duration_sec as u64));
             }
             
             if let Some(extra_call) = token_pyth_info.extra_call.as_ref() {

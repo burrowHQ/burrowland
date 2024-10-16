@@ -2,7 +2,6 @@ use crate::*;
 
 impl Contract {
     pub fn assert_owner(&self) {
-        // TODO: make global config referenced from param
         require!(
             env::predecessor_account_id() == self.internal_get_global_config().owner_id,
             E002_NOT_ALLOWED

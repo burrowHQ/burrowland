@@ -119,7 +119,6 @@ impl Pool {
             self.sqrt_price_96 = self.sqrt_price_96 + self.sqrt_price_96.mul_fraction_floor(sqrt_rate_96() - pow_96(), pow_96());
         } else {
             // only has liquidity_x part
-            // TODO: seems this code is useless
             result.liquidity_x = self.liquidity_x;
         }
 
@@ -371,7 +370,6 @@ pub fn x_swap_y_at_price_liquidity(
     
     // rounding up to ensure pool won't be short of X.
     let cost_x = transform_liquidity_x.mul_fraction_ceil(pow_96(), sqrt_price_96).as_u128();
-    // TODO: convert to u128
     // rounding down to ensure pool won't be short of Y.
     let acquire_y = transform_liquidity_x.mul_fraction_floor(sqrt_price_96, pow_96());
     let new_liquidity_x = liquidity_x + transform_liquidity_x.as_u128();

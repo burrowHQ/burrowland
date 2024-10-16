@@ -33,6 +33,9 @@ pub struct AssetDetailedView {
     pub last_update_timestamp: Timestamp,
     /// The asset config.
     pub config: AssetConfig,
+    /// Total lostfound shares
+    #[serde(with = "u128_dec_format")]
+    pub lostfound_shares: Balance,
     /// Current APR excluding farms for supplying the asset.
     pub supply_apr: BigDecimal,
     /// Current APR excluding farms for borrowing the asset.
@@ -77,6 +80,8 @@ impl Contract {
             unit_acc_hp_interest,
             last_update_timestamp,
             config,
+            lostfound_shares,
+            pending_fee_events: _,
         } = asset;
         AssetDetailedView {
             token_id,
@@ -90,6 +95,7 @@ impl Contract {
             uahpi: unit_acc_hp_interest,
             last_update_timestamp,
             config,
+            lostfound_shares,
             supply_apr,
             borrow_apr,
             farms,

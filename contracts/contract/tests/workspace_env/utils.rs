@@ -26,9 +26,9 @@ pub async fn create_account(
     balance: Option<u128>,
 ) -> Account {
     let balance = if let Some(balance) = balance {
-        balance
+        NearToken::from_yoctonear(balance)
     } else {
-        parse_near!("50 N")
+        NearToken::from_near(50)
     };
     master
         .create_subaccount(account_id)
@@ -137,9 +137,9 @@ pub async fn tool_create_account(
     balance: Option<u128>,
 ) -> Account {
     let balance = if let Some(balance) = balance {
-        balance
+        NearToken::from_yoctonear(balance)
     } else {
-        parse_near!("50 N")
+        NearToken::from_near(50)
     };
     master
         .create_subaccount(account_id)

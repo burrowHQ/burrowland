@@ -20,7 +20,7 @@ impl Oralce {
                 "msg": near_sdk::serde_json::to_string(&msg).unwrap(),
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }

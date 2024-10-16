@@ -6,6 +6,7 @@ use near_sdk::{ext_contract, near_bindgen, Balance, PromiseOrValue};
 use crate::utils::{GAS_FOR_FT_TRANSFER_CALL, GAS_FOR_RESOLVE_TRANSFER, NO_DEPOSIT};
 use crate::*;
 
+#[allow(unused)]
 #[ext_contract(ext_self)]
 trait MFTTokenResolver {
     fn mft_resolve_transfer(
@@ -17,6 +18,7 @@ trait MFTTokenResolver {
     ) -> U128;
 }
 
+#[allow(unused)]
 #[ext_contract(ext_share_token_receiver)]
 pub trait MFTTokenReceiver {
     fn mft_on_transfer(

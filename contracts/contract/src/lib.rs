@@ -58,7 +58,6 @@ pub use crate::margin_accounts::*;
 pub use crate::margin_actions::*;
 pub use crate::margin_trading::*;
 pub use crate::margin_config::*;
-pub use crate::margin_pyth::*;
 pub use crate::pyth::*;
 
 use common::*;
@@ -146,6 +145,8 @@ impl Contract {
                 registered_dexes: HashMap::new(),
                 registered_tokens: HashMap::new(),
                 max_active_user_margin_position: 64,
+                liq_benefit_protocol_rate: 2000,
+                liq_benefit_liquidator_rate: 3000,
             })),
             accumulated_margin_position_num: 0,
         }
@@ -329,6 +330,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(booster_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -351,6 +353,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(neth_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -373,6 +376,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(ndai_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -395,6 +399,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(nusdt_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -417,6 +422,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(nusdc_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -439,6 +445,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(wnear_token_id(), owner_id(), d(10000, 24));
         }
@@ -2455,6 +2462,7 @@ mod farms {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         });
 
         let amount = d(100, 18);

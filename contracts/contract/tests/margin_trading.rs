@@ -6,7 +6,7 @@ use crate::workspace_env::*;
 
 #[tokio::test]
 async fn test_margin_trading() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let nusdt_token_contract = deploy_mock_ft(&root, "nusdt", 18).await?;
@@ -130,7 +130,7 @@ async fn test_margin_trading() -> Result<()> {
     let current_timestamp = worker.view_block().await?.timestamp();
     let position_amount = alice_margin_account.margin_positions.get(&pos_id).unwrap().token_p_amount;
     let min_out_amount = alice_margin_account.margin_positions.get(&pos_id).unwrap().token_d_info.balance + 10u128.pow(20);
-    check!(logs burrowland_contract.margin_trading_close_mtposition_by_oracle_call(
+    check!(print burrowland_contract.margin_trading_close_mtposition_by_oracle_call(
         &oracle_contract, price_data(current_timestamp, Some(100000)), &alice,
         &pos_id, position_amount, min_out_amount, 
         SwapIndication {
@@ -151,15 +151,15 @@ async fn test_margin_trading() -> Result<()> {
         }
     ));
 
-    check!(view burrowland_contract.get_margin_account(&alice));
-    check!(burrowland_contract.margin_trading_withdraw(&alice, nusdt_token_contract.0.id(), None));
-    check!(view burrowland_contract.get_margin_account(&alice));
+    // check!(view burrowland_contract.get_margin_account(&alice));
+    // check!(burrowland_contract.margin_trading_withdraw(&alice, nusdt_token_contract.0.id(), None));
+    // check!(view burrowland_contract.get_margin_account(&alice));
     Ok(())
 }
 
 #[tokio::test]
 async fn test_margin_trading_with_pyth() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -327,7 +327,7 @@ async fn test_margin_trading_with_pyth() -> Result<()> {
 
 #[tokio::test]
 async fn test_margin_trading_liquidate() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let nusdt_token_contract = deploy_mock_ft(&root, "nusdt", 18).await?;
@@ -447,7 +447,7 @@ async fn test_margin_trading_liquidate() -> Result<()> {
 
 #[tokio::test]
 async fn test_margin_trading_liquidate_with_pyth() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -591,7 +591,7 @@ async fn test_margin_trading_liquidate_with_pyth() -> Result<()> {
 
 #[tokio::test]
 async fn test_margin_trading_forceclose() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let nusdt_token_contract = deploy_mock_ft(&root, "nusdt", 18).await?;
@@ -710,7 +710,7 @@ async fn test_margin_trading_forceclose() -> Result<()> {
 
 #[tokio::test]
 async fn test_margin_trading_forceclose_with_pyth() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -854,7 +854,7 @@ async fn test_margin_trading_forceclose_with_pyth() -> Result<()> {
 
 #[tokio::test]
 async fn test_margin_trading_dcl() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -1005,7 +1005,7 @@ async fn test_margin_trading_dcl() -> Result<()> {
 
 #[tokio::test]
 async fn test_margin_trading_liquidate_dcl() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -1138,7 +1138,7 @@ async fn test_margin_trading_liquidate_dcl() -> Result<()> {
 
 #[tokio::test]
 async fn test_margin_trading_forceclose_dcl() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;

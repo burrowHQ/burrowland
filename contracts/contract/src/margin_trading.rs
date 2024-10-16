@@ -321,10 +321,11 @@ impl Contract {
 impl Contract {
     pub(crate) fn on_open_trade_return(
         &mut self,
-        account: &mut MarginAccount,
+        account_id: &AccountId,
         amount: Balance,
         sr: &SwapReference,
     ) {
+        let mut account = self.internal_unwrap_margin_account(&account_id);
         let margin_config = self.internal_margin_config();
         let mut mt = account.margin_positions.get(&sr.pos_id).unwrap().clone();
         let mut asset_debt = self.internal_unwrap_asset(&mt.token_d_id);
@@ -368,9 +369,8 @@ impl Contract {
         mt.token_d_shares.0 += debt_shares.0;
         mt.token_p_amount += amount;
         mt.is_locking = false;
-        account
-            .margin_positions
-            .insert(&sr.pos_id, &mt);
+        // Update existing margin_position storage
+        account.margin_positions.insert(&sr.pos_id, &mt);
 
         self.internal_set_asset(&mt.token_d_id, asset_debt);
         self.internal_set_asset(&mt.token_p_id, asset_position);
@@ -388,14 +388,16 @@ impl Contract {
             open_fee: open_fee_amount,
         };
         events::emit::margin_open_succeeded(event);
+        self.internal_set_margin_account(&account_id, account);
     }
 
     pub(crate) fn on_decrease_trade_return(
         &mut self,
-        account: &mut MarginAccount,
+        account_id: &AccountId,
         amount: Balance,
         sr: &SwapReference,
     ) -> EventDataMarginDecreaseResult {
+        let mut account = self.internal_unwrap_margin_account(&account_id);
         let mut mt = account.margin_positions.get(&sr.pos_id).unwrap().clone();
         let mut asset_debt = self.internal_unwrap_asset(&mt.token_d_id);
         let mut asset_position = self.internal_unwrap_asset(&mt.token_p_id);
@@ -412,6 +414,8 @@ impl Contract {
             asset_debt.unit_acc_hp_interest - mt.uahpi_at_open,
             UNIT,
         );
+        mt.uahpi_at_open = asset_debt.unit_acc_hp_interest;
+        
         let repay_cap = u128_ratio(mt.debt_cap, amount, debt_amount + hp_fee);
 
         let (repay_amount, repay_shares, left_amount, repay_hp_fee) = if repay_cap >= mt.debt_cap {
@@ -496,9 +500,8 @@ impl Contract {
         }
 
         mt.is_locking = false;
-        account
-            .margin_positions
-            .insert(&sr.pos_id, &mt);
+        // Update existing margin_position storage
+        account.margin_positions.insert(&sr.pos_id, &mt);
 
         let event = EventDataMarginDecreaseResult {
             account_id: account.account_id.clone(),
@@ -516,7 +519,6 @@ impl Contract {
         // try to settle this position
         if mt.token_d_shares.0 == 0 {
             // close this position and remaining asset goes back to user's inner account
-            // TODO: change to directly send assets back to user
             if mt.token_c_shares.0 > 0 {
                 benefit_m_shares = mt.token_c_shares.0;
             }
@@ -530,7 +532,10 @@ impl Contract {
                 asset_position.margin_position -= mt.token_p_amount;
                 benefit_p_shares = position_shares.0;
             }
+            // Remove margin_position storage
+            account.storage_tracker.start();
             account.margin_positions.remove(&sr.pos_id);
+            account.storage_tracker.stop();
         } else {
             if sr.op != "decrease" {
                 env::log_str(&format!(
@@ -543,50 +548,173 @@ impl Contract {
         }
 
         // distribute benefits
+        let mut account_updates = None;
         if benefit_d_shares > 0 || benefit_m_shares > 0 || benefit_p_shares > 0 {
-            if sr.op == "liquidate" || sr.op == "forceclose" {
-                let mut liquidator_account =
-                    if let Some(ref liquidator_account_id) = sr.liquidator_id {
-                        if let Some(x) = self.internal_get_margin_account(&liquidator_account_id) {
-                            x
-                        } else {
-                            self.internal_unwrap_margin_account(&self.internal_config().owner_id)
-                        }
-                    } else {
-                        self.internal_unwrap_margin_account(&self.internal_config().owner_id)
-                    };
-                if benefit_d_shares > 0 {
-                    liquidator_account
-                        .deposit_supply_shares(&mt.token_d_id, &U128(benefit_d_shares));
-                }
-                if benefit_m_shares > 0 {
-                    liquidator_account
-                        .deposit_supply_shares(&mt.token_c_id, &U128(benefit_m_shares));
-                }
-                if benefit_p_shares > 0 {
-                    liquidator_account
-                        .deposit_supply_shares(&mt.token_p_id, &U128(benefit_p_shares));
-                }
-                self.internal_set_margin_account(
-                    &liquidator_account.account_id.clone(),
+            if sr.op == "liquidate" {
+                let margin_config = self.internal_margin_config();
+                // The sr.liquidator_id in the liquidate operation must not be None.
+                let liquidator_id = sr.liquidator_id.clone().unwrap();
+                let mut liquidator_account = self.internal_unwrap_margin_account(&liquidator_id);
+                let owner_id = self.internal_config().owner_id;
+                let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
+                let (owner_updates, liquidator_updates, user_updates) = account_supplied_updates(
+                    &mut owner_account, 
+                    &mut liquidator_account, 
+                    &mut account, 
+                    &mt, 
+                    &margin_config,
+                    (benefit_m_shares, benefit_d_shares, benefit_p_shares)
+                );
+                self.internal_set_margin_account_without_panic(
+                    &owner_id,
+                    owner_account,
+                    &mut asset_debt,
+                    &mut asset_position,
+                    owner_updates
+                );
+                self.internal_set_margin_account_without_panic(
+                    &liquidator_id,
                     liquidator_account,
+                    &mut asset_debt,
+                    &mut asset_position,
+                    liquidator_updates
+                );
+                account_updates = Some(user_updates);
+            } else if sr.op == "forceclose" {
+                let owner_id = self.internal_config().owner_id;
+                let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
+                deposit_benefit_to_account(&mut owner_account, &mt.token_c_id, benefit_m_shares);
+                deposit_benefit_to_account(&mut owner_account, &mt.token_d_id, benefit_d_shares);
+                deposit_benefit_to_account(&mut owner_account, &mt.token_p_id, benefit_p_shares);
+                self.internal_set_margin_account_without_panic(
+                    &owner_id, 
+                    owner_account,
+                    &mut asset_debt,
+                    &mut asset_position,
+                    MarginAccountUpdates {
+                        token_c_update: (mt.token_c_id.clone(), benefit_m_shares),
+                        token_d_update: (mt.token_d_id.clone(), benefit_d_shares),
+                        token_p_update: (mt.token_p_id.clone(), benefit_p_shares),
+                    }
                 );
             } else {
-                if benefit_d_shares > 0 {
-                    account.deposit_supply_shares(&mt.token_d_id, &U128(benefit_d_shares));
-                }
-                if benefit_m_shares > 0 {
-                    account.deposit_supply_shares(&mt.token_c_id, &U128(benefit_m_shares));
-                }
-                if benefit_p_shares > 0 {
-                    account.deposit_supply_shares(&mt.token_p_id, &U128(benefit_p_shares));
-                }
+                deposit_benefit_to_account(&mut account, &mt.token_c_id, benefit_m_shares);
+                deposit_benefit_to_account(&mut account, &mt.token_d_id, benefit_d_shares);
+                deposit_benefit_to_account(&mut account, &mt.token_p_id, benefit_p_shares);
+                account_updates = Some(MarginAccountUpdates {
+                    token_c_update: (mt.token_c_id.clone(), benefit_m_shares),
+                    token_d_update: (mt.token_d_id.clone(), benefit_d_shares),
+                    token_p_update: (mt.token_p_id.clone(), benefit_p_shares),
+                });
             }
+        }
+
+        if let Some(account_updates) = account_updates{
+            self.internal_set_margin_account_without_panic(
+                &account_id,
+                account,
+                &mut asset_debt,
+                &mut asset_position,
+                account_updates
+            );
+        } else {
+            self.internal_set_margin_account(&account_id, account);
         }
 
         self.internal_set_asset(&mt.token_d_id, asset_debt);
         self.internal_set_asset(&mt.token_p_id, asset_position);
 
         event
+    }
+}
+
+pub struct MarginAccountUpdates {
+    pub token_c_update: (AccountId, u128),
+    pub token_d_update: (AccountId, u128),
+    pub token_p_update: (AccountId, u128),
+}
+
+impl MarginAccountUpdates {
+    pub fn get_token_d_amount(&self) -> u128 {
+        if self.token_c_update.0 == self.token_d_update.0 {
+            self.token_c_update.1 + self.token_d_update.1
+        } else {
+            self.token_d_update.1
+        }
+    }
+
+    pub fn get_token_p_amount(&self) -> u128 {
+        if self.token_c_update.0 == self.token_p_update.0 {
+            self.token_c_update.1 + self.token_p_update.1
+        } else {
+            self.token_p_update.1
+        }
+    }
+
+    pub fn to_hash_map(&self) -> HashMap<AccountId, U128> {
+        HashMap::from([
+            (self.token_d_update.0.clone(), U128(self.get_token_d_amount())), 
+            (self.token_p_update.0.clone(), U128(self.get_token_p_amount())),
+        ])
+    }
+}
+
+pub fn account_supplied_updates(
+    owner_account: &mut MarginAccount,
+    liquidator_account: &mut MarginAccount,
+    account: &mut MarginAccount,
+    mt: &MarginTradingPosition,
+    margin_config: &MarginConfig,
+    (benefit_m_shares, benefit_d_shares, benefit_p_shares): (u128, u128, u128),
+) -> (MarginAccountUpdates, MarginAccountUpdates, MarginAccountUpdates) {
+    let (benefit_c_shares_to_owner, benefit_c_shares_to_liquidator, benefit_c_shares_to_user) = benefit_distribution(owner_account, liquidator_account, account, &mt.token_c_id, benefit_m_shares, margin_config.liq_benefit_protocol_rate, margin_config.liq_benefit_liquidator_rate);
+    let (benefit_d_shares_to_owner, benefit_d_shares_to_liquidator, benefit_d_shares_to_user) = benefit_distribution(owner_account, liquidator_account, account, &mt.token_d_id, benefit_d_shares, margin_config.liq_benefit_protocol_rate, margin_config.liq_benefit_liquidator_rate);
+    let (benefit_p_shares_to_owner, benefit_p_shares_to_liquidator, benefit_p_shares_to_user) = benefit_distribution(owner_account, liquidator_account, account, &mt.token_p_id, benefit_p_shares, margin_config.liq_benefit_protocol_rate, margin_config.liq_benefit_liquidator_rate);
+    (MarginAccountUpdates{
+        token_c_update: (mt.token_c_id.clone(), benefit_c_shares_to_owner),
+        token_d_update: (mt.token_d_id.clone(), benefit_d_shares_to_owner),
+        token_p_update: (mt.token_p_id.clone(), benefit_p_shares_to_owner),
+    }, MarginAccountUpdates{
+        token_c_update: (mt.token_c_id.clone(), benefit_c_shares_to_liquidator),
+        token_d_update: (mt.token_d_id.clone(), benefit_d_shares_to_liquidator),
+        token_p_update: (mt.token_p_id.clone(), benefit_p_shares_to_liquidator),
+    }, MarginAccountUpdates{
+        token_c_update: (mt.token_c_id.clone(), benefit_c_shares_to_user),
+        token_d_update: (mt.token_d_id.clone(), benefit_d_shares_to_user),
+        token_p_update: (mt.token_p_id.clone(), benefit_p_shares_to_user),
+    })
+}
+
+pub fn benefit_distribution(
+    owner_account: &mut MarginAccount,
+    liquidator_account: &mut MarginAccount,
+    account: &mut MarginAccount,
+    token_id: &AccountId, 
+    total_benefit_shares: u128,
+    liq_benefit_protocol_rate: u32, 
+    liq_benefit_liquidator_rate: u32
+) -> (u128, u128, u128) {
+    if total_benefit_shares > 0 {
+        let (benefit_shares_to_owner, benefit_shares_to_liquidator, benefit_shares_to_user) = 
+            calculate_benefit_distribution(total_benefit_shares, liq_benefit_protocol_rate, liq_benefit_liquidator_rate);
+        deposit_benefit_to_account(owner_account, token_id, benefit_shares_to_owner);
+        deposit_benefit_to_account(liquidator_account, token_id, benefit_shares_to_liquidator);
+        deposit_benefit_to_account(account, token_id, benefit_shares_to_user);
+        (benefit_shares_to_owner, benefit_shares_to_liquidator, benefit_shares_to_user)
+    } else {
+        (0, 0, 0)
+    }
+}
+
+pub fn calculate_benefit_distribution(total_benefit_shares: u128, liq_benefit_protocol_rate: u32, liq_benefit_liquidator_rate: u32) -> (u128, u128, u128) {
+    let benefit_shares_to_owner = u128_ratio(total_benefit_shares, liq_benefit_protocol_rate as u128, MAX_RATIO as u128);
+    let benefit_shares_to_liquidator = u128_ratio(total_benefit_shares, liq_benefit_liquidator_rate as u128, MAX_RATIO as u128);
+    let benefit_shares_to_user = total_benefit_shares - benefit_shares_to_owner - benefit_shares_to_liquidator;
+    (benefit_shares_to_owner, benefit_shares_to_liquidator, benefit_shares_to_user)
+}
+
+pub fn deposit_benefit_to_account(margin_account: &mut MarginAccount, token_id: &AccountId, benefit_shares: u128) {
+    if benefit_shares > 0 {
+        margin_account.deposit_supply_shares(token_id, &U128(benefit_shares));
     }
 }

@@ -2,11 +2,7 @@ use crate::*;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_sdk::json_types::U128;
 use near_sdk::{is_promise_success, serde_json, PromiseOrValue};
-
-#[ext_contract(ext_fungible_token)]
-pub trait FungibleToken {
-    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
-}
+use near_contract_standards::fungible_token::core::ext_ft_core;
 
 const GAS_FOR_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
 const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 20);
@@ -45,8 +41,6 @@ impl FungibleTokenReceiver for Contract {
 
         let amount = amount.0 * 10u128.pow(asset.config.extra_decimals as u32);
 
-        // TODO: We need to be careful that only whitelisted tokens can call this method with a
-        //     given set of actions. Or verify which actions are possible to do.
         let (actions, with_pyth) = if msg.is_empty() {
             (vec![], false)
         } else {
@@ -88,18 +82,16 @@ impl FungibleTokenReceiver for Contract {
                 TokenReceiverMsg::SwapReference { swap_ref } => {
                     let config = self.internal_config();
                     assert!(sender_id == config.ref_exchange_id || sender_id == config.dcl_id.expect("Missing dcl id"), "Not allow");
-                    let mut account = self.internal_unwrap_margin_account(&swap_ref.account_id);
                     if swap_ref.op == "open" {
-                        self.on_open_trade_return(&mut account, amount, &swap_ref);
+                        self.on_open_trade_return(&swap_ref.account_id, amount, &swap_ref);
                     } else if swap_ref.op == "decrease"
                         || swap_ref.op == "close"
                         || swap_ref.op == "liquidate"
                         || swap_ref.op == "forceclose"
                     {
-                        let event = self.on_decrease_trade_return(&mut account, amount, &swap_ref);
+                        let event = self.on_decrease_trade_return(&swap_ref.account_id, amount, &swap_ref);
                         events::emit::margin_decrease_succeeded(&swap_ref.op, event);
                     }
-                    self.internal_set_margin_account(&swap_ref.account_id, account);
                     return PromiseOrValue::Value(U128(0));
                 }
             }
@@ -129,7 +121,7 @@ impl Contract {
     ) -> Promise {
         let asset = self.internal_unwrap_asset(token_id);
         let ft_amount = amount / 10u128.pow(asset.config.extra_decimals as u32);
-        ext_fungible_token::ext(token_id.clone())
+        ext_ft_core::ext(token_id.clone())
             .with_attached_deposit(ONE_YOCTO)
             .with_static_gas(GAS_FOR_FT_TRANSFER)
             .ft_transfer(account_id.clone(), ft_amount.into(), None)
@@ -147,6 +139,7 @@ impl Contract {
     }
 }
 
+#[allow(unused)]
 #[ext_contract(ext_self)]
 trait ExtSelf {
     fn after_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)

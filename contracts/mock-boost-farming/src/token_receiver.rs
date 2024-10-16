@@ -50,6 +50,7 @@ impl FungibleTokenReceiver for Contract {
     }
 }
 
+#[allow(unused)]
 pub trait MFTTokenReceiver {
     fn mft_on_transfer(
         &mut self,

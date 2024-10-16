@@ -173,6 +173,11 @@ impl Contract {
                         account_id, &pos_owner_id,
                         "Can't liquidate yourself"
                     );
+                    let config = self.internal_config();
+                    assert!(
+                        config.force_closing_enabled,
+                        "The force closing is not enabled"
+                    );
                     let mut pos_owner = self.internal_unwrap_margin_account(&pos_owner_id);
                     let event = self.process_decrease_margin_position(
                         &mut pos_owner,
@@ -188,6 +193,9 @@ impl Contract {
                     events::emit::margin_decrease_started("margin_forceclose_started", event);
                 }
                 MarginAction::Withdraw { token_id, amount } => {
+                    assert!(!token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
+                    let asset = self.internal_unwrap_asset(&token_id);
+                    assert!(asset.config.can_withdraw, "Withdrawals for this asset are not enabled");
                     if account.supplied.get(&token_id).is_some() {
                         let amount = self.internal_margin_withdraw_supply(
                             account,
@@ -215,10 +223,12 @@ impl Contract {
             .clone();
         let asset_id = mt.token_c_id.clone();
         let asset = self.internal_unwrap_asset(&mt.token_c_id);
+        assert!(asset.config.can_use_as_collateral, "This asset can't be used as a collateral");
         let shares = asset.supplied.amount_to_shares(amount, false);
         let actual_amount = asset.supplied.shares_to_amount(shares, false);
         account.withdraw_supply_shares(&mt.token_c_id, &shares);
         mt.token_c_shares.0 += shares.0;
+        // Update existing margin_position storage
         account.margin_positions.insert(&pos_id, &mt);
         (asset_id, actual_amount)
     }
@@ -267,6 +277,7 @@ impl Contract {
         );
 
         account.deposit_supply_shares(&mt.token_c_id, &shares);
+        // Update existing margin_position storage
         account.margin_positions.insert(&pos_id, &mt);
 
         token_id
@@ -286,6 +297,7 @@ impl Contract {
         shares
     }
 
+    #[allow(unused)]
     pub(crate) fn internal_margin_deposit_without_asset_basic_check(
         &mut self,
         account: &mut MarginAccount,
@@ -314,6 +326,13 @@ impl Contract {
             let amount = asset.supplied.shares_to_amount(shares, false);
             (shares, amount)
         };
+        let available_amount = asset.available_amount();
+        assert!(
+            withdraw_amount <= available_amount,
+            "Withdraw error: Exceeded available amount {} of {}",
+            available_amount,
+            token_id
+        );
         account.withdraw_supply_shares(token_id, &withdraw_shares);
         asset.supplied.withdraw(withdraw_shares, withdraw_amount);
         self.internal_set_asset(token_id, asset);
