@@ -198,6 +198,15 @@ impl Contract {
     }
 
     #[payable]
+    pub fn update_max_active_user_margin_position(&mut self, max_active_user_margin_position: u8) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut mc = self.internal_margin_config();
+        mc.max_active_user_margin_position = max_active_user_margin_position;
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
     pub fn update_liquidation_benefits_rates(&mut self, liq_benefit_protocol_rate: u32, liq_benefit_liquidator_rate: u32) {
         assert_one_yocto();
         self.assert_owner();
