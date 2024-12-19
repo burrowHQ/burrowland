@@ -197,13 +197,17 @@ impl Contract {
                     let asset = self.internal_unwrap_asset(&token_id);
                     assert!(asset.config.can_withdraw, "Withdrawals for this asset are not enabled");
                     if account.supplied.get(&token_id).is_some() {
-                        let amount = self.internal_margin_withdraw_supply(
+                        let (amount, ft_amount) = self.internal_margin_withdraw_supply(
                             account,
                             &token_id,
                             amount.map(|a| a.into()),
                         );
-                        self.internal_ft_transfer(account_id, &token_id, amount, true);
-                        events::emit::margin_asset_withdraw_started(&account_id, amount, &token_id);
+                        if ft_amount > 0 {
+                            self.internal_ft_transfer(account_id, &token_id, amount, ft_amount, true);
+                            events::emit::margin_asset_withdraw_started(&account_id, amount, &token_id);
+                        } else {
+                            events::emit::margin_asset_withdraw_succeeded(&account_id, amount, &token_id);
+                        }
                     }
                 }
             }
@@ -317,7 +321,7 @@ impl Contract {
         account: &mut MarginAccount,
         token_id: &AccountId,
         amount: Option<Balance>,
-    ) -> Balance {
+    ) -> (Balance, Balance) {
         let mut asset = self.internal_unwrap_asset(token_id);
         let (withdraw_shares, withdraw_amount) = if let Some(amount) = amount {
             (asset.supplied.amount_to_shares(amount, true), amount)
@@ -333,11 +337,16 @@ impl Contract {
             available_amount,
             token_id
         );
-        account.withdraw_supply_shares(token_id, &withdraw_shares);
-        asset.supplied.withdraw(withdraw_shares, withdraw_amount);
-        self.internal_set_asset(token_id, asset);
 
-        withdraw_amount
+        let withdraw_ft_amount = withdraw_amount / 10u128.pow(asset.config.extra_decimals as u32);
+        if withdraw_ft_amount > 0 {
+            account.withdraw_supply_shares(token_id, &withdraw_shares);
+            asset.supplied.withdraw(withdraw_shares, withdraw_amount);
+            self.internal_set_asset(token_id, asset);
+            (withdraw_amount, withdraw_ft_amount)
+        } else {
+            (0, 0)
+        }
     }
 }
 

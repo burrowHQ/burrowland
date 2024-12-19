@@ -19,7 +19,7 @@ uint::construct_uint!(
 pub(crate) const MAX_RATIO: u32 = 10000;
 
 const NUM_DECIMALS: u8 = 27;
-const BIG_DIVISOR: u128 = 10u128.pow(NUM_DECIMALS as u32);
+pub const BIG_DIVISOR: u128 = 10u128.pow(NUM_DECIMALS as u32);
 const HALF_DIVISOR: u128 = BIG_DIVISOR / 2;
 
 pub type LowU128 = U128;

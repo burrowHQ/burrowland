@@ -209,6 +209,13 @@ impl Contract {
             .map(|ma| self.margin_account_into_detailed_view(ma))
     }
 
+    pub fn list_margin_accounts(&self, account_ids: Vec<AccountId>) -> Vec<Option<MarginAccountDetailedView>> {
+        account_ids.iter().map(|account_id| {
+            self.internal_get_margin_account(&account_id)
+                .map(|ma| self.margin_account_into_detailed_view(ma))
+        }).collect()
+    }
+
     pub fn get_margin_accounts_paged(&self, from_index: Option<u64>, limit: Option<u64>) -> Vec<MarginAccountDetailedView> {
         let values = self.margin_accounts.values_as_vector();
         let from_index = from_index.unwrap_or(0);

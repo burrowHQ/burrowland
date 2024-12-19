@@ -2,13 +2,19 @@
 
 Version 0.14.0
 ```bash=
-# codehash: 266w2EnLCk9C99hE3ToyCFBwhxDkgoKb3hYbB1noJJkh
+# codehash: 6VHcCp5oqZxVTa5dmeX2HLRiZdGQ8TAZaQn1teK6qGd5
 ```
 - fix audit recommendation
 
 - add fee events
 
 - replace workspaces with near-workspaces
+
+- add update_max_active_user_margin_position and update_asset_holding_position_fee_rate
+
+- add some account view funcs
+
+- if the withdraw amount is zero, only log without panic
 
 Version 0.13.0
 ```bash=

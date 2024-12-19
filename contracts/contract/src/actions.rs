@@ -73,9 +73,13 @@ impl Contract {
                 Action::Withdraw(asset_amount) => {
                     assert!(!asset_amount.token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
                     if account.supplied.get(&asset_amount.token_id).is_some() {
-                        let amount = self.internal_withdraw(account, &asset_amount);
-                        self.internal_ft_transfer(account_id, &asset_amount.token_id, amount, false);
-                        events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
+                        let (amount, ft_amount) = self.internal_withdraw(account, &asset_amount);
+                        if ft_amount > 0 {
+                            self.internal_ft_transfer(account_id, &asset_amount.token_id, amount, ft_amount, false);
+                            events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
+                        } else {
+                            events::emit::withdraw_succeeded(&account_id, amount, &asset_amount.token_id);
+                        }
                     }
                 }
                 Action::IncreaseCollateral(asset_amount) => {
@@ -288,7 +292,7 @@ impl Contract {
         &mut self,
         account: &mut Account,
         asset_amount: &AssetAmount,
-    ) -> Balance {
+    ) -> (Balance, Balance) {
         let mut asset = self.internal_unwrap_asset(&asset_amount.token_id);
         assert!(
             asset.config.can_withdraw,
@@ -309,13 +313,17 @@ impl Contract {
             &asset_amount.token_id
         );
 
-        account_asset.withdraw_shares(shares);
-        account.internal_set_asset(&asset_amount.token_id, account_asset);
+        let ft_amount = amount / 10u128.pow(asset.config.extra_decimals as u32);
+        if ft_amount > 0 {
+            account_asset.withdraw_shares(shares);
+            account.internal_set_asset(&asset_amount.token_id, account_asset);
 
-        asset.supplied.withdraw(shares, amount);
-        self.internal_set_asset(&asset_amount.token_id, asset);
-
-        amount
+            asset.supplied.withdraw(shares, amount);
+            self.internal_set_asset(&asset_amount.token_id, asset);
+            (amount, ft_amount)
+        } else {
+            (0, 0)
+        }
     }
 
     pub fn internal_increase_collateral(

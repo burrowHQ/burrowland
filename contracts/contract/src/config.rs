@@ -222,6 +222,20 @@ impl Contract {
         asset.config.assert_valid();
         self.internal_set_asset(&token_id, asset);
     }
+
+    /// Updates the holding_position_fee_rate for the asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn update_asset_holding_position_fee_rate(&mut self, token_id: AccountId, holding_position_fee_rate: LowU128) {
+        assert_one_yocto();
+        self.assert_owner();
+        assert!(holding_position_fee_rate.0 >= BIG_DIVISOR, "Invalid holding_position_fee_rate");
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        asset.config.holding_position_fee_rate = holding_position_fee_rate;
+        self.internal_set_asset(&token_id, asset);
+    }
     
     /// Updates the max_change_rate for the asset with the a given token_id.
     /// - Panics if an asset with the given token_id doesn't exist.

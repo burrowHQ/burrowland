@@ -92,6 +92,9 @@ impl AssetConfig {
         assert!(self.reserve_ratio <= MAX_RATIO);
         assert!(self.prot_ratio <= MAX_RATIO);
         assert!(self.target_utilization < MAX_POS);
+        assert!(self.target_utilization_rate.0 >= BIG_DIVISOR, "Invalid target_utilization_rate");
+        assert!(self.max_utilization_rate.0 >= BIG_DIVISOR, "Invalid max_utilization_rate");
+        assert!(self.holding_position_fee_rate.0 >= BIG_DIVISOR, "Invalid holding_position_fee_rate");
         assert!(self.target_utilization_rate.0 <= self.max_utilization_rate.0);
         // The volatility ratio can't be 100% to avoid free liquidations of such assets.
         assert!(self.volatility_ratio < MAX_RATIO);

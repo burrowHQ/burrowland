@@ -256,6 +256,31 @@ impl Contract {
             .map(|account| self.account_into_all_positions_detailed_view(account))
     }
 
+    /// Returns a detailed list of information about the accounts for the given account_ids.
+    pub fn list_accounts_all_positions(&self, account_ids: Vec<AccountId>) -> Vec<Option<AccountAllPositionsDetailedView>> {
+        account_ids.iter().map(|account_id| {
+            self.internal_get_account(&account_id, true)
+                .map(|account| self.account_into_all_positions_detailed_view(account))
+        }).collect()
+    }
+
+    /// Returns limited account detailed information for accounts from a given index up to a given limit.
+    pub fn get_accounts_all_positions_paged(&self, from_index: Option<u64>, limit: Option<u64>) -> Vec<AccountAllPositionsDetailedView> {
+        let values = self.accounts.values_as_vector();
+        let from_index = from_index.unwrap_or(0);
+        let limit = limit.unwrap_or(values.len());
+        (from_index..std::cmp::min(values.len(), from_index + limit))
+            .map(|index| self.account_into_all_positions_detailed_view(values.get(index).unwrap().into_account(true)))
+            .collect()
+    }
+
+    /// Returns a list of information about the accounts for the given account_ids.
+    pub fn list_accounts(&self, account_ids: Vec<AccountId>) -> Vec<Option<Account>> {
+        account_ids.iter().map(|account_id| {
+            self.internal_get_account(&account_id, true)
+        }).collect()
+    }
+
     /// Returns limited account information for accounts from a given index up to a given limit.
     /// The information includes number of shares for collateral and borrowed assets.
     /// This method can be used to iterate on the accounts for liquidation.

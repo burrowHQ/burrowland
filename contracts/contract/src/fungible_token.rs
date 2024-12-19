@@ -117,10 +117,9 @@ impl Contract {
         account_id: &AccountId,
         token_id: &TokenId,
         amount: Balance,
+        ft_amount: Balance,
         is_margin_asset: bool,
     ) -> Promise {
-        let asset = self.internal_unwrap_asset(token_id);
-        let ft_amount = amount / 10u128.pow(asset.config.extra_decimals as u32);
         ext_ft_core::ext(token_id.clone())
             .with_attached_deposit(ONE_YOCTO)
             .with_static_gas(GAS_FOR_FT_TRANSFER)
