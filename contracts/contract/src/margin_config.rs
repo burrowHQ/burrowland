@@ -211,7 +211,7 @@ impl Contract {
         assert_one_yocto();
         self.assert_owner();
         let mut mc = self.internal_margin_config();
-        assert!(liq_benefit_protocol_rate + liq_benefit_liquidator_rate < MAX_RATIO, "require: liq_benefit_protocol_rate + liq_benefit_liquidator_rate < {}", MAX_RATIO);
+        assert!(liq_benefit_protocol_rate + liq_benefit_liquidator_rate <= MAX_RATIO, "require: liq_benefit_protocol_rate + liq_benefit_liquidator_rate <= {}", MAX_RATIO);
         mc.liq_benefit_protocol_rate = liq_benefit_protocol_rate;
         mc.liq_benefit_liquidator_rate = liq_benefit_liquidator_rate;
         self.margin_config.set(&mc);

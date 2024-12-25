@@ -707,10 +707,16 @@ pub fn benefit_distribution(
 }
 
 pub fn calculate_benefit_distribution(total_benefit_shares: u128, liq_benefit_protocol_rate: u32, liq_benefit_liquidator_rate: u32) -> (u128, u128, u128) {
-    let benefit_shares_to_owner = u128_ratio(total_benefit_shares, liq_benefit_protocol_rate as u128, MAX_RATIO as u128);
-    let benefit_shares_to_liquidator = u128_ratio(total_benefit_shares, liq_benefit_liquidator_rate as u128, MAX_RATIO as u128);
-    let benefit_shares_to_user = total_benefit_shares - benefit_shares_to_owner - benefit_shares_to_liquidator;
-    (benefit_shares_to_owner, benefit_shares_to_liquidator, benefit_shares_to_user)
+    if liq_benefit_protocol_rate + liq_benefit_liquidator_rate == MAX_RATIO {
+        let benefit_shares_to_owner = u128_ratio(total_benefit_shares, liq_benefit_protocol_rate as u128, MAX_RATIO as u128);
+        let benefit_shares_to_liquidator = total_benefit_shares - benefit_shares_to_owner;
+        (benefit_shares_to_owner, benefit_shares_to_liquidator, 0)
+    } else {
+        let benefit_shares_to_owner = u128_ratio(total_benefit_shares, liq_benefit_protocol_rate as u128, MAX_RATIO as u128);
+        let benefit_shares_to_liquidator = u128_ratio(total_benefit_shares, liq_benefit_liquidator_rate as u128, MAX_RATIO as u128);
+        let benefit_shares_to_user = total_benefit_shares - benefit_shares_to_owner - benefit_shares_to_liquidator;
+        (benefit_shares_to_owner, benefit_shares_to_liquidator, benefit_shares_to_user)   
+    }
 }
 
 pub fn deposit_benefit_to_account(margin_account: &mut MarginAccount, token_id: &AccountId, benefit_shares: u128) {
