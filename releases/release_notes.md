@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.14.1
+```bash=
+# codehash: 4RHebbLMBH5q8FXygNu1ePZ1VFr1PFYq5Yvu3AByvqXf
+```
+- add protocol debts storage
+
 Version 0.14.0
 ```bash=
 # codehash: 7g3ExMPR2kVzaqawGuUTwh38CuzBnTMeX3oowoHBMVon

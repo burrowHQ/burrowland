@@ -733,6 +733,31 @@ impl Burrowland {
 }
 
 impl Burrowland {
+    pub async fn list_protocol_debts(
+        &self,
+        token_ids: Vec<&AccountId>
+    ) -> Result<HashMap<AccountId, Option<U128>>> {
+        self.0
+            .call("list_protocol_debts")
+            .args_json(json!({
+                "token_ids": token_ids
+            }))
+            .view()
+            .await?
+            .json::<HashMap<AccountId, Option<U128>>>()
+    }
+
+    pub async fn get_all_protocol_debts(
+        &self,
+    ) -> Result<HashMap<AccountId, U128>> {
+        self.0
+            .call("get_all_protocol_debts")
+            .args_json(json!({}))
+            .view()
+            .await?
+            .json::<HashMap<AccountId, U128>>()
+    }
+
     pub async fn get_asset(
         &self,
         token_id: &AccountId

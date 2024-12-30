@@ -1,0 +1,1 @@
+pub const PROTOCOL_DEBTS_KEY: &str = "pd";

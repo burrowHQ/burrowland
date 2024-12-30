@@ -30,6 +30,8 @@ mod margin_config;
 mod margin_pyth;
 mod pyth;
 mod actions_pyth;
+mod protocol_debts;
+mod storage_keys;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -59,6 +61,8 @@ pub use crate::margin_actions::*;
 pub use crate::margin_trading::*;
 pub use crate::margin_config::*;
 pub use crate::pyth::*;
+pub use crate::protocol_debts::*;
+pub use crate::storage_keys::*;
 
 use common::*;
 

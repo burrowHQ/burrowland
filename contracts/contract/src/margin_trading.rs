@@ -491,11 +491,20 @@ impl Contract {
                     .shares_to_amount(mt.token_d_shares, true);
                 if asset_debt.reserved >= remain_debt_balance {
                     asset_debt.reserved -= remain_debt_balance;
-                    asset_debt
-                        .margin_debt
-                        .withdraw(mt.token_d_shares, remain_debt_balance);
-                    mt.token_d_shares.0 = 0;
+                } else {
+                    let debt = remain_debt_balance - asset_debt.reserved;
+                    asset_debt.reserved = 0;
+                    let mut protocol_debts = read_protocol_debts_from_storage();
+                    protocol_debts.entry(mt.token_d_id.clone())
+                        .and_modify(|v| *v += debt)
+                        .or_insert(debt);
+                    write_protocol_debts_to_storage(protocol_debts);
+                    events::emit::new_protocol_debts(&mt.token_d_id, debt);
                 }
+                asset_debt
+                    .margin_debt
+                    .withdraw(mt.token_d_shares, remain_debt_balance);
+                mt.token_d_shares.0 = 0;
             }
         }
 

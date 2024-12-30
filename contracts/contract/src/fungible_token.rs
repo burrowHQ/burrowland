@@ -50,7 +50,20 @@ impl FungibleTokenReceiver for Contract {
                 TokenReceiverMsg::Execute { actions } => (actions, false),
                 TokenReceiverMsg::ExecuteWithPyth { actions } => (actions, true),
                 TokenReceiverMsg::DepositToReserve => {
-                    asset.reserved += amount;
+                    let mut protocol_debts = read_protocol_debts_from_storage();
+                    let amount_to_reserved = if let Some(debt) = protocol_debts.remove(&token_id) {
+                        let repay_amount = std::cmp::min(amount, debt);
+                        let remain_debt = debt - repay_amount;
+                        if remain_debt > 0 {
+                            protocol_debts.insert(token_id.clone(), remain_debt);
+                        }
+                        write_protocol_debts_to_storage(protocol_debts);
+                        events::emit::repay_protocol_debts(&token_id, repay_amount);
+                        amount - repay_amount
+                    } else {
+                        amount
+                    };
+                    asset.reserved += amount_to_reserved;
                     self.internal_set_asset(&token_id, asset);
                     events::emit::deposit_to_reserve(&sender_id, amount, &token_id);
                     return PromiseOrValue::Value(U128(0));

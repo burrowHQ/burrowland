@@ -481,4 +481,23 @@ pub mod emit {
         );
     }
 
+    pub fn new_protocol_debts(token_id: &AccountId, amount: u128) {
+        log_event(
+            "new_protocol_debts",
+            json!({
+                "token_id": token_id,
+                "amount": U128(amount),
+            }),
+        );
+    }
+
+    pub fn repay_protocol_debts(token_id: &AccountId, amount: u128) {
+        log_event(
+            "repay_protocol_debts",
+            json!({
+                "token_id": token_id,
+                "amount": U128(amount),
+            }),
+        );
+    }
 }
