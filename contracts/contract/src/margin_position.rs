@@ -276,7 +276,7 @@ impl Contract {
         margin_config.check_pair(&token_d_id, &token_p_id, &token_c_id);
         let mut swap_detail = self.parse_swap_indication(swap_indication);
         let ft_d_amount = token_d_amount / 10u128.pow(asset_d.config.extra_decimals as u32);
-        assert!(ft_d_amount >= asset_d.config.min_borrowed_amount.expect("Missing min_borrowed_amount").0, "The debt amount is too low");
+        assert!(token_d_amount >= asset_d.config.min_borrowed_amount.expect("Missing min_borrowed_amount").0, "The debt amount is too low");
         assert!(
             swap_detail.verify_token_in(token_d_id, ft_d_amount),
             "token_in check failed"
@@ -451,8 +451,8 @@ impl Contract {
             UNIT,
         );
         if op == "decrease" {
-            if ft_d_amount < total_debt_amount + hp_fee {
-                assert!(total_debt_amount + hp_fee - ft_d_amount >= asset_d.config.min_borrowed_amount.expect("Missing min_borrowed_amount").0, "The remaining debt amount is too low");
+            if min_token_d_amount < total_debt_amount + hp_fee {
+                assert!(total_debt_amount + hp_fee - min_token_d_amount >= asset_d.config.min_borrowed_amount.expect("Missing min_borrowed_amount").0, "The remaining debt amount is too low");
             }
         }
         assert!(

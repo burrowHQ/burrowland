@@ -277,7 +277,7 @@ impl Contract {
             assert!(asset.supplied.balance <= supplied_limit.0, "Asset {} supply balance cannot be greater than {}", token_id, supplied_limit.0);
         }
         if let Some(borrowed_limit) = asset.config.borrowed_limit {
-            assert!(asset.borrowed.balance <= borrowed_limit.0, "Asset {} borrow balance cannot be greater than {}", token_id, borrowed_limit.0);
+            assert!(asset.borrowed.balance + asset.margin_debt.balance + asset.margin_pending_debt <= borrowed_limit.0, "Asset {} borrow balance cannot be greater than {}", token_id, borrowed_limit.0);
         }
         assert!(
             asset.borrowed.shares.0 > 0 || asset.borrowed.balance == 0,
