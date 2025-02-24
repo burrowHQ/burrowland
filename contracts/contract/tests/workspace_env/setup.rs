@@ -60,6 +60,48 @@ pub async fn deploy_burrowland_with_pyth(
         .transact()
         .await?
         .is_success());
+    // check!(root.call(burrowland.id(), "set_margin_base_token_limit_gur")
+    //     .args_json(json!({
+    //         "token_id": "wrap.test.near",
+    //         "mbtlg": {
+    //             "min_safety_buffer_gur": vec![0, 10000],
+    //             "max_leverage_rate_gur": vec![0, 255],
+    //             "max_common_slippage_rate_gur": vec![0, 10000],
+    //             "max_forceclose_slippage_rate_gur": vec![0, 10000],
+    //             "liq_benefit_protocol_rate_gur": vec![0, 10000],
+    //             "liq_benefit_liquidator_rate_gur": vec![0, 10000],
+    //             "min_base_token_short_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "min_base_token_long_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "max_base_token_short_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "max_base_token_long_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "total_base_token_available_short_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "total_base_token_available_long_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //         }
+    //     }))
+    //     .max_gas()
+    //     .deposit(NearToken::from_yoctonear(1))
+    //     .transact());
+    // check!(root.call(burrowland.id(), "set_margin_base_token_limit")
+    //     .args_json(json!({
+    //         "token_id": "wrap.test.near",
+    //         "mbtl": {
+    //             "min_safety_buffer": 1000,
+    //             "max_leverage_rate": 10,
+    //             "max_common_slippage_rate": 1000,
+    //             "max_forceclose_slippage_rate": 1000,
+    //             "liq_benefit_protocol_rate": 2000,
+    //             "liq_benefit_liquidator_rate": 3000,
+    //             "min_base_token_short_position": "0",
+    //             "min_base_token_long_position": "0",
+    //             "max_base_token_short_position": u128::MAX.to_string(),
+    //             "max_base_token_long_position": u128::MAX.to_string(),
+    //             "total_base_token_available_short": u128::MAX.to_string(),
+    //             "total_base_token_available_long": u128::MAX.to_string(),
+    //         }
+    //     }))
+    //     .max_gas()
+    //     .deposit(NearToken::from_yoctonear(1))
+    //     .transact());
     Ok(Burrowland(burrowland))
 }
 
@@ -104,6 +146,48 @@ pub async fn deploy_burrowland_with_price_oracle(
         .transact()
         .await?
         .is_success());
+    // check!(root.call(burrowland.id(), "set_margin_base_token_limit_gur")
+    //     .args_json(json!({
+    //         "token_id": "wrap.test.near",
+    //         "mbtlg": {
+    //             "min_safety_buffer_gur": vec![0, 10000],
+    //             "max_leverage_rate_gur": vec![0, 255],
+    //             "max_common_slippage_rate_gur": vec![0, 10000],
+    //             "max_forceclose_slippage_rate_gur": vec![0, 10000],
+    //             "liq_benefit_protocol_rate_gur": vec![0, 10000],
+    //             "liq_benefit_liquidator_rate_gur": vec![0, 10000],
+    //             "min_base_token_short_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "min_base_token_long_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "max_base_token_short_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "max_base_token_long_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "total_base_token_available_short_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "total_base_token_available_long_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //         }
+    //     }))
+    //     .max_gas()
+    //     .deposit(NearToken::from_yoctonear(1))
+    //     .transact());
+    // check!(root.call(burrowland.id(), "set_margin_base_token_limit")
+    //     .args_json(json!({
+    //         "token_id": "wrap.test.near",
+    //         "mbtl": {
+    //             "min_safety_buffer": 1000,
+    //             "max_leverage_rate": 10,
+    //             "max_common_slippage_rate": 1000,
+    //             "max_forceclose_slippage_rate": 1000,
+    //             "liq_benefit_protocol_rate": 2000,
+    //             "liq_benefit_liquidator_rate": 3000,
+    //             "min_base_token_short_position": "0",
+    //             "min_base_token_long_position": "0",
+    //             "max_base_token_short_position": u128::MAX.to_string(),
+    //             "max_base_token_long_position": u128::MAX.to_string(),
+    //             "total_base_token_available_short": u128::MAX.to_string(),
+    //             "total_base_token_available_long": u128::MAX.to_string(),
+    //         }
+    //     }))
+    //     .max_gas()
+    //     .deposit(NearToken::from_yoctonear(1))
+    //     .transact());
     Ok(Burrowland(burrowland))
 }
 

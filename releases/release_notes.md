@@ -1,5 +1,13 @@
 # Release Notes
 
+Version 0.14.3
+```bash=
+# codehash: TdQAXwbxGsnwe2icachwgDBVbAnpQNh1ZogoTT15GdF
+```
+- add some events
+- add MarginBaseTokenLimit
+- add LiquidateMTPositionDirect Action
+
 Version 0.14.2
 ```bash=
 # codehash: 6Ee1Sn4U8Mj8a9Z9qk3NVK3X8NR8oUNwqu9LmjmnCAq4

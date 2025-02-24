@@ -54,6 +54,10 @@ pub enum Action {
         position: Option<String>,
         min_token_amounts: Option<Vec<U128>>
     },
+    LiquidateMTPositionDirect {
+        pos_owner_id: AccountId,
+        pos_id: PosId,
+    },
 }
 
 impl Contract {
@@ -233,6 +237,21 @@ impl Contract {
                         liquidation_account.is_locked = true;
                         self.internal_set_account(&liquidation_account_id, liquidation_account);
                     }
+                }
+                Action::LiquidateMTPositionDirect {
+                    pos_owner_id,
+                    pos_id,
+                } => {
+                    assert_ne!(
+                        account_id, &pos_owner_id,
+                        "Can't liquidate yourself"
+                    );
+                    self.process_margin_liquidate_direct(
+                        &pos_owner_id, 
+                        &pos_id,
+                        &prices, 
+                        account
+                    );
                 }
             }
         }

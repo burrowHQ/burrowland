@@ -1376,6 +1376,31 @@ impl Burrowland {
         }).await
     }
 
+    pub async fn margin_trading_liquidate_mtposition_direct_by_oracle_call(
+        &self,
+        oracle: &Oralce,
+        price_data: PriceData,
+        caller: &Account,
+        pos_owner_id: &AccountId,
+        pos_id: &String,
+        token_d_id: &AccountId,
+        borrow_token_d_amount: u128,
+    ) -> Result<ExecutionFinalResult> {
+        oracle.oracle_call(caller, self.0.id(), price_data, PriceReceiverMsg::Execute {
+            actions: vec![
+                Action::Borrow(AssetAmount{
+                    token_id: near_sdk::AccountId::new_unchecked(token_d_id.to_string()),
+                    amount: Some(borrow_token_d_amount.into()),
+                    max_amount: None,
+                }),
+                Action::LiquidateMTPositionDirect { 
+                    pos_owner_id: near_sdk::AccountId::new_unchecked(pos_owner_id.to_string()),
+                    pos_id: pos_id.clone(),
+                }
+            ],
+        }).await
+    }
+
     pub async fn margin_trading_liquidate_mtposition_by_pyth(
         &self,
         caller: &Account,

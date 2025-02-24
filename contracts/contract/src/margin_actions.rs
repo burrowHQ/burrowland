@@ -244,7 +244,6 @@ impl Contract {
         amount: Balance,
         prices: &Prices,
     ) -> AccountId {
-        let margin_config = self.internal_margin_config();
         let mut mt = account
             .margin_positions
             .get(pos_id)
@@ -254,6 +253,8 @@ impl Contract {
             !mt.is_locking,
             "Position is currently waiting for a trading result."
         );
+        let pd = PositionDirection::new(&mt.token_c_id, &mt.token_d_id, &mt.token_p_id);
+        let mbtl = self.internal_unwrap_margin_base_token_limit_or_default(pd.get_base_token_id());
         let token_id = mt.token_c_id.clone();
         let asset = self.internal_unwrap_asset(&mt.token_c_id);
         let shares = asset.supplied.amount_to_shares(amount, true);
@@ -266,7 +267,7 @@ impl Contract {
         mt.token_c_shares.0 -= shares.0;
 
         assert!(
-            !self.is_mt_liquidatable(&mt, prices, margin_config.min_safety_buffer),
+            !self.is_mt_liquidatable(&mt, prices, mbtl.min_safety_buffer),
             "Margin position would be below liquidation line"
         );
         assert!(
@@ -276,7 +277,7 @@ impl Contract {
 
         assert!(
             self.get_mtp_lr(&mt, prices).unwrap()
-                <= BigDecimal::from(margin_config.max_leverage_rate as u32),
+                <= BigDecimal::from(mbtl.max_leverage_rate as u32),
             "Leverage rate is too high"
         );
 

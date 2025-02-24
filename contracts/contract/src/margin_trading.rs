@@ -501,6 +501,7 @@ impl Contract {
                     write_protocol_debts_to_storage(protocol_debts);
                     events::emit::new_protocol_debts(&mt.token_d_id, debt);
                 }
+                events::emit::forceclose_protocol_loss(&mt.token_d_id, remain_debt_balance);
                 asset_debt
                     .margin_debt
                     .withdraw(mt.token_d_shares, remain_debt_balance);
@@ -560,20 +561,22 @@ impl Contract {
         let mut account_updates = None;
         if benefit_d_shares > 0 || benefit_m_shares > 0 || benefit_p_shares > 0 {
             if sr.op == "liquidate" {
-                let margin_config = self.internal_margin_config();
                 // The sr.liquidator_id in the liquidate operation must not be None.
                 let liquidator_id = sr.liquidator_id.clone().unwrap();
                 let mut liquidator_account = self.internal_unwrap_margin_account(&liquidator_id);
                 let owner_id = self.internal_config().owner_id;
                 let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
+                let pd = PositionDirection::new(&mt.token_c_id, &mt.token_d_id, &mt.token_p_id);
+                let mbtl = self.internal_unwrap_margin_base_token_limit_or_default(pd.get_base_token_id());
                 let (owner_updates, liquidator_updates, user_updates) = account_supplied_updates(
                     &mut owner_account, 
                     &mut liquidator_account, 
                     &mut account, 
                     &mt, 
-                    &margin_config,
+                    &mbtl,
                     (benefit_m_shares, benefit_d_shares, benefit_p_shares)
                 );
+                events::emit::margin_benefits(&owner_id, &owner_updates);
                 self.internal_set_margin_account_without_panic(
                     &owner_id,
                     owner_account,
@@ -581,6 +584,7 @@ impl Contract {
                     &mut asset_position,
                     owner_updates
                 );
+                events::emit::margin_benefits(&liquidator_id, &liquidator_updates);
                 self.internal_set_margin_account_without_panic(
                     &liquidator_id,
                     liquidator_account,
@@ -595,16 +599,18 @@ impl Contract {
                 deposit_benefit_to_account(&mut owner_account, &mt.token_c_id, benefit_m_shares);
                 deposit_benefit_to_account(&mut owner_account, &mt.token_d_id, benefit_d_shares);
                 deposit_benefit_to_account(&mut owner_account, &mt.token_p_id, benefit_p_shares);
+                let owner_updates = MarginAccountUpdates {
+                    token_c_update: (mt.token_c_id.clone(), benefit_m_shares),
+                    token_d_update: (mt.token_d_id.clone(), benefit_d_shares),
+                    token_p_update: (mt.token_p_id.clone(), benefit_p_shares),
+                };
+                events::emit::margin_benefits(&owner_id, &owner_updates);
                 self.internal_set_margin_account_without_panic(
                     &owner_id, 
                     owner_account,
                     &mut asset_debt,
                     &mut asset_position,
-                    MarginAccountUpdates {
-                        token_c_update: (mt.token_c_id.clone(), benefit_m_shares),
-                        token_d_update: (mt.token_d_id.clone(), benefit_d_shares),
-                        token_p_update: (mt.token_p_id.clone(), benefit_p_shares),
-                    }
+                    owner_updates
                 );
             } else {
                 deposit_benefit_to_account(&mut account, &mt.token_c_id, benefit_m_shares);
@@ -619,6 +625,7 @@ impl Contract {
         }
 
         if let Some(account_updates) = account_updates{
+            events::emit::margin_benefits(&account_id, &account_updates);
             self.internal_set_margin_account_without_panic(
                 &account_id,
                 account,
@@ -673,12 +680,12 @@ pub fn account_supplied_updates(
     liquidator_account: &mut MarginAccount,
     account: &mut MarginAccount,
     mt: &MarginTradingPosition,
-    margin_config: &MarginConfig,
+    mbtl: &MarginBaseTokenLimit,
     (benefit_m_shares, benefit_d_shares, benefit_p_shares): (u128, u128, u128),
 ) -> (MarginAccountUpdates, MarginAccountUpdates, MarginAccountUpdates) {
-    let (benefit_c_shares_to_owner, benefit_c_shares_to_liquidator, benefit_c_shares_to_user) = benefit_distribution(owner_account, liquidator_account, account, &mt.token_c_id, benefit_m_shares, margin_config.liq_benefit_protocol_rate, margin_config.liq_benefit_liquidator_rate);
-    let (benefit_d_shares_to_owner, benefit_d_shares_to_liquidator, benefit_d_shares_to_user) = benefit_distribution(owner_account, liquidator_account, account, &mt.token_d_id, benefit_d_shares, margin_config.liq_benefit_protocol_rate, margin_config.liq_benefit_liquidator_rate);
-    let (benefit_p_shares_to_owner, benefit_p_shares_to_liquidator, benefit_p_shares_to_user) = benefit_distribution(owner_account, liquidator_account, account, &mt.token_p_id, benefit_p_shares, margin_config.liq_benefit_protocol_rate, margin_config.liq_benefit_liquidator_rate);
+    let (benefit_c_shares_to_owner, benefit_c_shares_to_liquidator, benefit_c_shares_to_user) = benefit_distribution(owner_account, liquidator_account, account, &mt.token_c_id, benefit_m_shares, mbtl.liq_benefit_protocol_rate, mbtl.liq_benefit_liquidator_rate);
+    let (benefit_d_shares_to_owner, benefit_d_shares_to_liquidator, benefit_d_shares_to_user) = benefit_distribution(owner_account, liquidator_account, account, &mt.token_d_id, benefit_d_shares, mbtl.liq_benefit_protocol_rate, mbtl.liq_benefit_liquidator_rate);
+    let (benefit_p_shares_to_owner, benefit_p_shares_to_liquidator, benefit_p_shares_to_user) = benefit_distribution(owner_account, liquidator_account, account, &mt.token_p_id, benefit_p_shares, mbtl.liq_benefit_protocol_rate, mbtl.liq_benefit_liquidator_rate);
     (MarginAccountUpdates{
         token_c_update: (mt.token_c_id.clone(), benefit_c_shares_to_owner),
         token_d_update: (mt.token_d_id.clone(), benefit_d_shares_to_owner),

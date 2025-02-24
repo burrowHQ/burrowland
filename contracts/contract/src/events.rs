@@ -500,4 +500,56 @@ pub mod emit {
             }),
         );
     }
+
+    pub fn forceclose_protocol_loss(token_id: &AccountId, amount: u128) {
+        log_event(
+            "forceclose_protocol_loss",
+            json!({
+                "token_id": token_id,
+                "amount": U128(amount),
+            }),
+        );
+    }
+
+    pub fn margin_benefits(account_id: &AccountId, updates: &MarginAccountUpdates) {
+        log_event(
+            "margin_benefits",
+            json!({
+                "account_id": account_id,
+                "token_c_id": updates.token_c_update.0,
+                "token_c_shares": updates.token_c_update.1.to_string(),
+                "token_d_id": updates.token_d_update.0,
+                "token_d_shares": updates.token_d_update.1.to_string(),
+                "token_p_id": updates.token_p_update.0,
+                "token_p_shares": updates.token_p_update.1.to_string(),
+            }),
+        );
+    }
+
+    pub fn margin_liquidate_direct(
+        account_id: &AccountId, 
+        liquidator_id: &AccountId,
+        pos_id: &String, 
+        repay_token_d_id: &TokenId, 
+        repay_token_d_shares: &U128, 
+        claim_token_c_id: &TokenId, 
+        claim_token_c_shares: &U128,
+        claim_token_p_id: &TokenId, 
+        claim_token_p_shares: &U128,
+    ) {
+        log_event(
+            "margin_liquidate_direct",
+            json!({
+                "account_id": account_id,
+                "liquidator_id": liquidator_id, 
+                "pos_id": pos_id,
+                "repay_token_d_id": repay_token_d_id, 
+                "repay_token_d_shares": repay_token_d_shares, 
+                "claim_token_c_id": claim_token_c_id, 
+                "claim_token_c_shares": claim_token_c_shares,
+                "claim_token_p_id": claim_token_p_id, 
+                "claim_token_p_shares": claim_token_p_shares,
+            }),
+        );
+    }
 }

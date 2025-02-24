@@ -4,15 +4,18 @@ use crate::*;
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct MarginConfig {
+    /// base token default value
     /// When open a position or decrease collateral, the new leverage rate should less than this,
     /// Eg: 5 means 5 times collateral value should more than debt value.
     pub max_leverage_rate: u8, 
     /// Ensure pending debt less than this portion of availabe amount, 
     /// Eg: 1000 means pending debt amount should less than 10% of available amount.
     pub pending_debt_scale: u32,
+    /// base token default value
     /// Ensure the slippage in SwapIndication less than this one,
     /// Eg: 1000 means we allow a max slippage of 10%.
     pub max_slippage_rate: u32,
+    /// base token default value
     /// The position will be liquidated when (margin + position) is less than 
     ///   (debt + hp_fee) * (1 + min_safety_buffer_rate).
     pub min_safety_buffer: u32,
@@ -29,8 +32,10 @@ pub struct MarginConfig {
     pub registered_tokens: HashMap<AccountId, u8>, 
     /// Maximum amount of margin position allowed for users to hold.
     pub max_active_user_margin_position: u8,
+    /// base token default value
     /// The rate of liquidation benefits allocated to the protocol.
     pub liq_benefit_protocol_rate: u32,
+    /// base token default value
     /// The rate of liquidation benefits allocated to the liquidator.
     pub liq_benefit_liquidator_rate: u32,
 }
@@ -115,7 +120,8 @@ impl Contract {
     pub fn update_margin_debt_discount_rate(&mut self, margin_debt_discount_rate: u32) {
         assert_one_yocto();
         self.assert_owner();
-        assert!(margin_debt_discount_rate < MAX_RATIO, "Invalid margin_debt_discount_rate");
+        // The debt interest rate for margin positions may be higher than that of regular positions.
+        assert!(margin_debt_discount_rate <= 3 * MAX_RATIO, "Invalid margin_debt_discount_rate");
         let mut mc = self.internal_margin_config();
         mc.margin_debt_discount_rate = margin_debt_discount_rate;
         self.margin_config.set(&mc);
