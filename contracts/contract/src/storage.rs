@@ -92,7 +92,7 @@ impl Contract {
         let can_covered = if storage.storage_tracker.bytes_added >= storage.storage_tracker.bytes_released {
             let extra_bytes_used =
                 storage.storage_tracker.bytes_added - storage.storage_tracker.bytes_released;
-            storage.used_bytes += storage.used_bytes.checked_add(extra_bytes_used).unwrap_or(u64::MAX);
+            storage.used_bytes = storage.used_bytes.checked_add(extra_bytes_used).unwrap_or(u64::MAX);
             storage.check_storage_covered()
         } else {
             let bytes_released =

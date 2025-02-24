@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.14.2
+```bash=
+# codehash: 6Ee1Sn4U8Mj8a9Z9qk3NVK3X8NR8oUNwqu9LmjmnCAq4
+```
+- fix internal_set_storage_without_panic issue
+
 Version 0.14.1
 ```bash=
 # codehash: 4rJN4v168Uu5aTaVhEu9k4DDATdpfZrgd9w2MYvK3gQC
