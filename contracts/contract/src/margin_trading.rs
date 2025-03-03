@@ -274,6 +274,7 @@ pub struct SwapReference {
     pub account_id: AccountId,
     pub pos_id: String,
     pub amount_in: U128,
+    pub action_ts: U64,
     pub op: String,
     pub liquidator_id: Option<AccountId>,
 }
@@ -321,11 +322,11 @@ impl Contract {
 impl Contract {
     pub(crate) fn on_open_trade_return(
         &mut self,
-        account_id: &AccountId,
+        mut account: MarginAccount,
         amount: Balance,
         sr: &SwapReference,
     ) {
-        let mut account = self.internal_unwrap_margin_account(&account_id);
+        let account_id = account.account_id.clone();
         let margin_config = self.internal_margin_config();
         let mut mt = account.margin_positions.get(&sr.pos_id).unwrap().clone();
         let mut asset_debt = self.internal_unwrap_asset(&mt.token_d_id);
@@ -372,8 +373,8 @@ impl Contract {
         // Update existing margin_position storage
         account.margin_positions.insert(&sr.pos_id, &mt);
 
-        self.internal_set_asset(&mt.token_d_id, asset_debt);
-        self.internal_set_asset(&mt.token_p_id, asset_position);
+        self.internal_set_asset_without_asset_basic_check(&mt.token_d_id, asset_debt);
+        self.internal_set_asset_without_asset_basic_check(&mt.token_p_id, asset_position);
 
         let event = EventDataMarginOpenResult {
             account_id: account.account_id.clone(),
@@ -393,11 +394,11 @@ impl Contract {
 
     pub(crate) fn on_decrease_trade_return(
         &mut self,
-        account_id: &AccountId,
+        mut account: MarginAccount,
         amount: Balance,
         sr: &SwapReference,
     ) -> EventDataMarginDecreaseResult {
-        let mut account = self.internal_unwrap_margin_account(&account_id);
+        let account_id = account.account_id.clone();
         let mut mt = account.margin_positions.get(&sr.pos_id).unwrap().clone();
         let mut asset_debt = self.internal_unwrap_asset(&mt.token_d_id);
         let mut asset_position = self.internal_unwrap_asset(&mt.token_p_id);
@@ -563,36 +564,55 @@ impl Contract {
             if sr.op == "liquidate" {
                 // The sr.liquidator_id in the liquidate operation must not be None.
                 let liquidator_id = sr.liquidator_id.clone().unwrap();
-                let mut liquidator_account = self.internal_unwrap_margin_account(&liquidator_id);
                 let owner_id = self.internal_config().owner_id;
-                let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
-                let pd = PositionDirection::new(&mt.token_c_id, &mt.token_d_id, &mt.token_p_id);
-                let mbtl = self.internal_unwrap_margin_base_token_limit_or_default(pd.get_base_token_id());
-                let (owner_updates, liquidator_updates, user_updates) = account_supplied_updates(
-                    &mut owner_account, 
-                    &mut liquidator_account, 
-                    &mut account, 
-                    &mt, 
-                    &mbtl,
-                    (benefit_m_shares, benefit_d_shares, benefit_p_shares)
-                );
-                events::emit::margin_benefits(&owner_id, &owner_updates);
-                self.internal_set_margin_account_without_panic(
-                    &owner_id,
-                    owner_account,
-                    &mut asset_debt,
-                    &mut asset_position,
-                    owner_updates
-                );
-                events::emit::margin_benefits(&liquidator_id, &liquidator_updates);
-                self.internal_set_margin_account_without_panic(
-                    &liquidator_id,
-                    liquidator_account,
-                    &mut asset_debt,
-                    &mut asset_position,
-                    liquidator_updates
-                );
-                account_updates = Some(user_updates);
+                if let Some(mut liquidator_account) = self.internal_get_margin_account(&liquidator_id) {
+                    let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
+                    let pd = PositionDirection::new(&mt.token_c_id, &mt.token_d_id, &mt.token_p_id);
+                    let mbtl = self.internal_unwrap_margin_base_token_limit_or_default(pd.get_base_token_id());
+                    let (owner_updates, liquidator_updates, user_updates) = account_supplied_updates(
+                        &mut owner_account, 
+                        &mut liquidator_account, 
+                        &mut account, 
+                        &mt, 
+                        &mbtl,
+                        (benefit_m_shares, benefit_d_shares, benefit_p_shares)
+                    );
+                    events::emit::margin_benefits(&owner_id, &owner_updates);
+                    self.internal_set_margin_account_without_panic(
+                        &owner_id,
+                        owner_account,
+                        &mut asset_debt,
+                        &mut asset_position,
+                        owner_updates
+                    );
+                    events::emit::margin_benefits(&liquidator_id, &liquidator_updates);
+                    self.internal_set_margin_account_without_panic(
+                        &liquidator_id,
+                        liquidator_account,
+                        &mut asset_debt,
+                        &mut asset_position,
+                        liquidator_updates
+                    );
+                    account_updates = Some(user_updates);
+                } else {
+                    let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
+                    deposit_benefit_to_account(&mut owner_account, &mt.token_c_id, benefit_m_shares);
+                    deposit_benefit_to_account(&mut owner_account, &mt.token_d_id, benefit_d_shares);
+                    deposit_benefit_to_account(&mut owner_account, &mt.token_p_id, benefit_p_shares);
+                    let owner_updates = MarginAccountUpdates {
+                        token_c_update: (mt.token_c_id.clone(), benefit_m_shares),
+                        token_d_update: (mt.token_d_id.clone(), benefit_d_shares),
+                        token_p_update: (mt.token_p_id.clone(), benefit_p_shares),
+                    };
+                    events::emit::margin_benefits(&owner_id, &owner_updates);
+                    self.internal_set_margin_account_without_panic(
+                        &owner_id, 
+                        owner_account,
+                        &mut asset_debt,
+                        &mut asset_position,
+                        owner_updates
+                    );
+                }
             } else if sr.op == "forceclose" {
                 let owner_id = self.internal_config().owner_id;
                 let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
@@ -637,8 +657,8 @@ impl Contract {
             self.internal_set_margin_account(&account_id, account);
         }
 
-        self.internal_set_asset(&mt.token_d_id, asset_debt);
-        self.internal_set_asset(&mt.token_p_id, asset_position);
+        self.internal_set_asset_without_asset_basic_check(&mt.token_d_id, asset_debt);
+        self.internal_set_asset_without_asset_basic_check(&mt.token_p_id, asset_position);
 
         event
     }

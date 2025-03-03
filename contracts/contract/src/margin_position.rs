@@ -403,13 +403,14 @@ impl Contract {
         account.storage_tracker.start();
         account.margin_positions.insert(&pos_id, &mt);
         account.storage_tracker.stop();
-
+        account.position_latest_actions.insert(pos_id.clone(), ts.into());
         // step 4: call dex to trade and wait for callback
         // organize swap action
         let swap_ref = SwapReference {
             account_id: account.account_id.clone(),
             pos_id: pos_id.clone(),
             amount_in: token_d_amount.into(),
+            action_ts: ts.into(),
             op: format!("open"),
             liquidator_id: None,
         };
@@ -568,6 +569,8 @@ impl Contract {
         self.internal_set_asset(&mt.token_p_id, asset_p);
         // Update existing margin_position storage
         account.margin_positions.insert(&pos_id, &mt);
+        let ts = env::block_timestamp();
+        account.position_latest_actions.insert(pos_id.clone(), ts.into());
 
         let event = EventDataMarginDecrease {
             account_id: account.account_id.clone(),
@@ -585,6 +588,7 @@ impl Contract {
             account_id: account.account_id.clone(),
             pos_id: pos_id.clone(),
             amount_in: token_p_amount.into(),
+            action_ts: ts.into(),
             op,
             liquidator_id,
         };

@@ -183,6 +183,9 @@ pub struct MarginAccountV0 {
     pub supplied: HashMap<TokenId, Shares>,
     // margin trading related
     pub margin_positions: UnorderedMap<PosId, MarginTradingPosition>,
+    /// Tracks changes in storage usage by persistent collections in this account.
+    #[borsh_skip]
+    pub storage_tracker: StorageTracker,
 }
 
 impl From<MarginAccountV0> for MarginAccount {
@@ -191,12 +194,14 @@ impl From<MarginAccountV0> for MarginAccount {
             account_id, 
             supplied, 
             margin_positions,
+            storage_tracker,
         } = a;
         Self {
             account_id, 
             supplied, 
             margin_positions,
-            storage_tracker: Default::default(),
+            position_latest_actions: HashMap::new(),
+            storage_tracker,
         }
     }
 }
@@ -1305,6 +1310,74 @@ impl From<MarginConfigV0> for MarginConfig {
             max_active_user_margin_position,
             liq_benefit_protocol_rate: 2000,
             liq_benefit_liquidator_rate: 3000,
+            max_position_action_wait_sec: 3600,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct MarginConfigV1 {
+    /// When open a position or decrease collateral, the new leverage rate should less than this,
+    /// Eg: 5 means 5 times collateral value should more than debt value.
+    pub max_leverage_rate: u8, 
+    /// Ensure pending debt less than this portion of availabe amount, 
+    /// Eg: 1000 means pending debt amount should less than 10% of available amount.
+    pub pending_debt_scale: u32,
+    /// Ensure the slippage in SwapIndication less than this one,
+    /// Eg: 1000 means we allow a max slippage of 10%.
+    pub max_slippage_rate: u32,
+    /// The position will be liquidated when (margin + position) is less than 
+    ///   (debt + hp_fee) * (1 + min_safety_buffer_rate).
+    pub min_safety_buffer: u32,
+    /// Compare to regular borrowing, margin borrow enjoy a discount.
+    /// Eg: 7000 means margin debt equals 70% of regular debt.
+    pub margin_debt_discount_rate: u32,
+    /// Open fee is on the margin asset.
+    pub open_position_fee_rate: u32,
+    /// Dex account id and its version (1 - RefV1, 2 - RefV2)
+    pub registered_dexes: HashMap<AccountId, u8>,
+    /// Token and its party side, such as 1 and 2 are in different parties,
+    /// hence they can be a debt and a position. In other word,
+    /// Tokens in the same party, can NOT exist in the same position.
+    pub registered_tokens: HashMap<AccountId, u8>, 
+    /// Maximum amount of margin position allowed for users to hold.
+    pub max_active_user_margin_position: u8,
+    /// base token default value
+    /// The rate of liquidation benefits allocated to the protocol.
+    pub liq_benefit_protocol_rate: u32,
+    /// base token default value
+    /// The rate of liquidation benefits allocated to the liquidator.
+    pub liq_benefit_liquidator_rate: u32,
+}
+
+impl From<MarginConfigV1> for MarginConfig {
+    fn from(a: MarginConfigV1) -> Self {
+        let MarginConfigV1 { 
+            max_leverage_rate, 
+            pending_debt_scale, 
+            max_slippage_rate, 
+            min_safety_buffer, 
+            margin_debt_discount_rate, 
+            open_position_fee_rate, 
+            registered_dexes, 
+            registered_tokens, 
+            max_active_user_margin_position,
+            liq_benefit_protocol_rate,
+            liq_benefit_liquidator_rate,
+        } = a;
+        Self {
+            max_leverage_rate, 
+            pending_debt_scale, 
+            max_slippage_rate, 
+            min_safety_buffer, 
+            margin_debt_discount_rate, 
+            open_position_fee_rate, 
+            registered_dexes, 
+            registered_tokens, 
+            max_active_user_margin_position,
+            liq_benefit_protocol_rate,
+            liq_benefit_liquidator_rate,
+            max_position_action_wait_sec: 3600,
         }
     }
 }
@@ -1400,5 +1473,25 @@ pub struct ContractV0130 {
     pub last_staking_token_prices: HashMap<TokenId, U128>,
     pub margin_accounts: UnorderedMap<AccountId, VMarginAccount>,
     pub margin_config: LazyOption<MarginConfigV0>,
+    pub accumulated_margin_position_num: u64
+}
+
+#[derive(BorshDeserialize, BorshSerialize)]
+pub struct ContractV0140 {
+    pub accounts: UnorderedMap<AccountId, VAccount>,
+    pub storage: LookupMap<AccountId, VStorage>,
+    pub assets: LookupMap<TokenId, VAsset>,
+    pub asset_farms: LookupMap<FarmId, VAssetFarm>,
+    pub asset_ids: UnorderedSet<TokenId>,
+    pub config: LazyOption<Config>,
+    pub guardians: UnorderedSet<AccountId>,
+    /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
+    pub last_prices: HashMap<TokenId, Price>,
+    pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
+    pub token_pyth_info: HashMap<TokenId, TokenPythInfo>,
+    pub blacklist_of_farmers: UnorderedSet<AccountId>,
+    pub last_staking_token_prices: HashMap<TokenId, U128>,
+    pub margin_accounts: UnorderedMap<AccountId, VMarginAccount>,
+    pub margin_config: LazyOption<MarginConfigV1>,
     pub accumulated_margin_position_num: u64
 }

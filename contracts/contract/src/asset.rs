@@ -308,6 +308,7 @@ impl Contract {
         );
         asset.supplied.assert_invariant();
         asset.borrowed.assert_invariant();
+        asset.send_pending_fee_events();
         ASSETS
             .lock()
             .unwrap()

@@ -10,6 +10,8 @@ pub struct MarginAccount {
     pub supplied: HashMap<TokenId, Shares>,
     // margin trading related
     pub margin_positions: UnorderedMap<PosId, MarginTradingPosition>,
+    // Record the timestamp of the position initiating the swap action.
+    pub position_latest_actions: HashMap<PosId, U64>,
 
     /// Tracks changes in storage usage by persistent collections in this account.
     #[borsh_skip]
@@ -18,6 +20,7 @@ pub struct MarginAccount {
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub enum VMarginAccount {
+    V0(MarginAccountV0),
     Current(MarginAccount),
 }
 
@@ -30,6 +33,7 @@ impl From<MarginAccount> for VMarginAccount {
 impl From<VMarginAccount> for MarginAccount {
     fn from(c: VMarginAccount) -> Self {
         match c {
+            VMarginAccount::V0(c) => c.into(),
             VMarginAccount::Current(c) => c,
         }
     }
@@ -43,6 +47,7 @@ impl MarginAccount {
             margin_positions: UnorderedMap::new(StorageKey::MarginPositions { 
                 account_id: account_id.clone()
             }),
+            position_latest_actions: HashMap::new(),
             storage_tracker: Default::default(),
         }
     }
@@ -133,6 +138,7 @@ pub struct MarginAccountDetailedView {
     /// A list of assets that are supplied by the account (but not used a collateral).
     pub supplied: Vec<AssetView>,
     pub margin_positions: HashMap<PosId, MarginTradingPositionView>,
+    pub position_latest_actions: HashMap<PosId, U64>,
 }
 
 #[derive(Serialize)]
@@ -172,7 +178,8 @@ impl Contract {
                 .margin_positions
                 .into_iter()
                 .map(|(pos_id, mtp)| (pos_id, self.margin_trading_position_into_view(mtp)))
-                .collect()
+                .collect(),
+            position_latest_actions: account.position_latest_actions.clone(),
         }
     }
 

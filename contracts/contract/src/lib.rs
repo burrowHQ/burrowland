@@ -75,7 +75,7 @@ use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::PromiseError;
 use near_sdk::{
     assert_one_yocto, env, ext_contract, log, near_bindgen, AccountId, Balance, BorshStorageKey,
-    Duration, Gas, PanicOnDefault, Promise, Timestamp,
+    Duration, Gas, PanicOnDefault, Promise, Timestamp, require,
 };
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -153,6 +153,7 @@ impl Contract {
                 max_active_user_margin_position: 64,
                 liq_benefit_protocol_rate: 2000,
                 liq_benefit_liquidator_rate: 3000,
+                max_position_action_wait_sec: 3600,
             })),
             accumulated_margin_position_num: 0,
         }

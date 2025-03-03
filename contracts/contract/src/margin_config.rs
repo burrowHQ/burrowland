@@ -38,6 +38,8 @@ pub struct MarginConfig {
     /// base token default value
     /// The rate of liquidation benefits allocated to the liquidator.
     pub liq_benefit_liquidator_rate: u32,
+    /// The maximum time(s) to wait for a position action.
+    pub max_position_action_wait_sec: u32,
 }
 
 impl MarginConfig {
@@ -220,6 +222,16 @@ impl Contract {
         assert!(liq_benefit_protocol_rate + liq_benefit_liquidator_rate <= MAX_RATIO, "require: liq_benefit_protocol_rate + liq_benefit_liquidator_rate <= {}", MAX_RATIO);
         mc.liq_benefit_protocol_rate = liq_benefit_protocol_rate;
         mc.liq_benefit_liquidator_rate = liq_benefit_liquidator_rate;
+        self.margin_config.set(&mc);
+    }
+
+    #[payable]
+    pub fn update_max_position_action_wait_sec(&mut self, max_position_action_wait_sec: u32) {
+        assert_one_yocto();
+        self.assert_owner();
+        require!(max_position_action_wait_sec >= 3600, "Invalid max_position_action_wait_sec, require >= 3600");
+        let mut mc = self.internal_margin_config();
+        mc.max_position_action_wait_sec = max_position_action_wait_sec;
         self.margin_config.set(&mc);
     }
 }

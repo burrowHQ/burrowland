@@ -126,10 +126,22 @@ impl Contract {
         self.assert_owner();
         config.assert_valid();
         let current_config = self.internal_config();
+        require!(current_config.owner_id == config.owner_id, "Can't change owner_id");
         if current_config.booster_token_id != config.booster_token_id || 
             current_config.booster_decimals != config.booster_decimals {
             env::panic_str("Can't change booster_token_id/booster_decimals");
         }
+        self.config.set(&config);
+    }
+
+    #[payable]
+    pub fn set_owner_id(&mut self, owner_id: AccountId) {
+        assert_one_yocto();
+        self.assert_owner();
+        // The owner must be a registered account.
+        self.internal_unwrap_account(&owner_id);
+        let mut config = self.internal_config();
+        config.owner_id = owner_id;
         self.config.set(&config);
     }
 
