@@ -741,6 +741,7 @@ impl Contract {
         if amount_in_used == 0 {
             // trading failed, revert margin operation
             let mut account = self.internal_unwrap_margin_account(&account_id);
+            account.position_latest_actions.remove(&pos_id);
             if op == "open" {
                 let mt = account.margin_positions.get(&pos_id).unwrap().clone();
                 let mut asset_d = self.internal_unwrap_asset(&mt.token_d_id);

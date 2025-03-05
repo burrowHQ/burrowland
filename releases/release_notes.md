@@ -2,7 +2,7 @@
 
 Version 0.15.0
 ```bash=
-# codehash: 3kn9awtt4caZJXmCZ6WqZVhXTUqmWDPLREU1Kg3vxCCQ
+# codehash: 9tqgQt9vX5poVtYCgj9bhgB6NVuZ9M8piYKJY7ybs4Do
 ```
 - Prohibit update_config from modifying owner_id, add a set_owner_id function that only allows setting a registered user as the owner.
 - Allow the owner to initiate SwapReference if the position action times out and is not completed.
