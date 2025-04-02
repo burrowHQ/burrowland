@@ -1308,8 +1308,8 @@ impl From<MarginConfigV0> for MarginConfig {
             registered_dexes, 
             registered_tokens, 
             max_active_user_margin_position,
-            liq_benefit_protocol_rate: 2000,
-            liq_benefit_liquidator_rate: 3000,
+            liq_benefit_protocol_rate: 5000,
+            liq_benefit_liquidator_rate: 5000,
             max_position_action_wait_sec: 3600,
         }
     }
