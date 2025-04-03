@@ -6,7 +6,7 @@ use crate::workspace_env::*;
 #[tokio::test]
 async fn test_deposit_event() -> Result<()> {
 
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let amount = d(100, 18);
@@ -23,7 +23,7 @@ async fn test_deposit_event() -> Result<()> {
     let outcome = burrowland_contract.deposit(&wrap_token_contract, &alice, amount).await?;
     assert!(outcome.is_success());
     let logs = outcome.logs();
-    let event = &logs[1];
+    let event = &logs[3];
     assert!(event.starts_with(EVENT_JSON));
 
     let value: serde_json::Value =

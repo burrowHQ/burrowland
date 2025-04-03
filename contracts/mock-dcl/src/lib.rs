@@ -1,3 +1,4 @@
+#![allow(hidden_glob_reexports)]
 use near_sdk::{
     borsh::{self, BorshDeserialize, BorshSerialize},
     serde::{Deserialize, Serialize},

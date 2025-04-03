@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 pub mod dcl_api;
 pub mod dcl_liquidity_api;
 pub mod dcl_liquidity_mft;

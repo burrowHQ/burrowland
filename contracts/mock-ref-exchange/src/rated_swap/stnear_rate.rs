@@ -19,6 +19,7 @@ pub struct StnearRate {
     pub contract_id: AccountId,
 }
 
+#[allow(unused)]
 #[ext_contract(ext_metapool)]
 pub trait ExtMetapool {
     //https://github.com/Narwallets/meta-pool/blob/40636d9004d28dc9cb214b9703692061c93f613c/metapool/src/owner.rs#L254

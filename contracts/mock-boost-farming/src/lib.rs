@@ -3,6 +3,7 @@
 *
 * lib.rs is the main entry point.
 */
+#![allow(ambiguous_glob_reexports)]
 mod actions_of_farmer_reward;
 mod actions_of_farmer_seed;
 mod actions_of_seed;
@@ -115,7 +116,7 @@ impl Config {
     pub fn get_boosters_from_seed(&self, seed_id: &SeedId) -> Vec<(SeedId, u32, u32)> {
         self.booster_seeds
             .iter()
-            .filter(|(k, v)| k.clone() != seed_id && v.affected_seeds.contains_key(seed_id))
+            .filter(|(k, v)| *k != seed_id && v.affected_seeds.contains_key(seed_id))
             .map(|(k, v)| (k.clone(), v.booster_decimal, v.affected_seeds.get(seed_id).unwrap_or(&0_u32).clone()))
             .collect()
     }

@@ -175,6 +175,38 @@ impl AccountV2 {
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
+pub struct MarginAccountV0 {
+    /// A copy of an account ID. Saves one storage_read when iterating on accounts.
+    pub account_id: AccountId,
+    /// A list of assets that are supplied by the account (but not used a collateral).
+    /// It's not returned for account pagination.
+    pub supplied: HashMap<TokenId, Shares>,
+    // margin trading related
+    pub margin_positions: UnorderedMap<PosId, MarginTradingPosition>,
+    /// Tracks changes in storage usage by persistent collections in this account.
+    #[borsh_skip]
+    pub storage_tracker: StorageTracker,
+}
+
+impl From<MarginAccountV0> for MarginAccount {
+    fn from(a: MarginAccountV0) -> Self {
+        let MarginAccountV0 { 
+            account_id, 
+            supplied, 
+            margin_positions,
+            storage_tracker,
+        } = a;
+        Self {
+            account_id, 
+            supplied, 
+            margin_positions,
+            position_latest_actions: HashMap::new(),
+            storage_tracker,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
 pub struct AssetConfigV0 {
     /// The ratio of interest that is reserved by the protocol (multiplied by 10000).
     /// E.g. 2500 means 25% from borrowed interests goes to the reserve.
@@ -243,6 +275,7 @@ impl From<AssetConfigV0> for AssetConfig {
             max_change_rate: None,
             supplied_limit: None,
             borrowed_limit: None,
+            min_borrowed_amount: None,
         }
     }
 }
@@ -282,6 +315,8 @@ impl From<AssetV0> for Asset {
             unit_acc_hp_interest: 0,
             last_update_timestamp,
             config: config.into(),
+            lostfound_shares: 0,
+            pending_fee_events: None,
         }
     }
 }
@@ -361,6 +396,7 @@ impl From<AssetConfigV1> for AssetConfig {
             max_change_rate: None,
             supplied_limit: None,
             borrowed_limit: None,
+            min_borrowed_amount: None,
         }
     }
 }
@@ -400,6 +436,8 @@ impl From<AssetV1> for Asset {
             unit_acc_hp_interest: 0,
             last_update_timestamp,
             config: config.into(),
+            lostfound_shares: 0,
+            pending_fee_events: None,
         }
     }
 }
@@ -485,6 +523,7 @@ impl From<AssetConfigV2> for AssetConfig {
             max_change_rate: None,
             supplied_limit: None,
             borrowed_limit: None,
+            min_borrowed_amount: None,
         }
     }
 }
@@ -528,6 +567,8 @@ impl From<AssetV2> for Asset {
             unit_acc_hp_interest: 0,
             last_update_timestamp,
             config: config.into(),
+            lostfound_shares: 0,
+            pending_fee_events: None,
         }
     }
 }
@@ -622,6 +663,7 @@ impl From<AssetConfigV3> for AssetConfig {
             max_change_rate,
             supplied_limit,
             borrowed_limit,
+            min_borrowed_amount: None,
         }
     }
 }
@@ -665,6 +707,163 @@ impl From<AssetV3> for Asset {
             unit_acc_hp_interest: 0,
             last_update_timestamp,
             config: config.into(),
+            lostfound_shares: 0,
+            pending_fee_events: None,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AssetConfigV4 {
+    /// The ratio of interest that is reserved by the protocol (multiplied by 10000).
+    /// E.g. 2500 means 25% from borrowed interests goes to the reserve.
+    pub reserve_ratio: u32,
+    /// The ratio of reserved interest that belongs to the protocol (multiplied by 10000).
+    /// E.g. 2500 means 25% from reserved interests goes to the prot.
+    pub prot_ratio: u32,
+    /// Target utilization ratio (multiplied by 10000).
+    /// E.g. 8000 means the protocol targets 80% of assets are borrowed.
+    pub target_utilization: u32,
+    /// The compounding rate at target utilization ratio.
+    /// Use `apr_to_rate.py` script to compute the value for a given APR.
+    /// Given as a decimal string. E.g. "1000000000003593629036885046" for 12% APR.
+    pub target_utilization_rate: LowU128,
+    /// The compounding rate at 100% utilization.
+    /// Use `apr_to_rate.py` script to compute the value for a given APR.
+    /// Given as a decimal string. E.g. "1000000000039724853136740579" for 250% APR.
+    pub max_utilization_rate: LowU128,
+    /// The compounding rate when holding a margin position.
+    /// Use `apr_to_rate.py` script to compute the value for a given APR.
+    /// Given as a decimal string. E.g. "1000000000003593629036885046" for 12% APR.
+    pub holding_position_fee_rate: LowU128,
+    /// Volatility ratio (multiplied by 10000).
+    /// It defines which percentage collateral that covers borrowing as well as which percentage of
+    /// borrowed asset can be taken.
+    /// E.g. 6000 means 60%. If an account has 100 $ABC in collateral and $ABC is at 10$ per token,
+    /// the collateral value is 1000$, but the borrowing power is 60% or $600.
+    /// Now if you're trying to borrow $XYZ and it's volatility ratio is 80%, then you can only
+    /// borrow less than 80% of $600 = $480 of XYZ before liquidation can begin.
+    pub volatility_ratio: u32,
+    /// The amount of extra decimals to use for the fungible token. For example, if the asset like
+    /// USDT has `6` decimals in the metadata, the `extra_decimals` can be set to `12`, to make the
+    /// inner balance of USDT at `18` decimals.
+    pub extra_decimals: u8,
+    /// Whether the deposits of this assets are enabled.
+    pub can_deposit: bool,
+    /// Whether the withdrawals of this assets are enabled.
+    pub can_withdraw: bool,
+    /// Whether this assets can be used as collateral.
+    pub can_use_as_collateral: bool,
+    /// Whether this assets can be borrowed.
+    pub can_borrow: bool,
+    /// NetTvl asset multiplier (multiplied by 10000).
+    /// Default multiplier is 10000, means the asset weight shouldn't be changed.
+    /// Example: a multiplier of 5000 means the asset in TVL should only counted as 50%, e.g. if an
+    /// asset is not useful for borrowing, but only useful as a collateral.
+    pub net_tvl_multiplier: u32,
+    /// The price change obtained in two consecutive retrievals cannot exceed this ratio.
+    pub max_change_rate: Option<u32>,
+    /// Allowed supplied upper limit of assets
+    pub supplied_limit: Option<U128>,
+    /// Allowed borrowed upper limit of assets
+    pub borrowed_limit: Option<U128>,
+}
+
+impl From<AssetConfigV4> for AssetConfig {
+    fn from(a: AssetConfigV4) -> Self {
+        let AssetConfigV4 {
+            reserve_ratio,
+            prot_ratio,
+            target_utilization,
+            target_utilization_rate,
+            max_utilization_rate,
+            holding_position_fee_rate,
+            volatility_ratio,
+            extra_decimals,
+            can_deposit,
+            can_withdraw,
+            can_use_as_collateral,
+            can_borrow,
+            net_tvl_multiplier,
+            max_change_rate,
+            supplied_limit,
+            borrowed_limit,
+        } = a;
+        Self {
+            reserve_ratio,
+            prot_ratio,
+            target_utilization,
+            target_utilization_rate,
+            max_utilization_rate,
+            holding_position_fee_rate,
+            volatility_ratio,
+            extra_decimals,
+            can_deposit,
+            can_withdraw,
+            can_use_as_collateral,
+            can_borrow,
+            net_tvl_multiplier,
+            max_change_rate,
+            supplied_limit,
+            borrowed_limit,
+            min_borrowed_amount: None,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AssetV4 {
+    /// Total supplied including collateral, but excluding reserved.
+    pub supplied: Pool,
+    /// Total borrowed.
+    pub borrowed: Pool,
+    /// Total margin debt.
+    pub margin_debt: Pool,
+    /// borrowed by margin position and currently in trading process
+    pub margin_pending_debt: Balance,
+    /// total position in margin
+    pub margin_position: Balance,
+    /// The amount reserved for the stability. This amount can also be borrowed and affects
+    /// borrowing rate.
+    pub reserved: Balance,
+    /// The amount belongs to the protocol. This amount can also be borrowed and affects
+    /// borrowing rate.
+    pub prot_fee: Balance,
+    /// The accumulated holding margin position interests till self.last_update_timestamp.
+    pub unit_acc_hp_interest: Balance,
+    /// When the asset was last updated. It's always going to be the current block timestamp.
+    pub last_update_timestamp: Timestamp,
+    /// The asset config.
+    pub config: AssetConfigV4,
+}
+
+impl From<AssetV4> for Asset {
+    fn from(a: AssetV4) -> Self {
+        let AssetV4 {
+            supplied,
+            borrowed,
+            margin_debt,
+            margin_pending_debt,
+            margin_position,
+            reserved,
+            prot_fee,
+            unit_acc_hp_interest,
+            last_update_timestamp,
+            config,
+        } = a;
+        Self {
+            supplied,
+            borrowed,
+            margin_debt,
+            margin_pending_debt,
+            margin_position,
+            reserved,
+            prot_fee,
+            unit_acc_hp_interest,
+            last_update_timestamp,
+            config: config.into(),
+            lostfound_shares: 0,
+            pending_fee_events: None,
         }
     }
 }
@@ -1057,6 +1256,132 @@ impl From<ConfigV3> for Config {
     }
 }
 
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct MarginConfigV0 {
+    /// When open a position or decrease collateral, the new leverage rate should less than this,
+    /// Eg: 5 means 5 times collateral value should more than debt value.
+    pub max_leverage_rate: u8, 
+    /// Ensure pending debt less than this portion of availabe amount, 
+    /// Eg: 1000 means pending debt amount should less than 10% of available amount.
+    pub pending_debt_scale: u32,
+    /// Ensure the slippage in SwapIndication less than this one,
+    /// Eg: 1000 means we allow a max slippage of 10%.
+    pub max_slippage_rate: u32,
+    /// The position will be liquidated when (margin + position) is less than 
+    ///   (debt + hp_fee) * (1 + min_safety_buffer_rate).
+    pub min_safety_buffer: u32,
+    /// Compare to regular borrowing, margin borrow enjoy a discount.
+    /// Eg: 7000 means margin debt equals 70% of regular debt.
+    pub margin_debt_discount_rate: u32,
+    /// Open fee is on the margin asset.
+    pub open_position_fee_rate: u32,
+    /// Dex account id and its version (1 - RefV1, 2 - RefV2)
+    pub registered_dexes: HashMap<AccountId, u8>,
+    /// Token and its party side, such as 1 and 2 are in different parties,
+    /// hence they can be a debt and a position. In other word,
+    /// Tokens in the same party, can NOT exist in the same position.
+    pub registered_tokens: HashMap<AccountId, u8>, 
+    /// Maximum amount of margin position allowed for users to hold.
+    pub max_active_user_margin_position: u8,
+}
+
+impl From<MarginConfigV0> for MarginConfig {
+    fn from(a: MarginConfigV0) -> Self {
+        let MarginConfigV0 { 
+            max_leverage_rate, 
+            pending_debt_scale, 
+            max_slippage_rate, 
+            min_safety_buffer, 
+            margin_debt_discount_rate, 
+            open_position_fee_rate, 
+            registered_dexes, 
+            registered_tokens, 
+            max_active_user_margin_position,
+        } = a;
+        Self {
+            max_leverage_rate, 
+            pending_debt_scale, 
+            max_slippage_rate, 
+            min_safety_buffer, 
+            margin_debt_discount_rate, 
+            open_position_fee_rate, 
+            registered_dexes, 
+            registered_tokens, 
+            max_active_user_margin_position,
+            liq_benefit_protocol_rate: 5000,
+            liq_benefit_liquidator_rate: 5000,
+            max_position_action_wait_sec: 3600,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct MarginConfigV1 {
+    /// When open a position or decrease collateral, the new leverage rate should less than this,
+    /// Eg: 5 means 5 times collateral value should more than debt value.
+    pub max_leverage_rate: u8, 
+    /// Ensure pending debt less than this portion of availabe amount, 
+    /// Eg: 1000 means pending debt amount should less than 10% of available amount.
+    pub pending_debt_scale: u32,
+    /// Ensure the slippage in SwapIndication less than this one,
+    /// Eg: 1000 means we allow a max slippage of 10%.
+    pub max_slippage_rate: u32,
+    /// The position will be liquidated when (margin + position) is less than 
+    ///   (debt + hp_fee) * (1 + min_safety_buffer_rate).
+    pub min_safety_buffer: u32,
+    /// Compare to regular borrowing, margin borrow enjoy a discount.
+    /// Eg: 7000 means margin debt equals 70% of regular debt.
+    pub margin_debt_discount_rate: u32,
+    /// Open fee is on the margin asset.
+    pub open_position_fee_rate: u32,
+    /// Dex account id and its version (1 - RefV1, 2 - RefV2)
+    pub registered_dexes: HashMap<AccountId, u8>,
+    /// Token and its party side, such as 1 and 2 are in different parties,
+    /// hence they can be a debt and a position. In other word,
+    /// Tokens in the same party, can NOT exist in the same position.
+    pub registered_tokens: HashMap<AccountId, u8>, 
+    /// Maximum amount of margin position allowed for users to hold.
+    pub max_active_user_margin_position: u8,
+    /// base token default value
+    /// The rate of liquidation benefits allocated to the protocol.
+    pub liq_benefit_protocol_rate: u32,
+    /// base token default value
+    /// The rate of liquidation benefits allocated to the liquidator.
+    pub liq_benefit_liquidator_rate: u32,
+}
+
+impl From<MarginConfigV1> for MarginConfig {
+    fn from(a: MarginConfigV1) -> Self {
+        let MarginConfigV1 { 
+            max_leverage_rate, 
+            pending_debt_scale, 
+            max_slippage_rate, 
+            min_safety_buffer, 
+            margin_debt_discount_rate, 
+            open_position_fee_rate, 
+            registered_dexes, 
+            registered_tokens, 
+            max_active_user_margin_position,
+            liq_benefit_protocol_rate,
+            liq_benefit_liquidator_rate,
+        } = a;
+        Self {
+            max_leverage_rate, 
+            pending_debt_scale, 
+            max_slippage_rate, 
+            min_safety_buffer, 
+            margin_debt_discount_rate, 
+            open_position_fee_rate, 
+            registered_dexes, 
+            registered_tokens, 
+            max_active_user_margin_position,
+            liq_benefit_protocol_rate,
+            liq_benefit_liquidator_rate,
+            max_position_action_wait_sec: 3600,
+        }
+    }
+}
+
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct ContractV080 {
     pub accounts: UnorderedMap<AccountId, VAccount>,
@@ -1129,4 +1454,44 @@ pub struct ContractV0120 {
     pub token_pyth_info: HashMap<TokenId, TokenPythInfo>,
     pub blacklist_of_farmers: UnorderedSet<AccountId>,
     pub last_staking_token_prices: HashMap<TokenId, U128>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize)]
+pub struct ContractV0130 {
+    pub accounts: UnorderedMap<AccountId, VAccount>,
+    pub storage: LookupMap<AccountId, VStorage>,
+    pub assets: LookupMap<TokenId, VAsset>,
+    pub asset_farms: LookupMap<FarmId, VAssetFarm>,
+    pub asset_ids: UnorderedSet<TokenId>,
+    pub config: LazyOption<Config>,
+    pub guardians: UnorderedSet<AccountId>,
+    /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
+    pub last_prices: HashMap<TokenId, Price>,
+    pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
+    pub token_pyth_info: HashMap<TokenId, TokenPythInfo>,
+    pub blacklist_of_farmers: UnorderedSet<AccountId>,
+    pub last_staking_token_prices: HashMap<TokenId, U128>,
+    pub margin_accounts: UnorderedMap<AccountId, VMarginAccount>,
+    pub margin_config: LazyOption<MarginConfigV0>,
+    pub accumulated_margin_position_num: u64
+}
+
+#[derive(BorshDeserialize, BorshSerialize)]
+pub struct ContractV0140 {
+    pub accounts: UnorderedMap<AccountId, VAccount>,
+    pub storage: LookupMap<AccountId, VStorage>,
+    pub assets: LookupMap<TokenId, VAsset>,
+    pub asset_farms: LookupMap<FarmId, VAssetFarm>,
+    pub asset_ids: UnorderedSet<TokenId>,
+    pub config: LazyOption<Config>,
+    pub guardians: UnorderedSet<AccountId>,
+    /// The last recorded price info from the oracle. It's used for Net TVL farm computation.
+    pub last_prices: HashMap<TokenId, Price>,
+    pub last_lp_token_infos: HashMap<String, UnitShareTokens>,
+    pub token_pyth_info: HashMap<TokenId, TokenPythInfo>,
+    pub blacklist_of_farmers: UnorderedSet<AccountId>,
+    pub last_staking_token_prices: HashMap<TokenId, U128>,
+    pub margin_accounts: UnorderedMap<AccountId, VMarginAccount>,
+    pub margin_config: LazyOption<MarginConfigV1>,
+    pub accumulated_margin_position_num: u64
 }

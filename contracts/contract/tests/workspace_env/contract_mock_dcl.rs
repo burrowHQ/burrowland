@@ -45,8 +45,8 @@ impl DclExchange {
                 "account_id": Some(account.id()),
                 "registration_only": Option::<bool>::None,
             }))
-            .gas(20_000_000_000_000)
-            .deposit(parse_near!("1 N"))
+            .gas(Gas::from_tgas(20))
+            .deposit(NearToken::from_near(1))
             .transact()
             .await
     }
@@ -91,7 +91,7 @@ impl DclExchange {
                 "init_point": init_point,
             }))
             .max_gas()
-            .deposit(deposit)
+            .deposit(NearToken::from_yoctonear(deposit))
             .transact()
             .await
     }

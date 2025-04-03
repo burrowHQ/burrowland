@@ -15,8 +15,8 @@ impl BoostFarmingContract {
                 "account_id": Some(account.id()),
                 "registration_only": Option::<bool>::None,
             }))
-            .gas(20_000_000_000_000)
-            .deposit(parse_near!("1 N"))
+            .gas(Gas::from_tgas(20))
+            .deposit(NearToken::from_near(1))
             .transact()
             .await
     }
@@ -38,7 +38,7 @@ impl BoostFarmingContract {
                 "min_locking_duration_sec": min_locking_duration_sec
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -85,7 +85,7 @@ impl BoostFarmingContract {
                 "withdraw_amount": withdraw_amount,
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }

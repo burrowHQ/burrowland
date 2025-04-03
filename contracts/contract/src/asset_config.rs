@@ -83,6 +83,8 @@ pub struct AssetConfig {
     pub supplied_limit: Option<U128>,
     /// Allowed borrowed upper limit of assets
     pub borrowed_limit: Option<U128>,
+    /// Allowed minimum borrowed amount
+    pub min_borrowed_amount: Option<U128>,
 }
 
 impl AssetConfig {
@@ -90,6 +92,9 @@ impl AssetConfig {
         assert!(self.reserve_ratio <= MAX_RATIO);
         assert!(self.prot_ratio <= MAX_RATIO);
         assert!(self.target_utilization < MAX_POS);
+        assert!(self.target_utilization_rate.0 >= BIG_DIVISOR, "Invalid target_utilization_rate");
+        assert!(self.max_utilization_rate.0 >= BIG_DIVISOR, "Invalid max_utilization_rate");
+        assert!(self.holding_position_fee_rate.0 >= BIG_DIVISOR, "Invalid holding_position_fee_rate");
         assert!(self.target_utilization_rate.0 <= self.max_utilization_rate.0);
         // The volatility ratio can't be 100% to avoid free liquidations of such assets.
         assert!(self.volatility_ratio < MAX_RATIO);
@@ -98,6 +103,7 @@ impl AssetConfig {
         assert!(self.supplied_limit.is_some());
         assert!(self.borrowed_limit.is_some());
         assert!(self.borrowed_limit.unwrap() <= self.supplied_limit.unwrap());
+        assert!(self.min_borrowed_amount.is_some());
     }
 
     pub fn get_rate(
@@ -149,6 +155,7 @@ mod tests {
             max_change_rate: None,
             supplied_limit: None,
             borrowed_limit: None,
+            min_borrowed_amount: None,
         }
     }
 

@@ -28,8 +28,11 @@ mod margin_actions;
 mod margin_trading;
 mod margin_config;
 mod margin_pyth;
+mod margin_base_token_limit;
 mod pyth;
 mod actions_pyth;
+mod protocol_debts;
+mod storage_keys;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -58,8 +61,10 @@ pub use crate::margin_accounts::*;
 pub use crate::margin_actions::*;
 pub use crate::margin_trading::*;
 pub use crate::margin_config::*;
-pub use crate::margin_pyth::*;
+pub use crate::margin_base_token_limit::*;
 pub use crate::pyth::*;
+pub use crate::protocol_debts::*;
+pub use crate::storage_keys::*;
 
 use common::*;
 
@@ -70,7 +75,7 @@ use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::PromiseError;
 use near_sdk::{
     assert_one_yocto, env, ext_contract, log, near_bindgen, AccountId, Balance, BorshStorageKey,
-    Duration, Gas, PanicOnDefault, Promise, Timestamp,
+    Duration, Gas, PanicOnDefault, Promise, Timestamp, require,
 };
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -146,6 +151,9 @@ impl Contract {
                 registered_dexes: HashMap::new(),
                 registered_tokens: HashMap::new(),
                 max_active_user_margin_position: 64,
+                liq_benefit_protocol_rate: 2000,
+                liq_benefit_liquidator_rate: 3000,
+                max_position_action_wait_sec: 3600,
             })),
             accumulated_margin_position_num: 0,
         }
@@ -329,6 +337,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(booster_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -351,6 +360,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(neth_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -373,6 +383,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(ndai_token_id(), owner_id(), d(10000, 18));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -395,6 +406,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(nusdt_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -417,6 +429,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(nusdc_token_id(), owner_id(), d(10000, 6));
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
@@ -439,6 +452,7 @@ mod unit_env {
                     max_change_rate: None,
                     supplied_limit: Some(u128::MAX.into()),
                     borrowed_limit: Some(u128::MAX.into()),
+                    min_borrowed_amount: Some(1u128.into()),
                 });
             self.deposit_to_reserve(wnear_token_id(), owner_id(), d(10000, 24));
         }
@@ -2455,6 +2469,7 @@ mod farms {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         });
 
         let amount = d(100, 18);

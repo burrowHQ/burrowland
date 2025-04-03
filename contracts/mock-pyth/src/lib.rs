@@ -95,4 +95,9 @@ impl Contract {
     pub fn get_price(&self, price_identifier: PriceIdentifier) -> Option<PythPrice> {
         self.price_info.get(&price_identifier).cloned()
     }
+
+    #[allow(unused_variables)]
+    pub fn get_price_no_older_than(&self, price_id: PriceIdentifier, age: u64) -> Option<PythPrice> {
+        self.price_info.get(&price_id).cloned()
+    }
 }

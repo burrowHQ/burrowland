@@ -4,7 +4,7 @@ use crate::workspace_env::*;
 
 #[tokio::test]
 async fn test_dev_setup() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
     
     let amount = d(10000, 24);
@@ -24,7 +24,7 @@ async fn test_dev_setup() -> Result<()> {
 
 #[tokio::test]
 async fn test_supply() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
@@ -51,7 +51,7 @@ async fn test_supply() -> Result<()> {
 
 #[tokio::test]
 async fn test_supply_to_collateral() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
@@ -80,7 +80,7 @@ async fn test_supply_to_collateral() -> Result<()> {
 
 #[tokio::test]
 async fn test_withdraw_prot_fee_reserved_failed() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
@@ -134,7 +134,7 @@ async fn test_withdraw_prot_fee_reserved_failed() -> Result<()> {
 
 #[tokio::test]
 async fn test_modify_booster_token_id_and_decimals() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
@@ -155,7 +155,7 @@ async fn test_modify_booster_token_id_and_decimals() -> Result<()> {
 
 #[tokio::test]
 async fn test_modify_config() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
     let alice = tool_create_account(&root, "alice", None).await;
 
@@ -178,6 +178,7 @@ async fn test_modify_config() -> Result<()> {
         max_change_rate: None,
         supplied_limit: Some(u128::MAX.into()),
         borrowed_limit: Some(u128::MAX.into()),
+        min_borrowed_amount: Some(1u128.into()),
     }));
 
     let asset = burrowland_contract.get_asset(&token_id).await?;

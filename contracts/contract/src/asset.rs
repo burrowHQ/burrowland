@@ -1,4 +1,5 @@
 use crate::*;
+use crate::events::emit::{FeeDetail, fee_detail};
 
 pub const MS_PER_YEAR: u64 = 31536000000;
 
@@ -39,6 +40,13 @@ pub struct Asset {
     pub last_update_timestamp: Timestamp,
     /// The asset config.
     pub config: AssetConfig,
+    /// Total lostfound
+    #[serde(with = "u128_dec_format")]
+    pub lostfound_shares: Balance,
+    /// pending emit fee events
+    #[borsh_skip]
+    #[serde(skip)]
+    pub pending_fee_events: Option<Vec<FeeDetail>>,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -47,6 +55,7 @@ pub enum VAsset {
     V1(AssetV1),
     V2(AssetV2),
     V3(AssetV3),
+    V4(AssetV4),
     Current(Asset),
 }
 
@@ -57,6 +66,7 @@ impl From<VAsset> for Asset {
             VAsset::V1(v) => v.into(),
             VAsset::V2(v) => v.into(),
             VAsset::V3(v) => v.into(),
+            VAsset::V4(v) => v.into(),
             VAsset::Current(c) => c,
         }
     }
@@ -81,6 +91,8 @@ impl Asset {
             unit_acc_hp_interest: 0,
             last_update_timestamp: timestamp,
             config,
+            lostfound_shares: 0,
+            pending_fee_events: None,
         }
     }
 
@@ -136,12 +148,12 @@ impl Asset {
     // r / n = (x ** (1 / n)) - 1
     // r = n * ((x ** (1 / n)) - 1)
     // n = in millis
-    fn compound(&mut self, time_diff_ms: Duration, margin_debt_discount_rate: u32) {
+    fn compound(&mut self, token_id: &TokenId, time_diff_ms: Duration, margin_debt_discount_rate: u32) {
         // handle common borrowed
         let rate = self.get_rate();
         let interest =
             rate.pow(time_diff_ms).round_mul_u128(self.borrowed.balance) - self.borrowed.balance;
-        // TODO: Split interest based on ratio between reserved and supplied?
+        let mut normal_fee_detail = FeeDetail::new("normal".to_string(), token_id.clone(), interest);
         let reserved = ratio(interest, self.config.reserve_ratio);
         if self.supplied.shares.0 > 0 {
             self.supplied.balance += interest - reserved;
@@ -149,12 +161,17 @@ impl Asset {
             let prot_fee = ratio(reserved, self.config.prot_ratio);
             self.reserved += reserved - prot_fee;
             self.prot_fee += prot_fee;
+            normal_fee_detail.reserved = reserved - prot_fee;
+            normal_fee_detail.prot_fee = prot_fee;
         } else {
             let prot_fee = ratio(interest, self.config.prot_ratio);
             self.reserved += interest - prot_fee;
             self.prot_fee += prot_fee;
+            normal_fee_detail.reserved = interest - prot_fee;
+            normal_fee_detail.prot_fee = prot_fee;
         }
         self.borrowed.balance += interest;
+        self.add_pending_fee_events(normal_fee_detail);
 
         // handle margin debt
         let margin_debt_rate = self.get_margin_debt_rate(margin_debt_discount_rate);
@@ -162,6 +179,7 @@ impl Asset {
             .pow(time_diff_ms)
             .round_mul_u128(self.margin_debt.balance)
             - self.margin_debt.balance;
+        let mut margin_fee_detail = FeeDetail::new("margin".to_string(), token_id.clone(), interest);
         let reserved = ratio(interest, self.config.reserve_ratio);
         if self.supplied.shares.0 > 0 {
             self.supplied.balance += interest - reserved;
@@ -169,21 +187,26 @@ impl Asset {
             let prot_fee = ratio(reserved, self.config.prot_ratio);
             self.reserved += reserved - prot_fee;
             self.prot_fee += prot_fee;
+            margin_fee_detail.reserved = reserved - prot_fee;
+            margin_fee_detail.prot_fee = prot_fee;
         } else {
             let prot_fee = ratio(interest, self.config.prot_ratio);
             self.reserved += interest - prot_fee;
             self.prot_fee += prot_fee;
+            margin_fee_detail.reserved = interest - prot_fee;
+            margin_fee_detail.prot_fee = prot_fee;
         }
         self.margin_debt.balance += interest;
+        self.add_pending_fee_events(margin_fee_detail);
     }
 
-    pub fn update(&mut self, margin_debt_discount_rate: u32) {
+    pub fn update(&mut self, token_id: &TokenId, margin_debt_discount_rate: u32) {
         let timestamp = env::block_timestamp();
         let time_diff_ms = nano_to_ms(timestamp - self.last_update_timestamp);
         if time_diff_ms > 0 {
             // update
             self.last_update_timestamp += ms_to_nano(time_diff_ms);
-            self.compound(time_diff_ms, margin_debt_discount_rate);
+            self.compound(token_id, time_diff_ms, margin_debt_discount_rate);
             // update unit accumulated holding position interest
             let hp_rate = BigDecimal::from(self.config.holding_position_fee_rate);
             self.unit_acc_hp_interest += hp_rate.pow(time_diff_ms).round_mul_u128(UNIT) - UNIT;
@@ -207,6 +230,22 @@ impl Asset {
             "Pending debt will overflow"
         );
     }
+
+    pub fn add_pending_fee_events(&mut self, fee_detail: FeeDetail) {
+        if let Some(pending_fee_events) = self.pending_fee_events.as_mut() {
+            pending_fee_events.push(fee_detail);
+        } else {
+            self.pending_fee_events = Some(vec![fee_detail]);
+        }
+    }
+
+    pub fn send_pending_fee_events(&mut self) {
+        if let Some(pending_fee_events) = self.pending_fee_events.take() {
+            for fee_event in pending_fee_events {
+                fee_detail(fee_event);
+            }
+        }
+    }
 }
 
 impl Contract {
@@ -219,7 +258,7 @@ impl Contract {
         cache.get(token_id).cloned().unwrap_or_else(|| {
             let asset = self.assets.get(token_id).map(|o| {
                 let mut asset: Asset = o.into();
-                asset.update(self.internal_margin_config().margin_debt_discount_rate);
+                asset.update(token_id, self.internal_margin_config().margin_debt_discount_rate);
                 asset
             });
             cache.insert(token_id.clone(), asset.clone());
@@ -232,11 +271,13 @@ impl Contract {
             asset.supplied.shares.0 >= MIN_RESERVE_SHARES, "Asset {} supply shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
         assert!(asset.borrowed.shares.0 == 0 || 
             asset.borrowed.shares.0 >= MIN_RESERVE_SHARES, "Asset {} borrow shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
+        assert!(asset.margin_debt.shares.0 == 0 || 
+            asset.margin_debt.shares.0 >= MIN_RESERVE_SHARES, "Asset {} margin_debt shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
         if let Some(supplied_limit) = asset.config.supplied_limit {
             assert!(asset.supplied.balance <= supplied_limit.0, "Asset {} supply balance cannot be greater than {}", token_id, supplied_limit.0);
         }
         if let Some(borrowed_limit) = asset.config.borrowed_limit {
-            assert!(asset.borrowed.balance <= borrowed_limit.0, "Asset {} borrow balance cannot be greater than {}", token_id, borrowed_limit.0);
+            assert!(asset.borrowed.balance + asset.margin_debt.balance + asset.margin_pending_debt <= borrowed_limit.0, "Asset {} borrow balance cannot be greater than {}", token_id, borrowed_limit.0);
         }
         assert!(
             asset.borrowed.shares.0 > 0 || asset.borrowed.balance == 0,
@@ -248,6 +289,7 @@ impl Contract {
         }
         asset.supplied.assert_invariant();
         asset.borrowed.assert_invariant();
+        asset.send_pending_fee_events();
         ASSETS
             .lock()
             .unwrap()
@@ -266,6 +308,7 @@ impl Contract {
         );
         asset.supplied.assert_invariant();
         asset.borrowed.assert_invariant();
+        asset.send_pending_fee_events();
         ASSETS
             .lock()
             .unwrap()
@@ -307,7 +350,7 @@ impl Contract {
             .map(|index| {
                 let key = keys.get(index).unwrap();
                 let mut asset: Asset = self.assets.get(&key).unwrap().into();
-                asset.update(self.internal_margin_config().margin_debt_discount_rate);
+                asset.update(&key, self.internal_margin_config().margin_debt_discount_rate);
                 (key, asset)
             })
             .collect()
@@ -325,7 +368,7 @@ impl Contract {
             .map(|index| {
                 let token_id = keys.get(index).unwrap();
                 let mut asset: Asset = self.assets.get(&token_id).unwrap().into();
-                asset.update(self.internal_margin_config().margin_debt_discount_rate);
+                asset.update(&token_id, self.internal_margin_config().margin_debt_discount_rate);
                 self.asset_into_detailed_view(token_id, asset)
             })
             .collect()

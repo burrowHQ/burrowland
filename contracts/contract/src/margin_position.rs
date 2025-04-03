@@ -1,21 +1,31 @@
 use crate::{*, events::emit::{EventDataMarginOpen, EventDataMarginDecrease}};
-use near_sdk::{promise_result_as_success, serde_json, PromiseOrValue};
+use near_sdk::{promise_result_as_success, serde_json};
+use near_contract_standards::fungible_token::core::ext_ft_core;
 
 
 pub const GAS_FOR_FT_TRANSFER_CALL: Gas = Gas(100 * Gas::ONE_TERA.0);
 pub const GAS_FOR_FT_TRANSFER_CALL_CALLBACK: Gas = Gas(20 * Gas::ONE_TERA.0);
 
-#[ext_contract(ext_fungible_token)]
-pub trait FungibleToken {
-    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
-    fn ft_transfer_call(
-        &mut self,
-        receiver_id: AccountId,
-        amount: U128,
-        memo: Option<String>,
-        msg: String,
-    ) -> PromiseOrValue<U128>;
-    fn ft_balance_of(&self, account_id: AccountId) -> U128;
+pub enum PositionDirection {
+    Long(TokenId),
+    Short(TokenId),
+}
+
+impl PositionDirection {
+    pub fn new(token_c_id: &TokenId, token_d_id: &TokenId, token_p_id: &TokenId) -> Self {
+        if token_c_id == token_d_id {
+            PositionDirection::Long(token_p_id.clone())
+        } else {
+            PositionDirection::Short(token_d_id.clone())
+        }
+    }
+
+    pub fn get_base_token_id(&self) -> &TokenId {
+        match self {
+            PositionDirection::Long(t) => t,
+            PositionDirection::Short(t) => t,
+        }
+    }
 }
 
 /// margin_asset == debt_asset or position asset
@@ -269,6 +279,8 @@ impl Contract {
         prices: &Prices,
     ) -> EventDataMarginOpen {
         let margin_config = self.internal_margin_config();
+        let pd = PositionDirection::new(token_c_id, token_d_id, token_p_id);
+        let mbtl = self.internal_unwrap_margin_base_token_limit_or_default(pd.get_base_token_id());
         assert!(account.margin_positions.len() < margin_config.max_active_user_margin_position as u64, "The number of margin positions exceeds the limit.");
         let pos_id = format!("{}_{}_{}", account.account_id.clone(), ts, self.accumulated_margin_position_num);
         self.accumulated_margin_position_num += 1;
@@ -278,13 +290,23 @@ impl Contract {
         );
 
         let asset_c = self.internal_unwrap_asset(token_c_id);
+        assert!(asset_c.config.can_use_as_collateral, "This asset can't be used as a collateral");
         let asset_p = self.internal_unwrap_asset(token_p_id);
         let mut asset_d = self.internal_unwrap_asset(token_d_id);
+        assert!(asset_d.config.can_borrow, "This asset can't be used borrowed");
+
+        let (base_token_amount, total_base_token_amount) = if pd.get_base_token_id() == token_d_id {
+            (token_d_amount, asset_d.margin_debt.balance + asset_d.margin_pending_debt + token_d_amount)
+        } else {
+            (min_token_p_amount, asset_p.margin_position + min_token_p_amount)
+        };
+        mbtl.assert_base_token_amount_valid(base_token_amount, total_base_token_amount, &pd);
 
         // check legitimacy: assets legal; swap_indication matches;
         margin_config.check_pair(&token_d_id, &token_p_id, &token_c_id);
         let mut swap_detail = self.parse_swap_indication(swap_indication);
         let ft_d_amount = token_d_amount / 10u128.pow(asset_d.config.extra_decimals as u32);
+        assert!(token_d_amount >= asset_d.config.min_borrowed_amount.expect("Missing min_borrowed_amount").0, "The debt amount is too low");
         assert!(
             swap_detail.verify_token_in(token_d_id, ft_d_amount),
             "token_in check failed"
@@ -306,7 +328,7 @@ impl Contract {
                 &asset_p,
                 prices.get_unwrap(&token_p_id),
                 min_token_p_amount,
-                margin_config.max_slippage_rate,
+                mbtl.max_common_slippage_rate,
             ),
             "min_position_amount is too low"
         );
@@ -321,7 +343,7 @@ impl Contract {
                 min_token_p_amount,
                 prices.get_unwrap(&token_p_id),
                 asset_p.config.extra_decimals,
-                margin_config.min_safety_buffer,
+                mbtl.min_safety_buffer,
             ),
             "Debt is too much"
         );
@@ -349,7 +371,7 @@ impl Contract {
                 prices.get_unwrap(&token_d_id),
                 asset_d.config.extra_decimals,
             ).unwrap()
-                <= BigDecimal::from(margin_config.max_leverage_rate as u32),
+                <= BigDecimal::from(mbtl.max_leverage_rate as u32),
             "Leverage rate is too high"
         );
 
@@ -377,20 +399,24 @@ impl Contract {
         account.withdraw_supply_shares(token_c_id, &mt.token_c_shares);
         asset_d.increase_margin_pending_debt(token_d_amount, margin_config.pending_debt_scale);
         self.internal_set_asset(token_d_id, asset_d);
+        // Add new margin_position storage
+        account.storage_tracker.start();
         account.margin_positions.insert(&pos_id, &mt);
-
+        account.storage_tracker.stop();
+        account.position_latest_actions.insert(pos_id.clone(), ts.into());
         // step 4: call dex to trade and wait for callback
         // organize swap action
         let swap_ref = SwapReference {
             account_id: account.account_id.clone(),
             pos_id: pos_id.clone(),
             amount_in: token_d_amount.into(),
+            action_ts: ts.into(),
             op: format!("open"),
             liquidator_id: None,
         };
         swap_detail.set_client_echo(&swap_ref.to_msg_string());
         let swap_msg = swap_detail.to_msg_string();
-        ext_fungible_token::ext(token_d_id.clone())
+        ext_ft_core::ext(token_d_id.clone())
             .with_attached_deposit(1)
             .with_static_gas(GAS_FOR_FT_TRANSFER_CALL)
             .ft_transfer_call(
@@ -433,10 +459,11 @@ impl Contract {
             !mt.is_locking,
             "Position is currently waiting for a trading result."
         );
+        let pd = PositionDirection::new(&mt.token_c_id, &mt.token_d_id, &mt.token_p_id);
+        let mbtl = self.internal_unwrap_margin_base_token_limit_or_default(pd.get_base_token_id());
         let pre_token_p_amount = mt.token_p_amount;
         let mut asset_p = self.internal_unwrap_asset(&mt.token_p_id);
         let asset_d = self.internal_unwrap_asset(&mt.token_d_id);
-        let margin_config = self.internal_margin_config();
 
         //   check swap_indication
         let mut swap_detail = self.parse_swap_indication(swap_indication);
@@ -447,6 +474,19 @@ impl Contract {
             "token_in check failed"
         );
         let ft_d_amount = min_token_d_amount / 10u128.pow(asset_d.config.extra_decimals as u32);
+        let total_debt_amount = asset_d
+            .margin_debt
+            .shares_to_amount(mt.token_d_shares, true);
+        let hp_fee = u128_ratio(
+            mt.debt_cap,
+            asset_d.unit_acc_hp_interest - mt.uahpi_at_open,
+            UNIT,
+        );
+        if op == "decrease" {
+            if min_token_d_amount < total_debt_amount + hp_fee {
+                assert!(total_debt_amount + hp_fee - min_token_d_amount >= asset_d.config.min_borrowed_amount.expect("Missing min_borrowed_amount").0, "The remaining debt amount is too low");
+            }
+        }
         assert!(
             swap_detail.verify_token_out(&mt.token_d_id, ft_d_amount),
             "token_out check failed"
@@ -461,7 +501,11 @@ impl Contract {
                 &asset_d,
                 prices.get_unwrap(&mt.token_d_id),
                 min_token_d_amount,
-                margin_config.max_slippage_rate,
+                if op == "forceclose" {
+                    mbtl.max_forceclose_slippage_rate
+                } else {
+                    mbtl.max_common_slippage_rate
+                },
             ),
             "min_debt_amount is too low"
         );
@@ -469,14 +513,6 @@ impl Contract {
         if op == "close" || op == "liquidate" {
             //   ensure all debt would be repaid
             //   and take holding-position fee into account
-            let total_debt_amount = asset_d
-                .margin_debt
-                .shares_to_amount(mt.token_d_shares, true);
-            let hp_fee = u128_ratio(
-                mt.debt_cap,
-                asset_d.unit_acc_hp_interest - mt.uahpi_at_open,
-                UNIT,
-            );
             if min_token_d_amount < total_debt_amount + hp_fee {
                 assert_eq!(
                     mt.token_c_id, mt.token_d_id,
@@ -494,7 +530,7 @@ impl Contract {
 
         if op == "liquidate" {
             assert!(
-                self.is_mt_liquidatable(&mt, prices, margin_config.min_safety_buffer),
+                self.is_mt_liquidatable(&mt, prices, mbtl.min_safety_buffer),
                 "Margin position is not liquidatable"
             );
         } else if op == "forceclose" {
@@ -531,7 +567,10 @@ impl Contract {
         // prepare to close
         mt.is_locking = true;
         self.internal_set_asset(&mt.token_p_id, asset_p);
+        // Update existing margin_position storage
         account.margin_positions.insert(&pos_id, &mt);
+        let ts = env::block_timestamp();
+        account.position_latest_actions.insert(pos_id.clone(), ts.into());
 
         let event = EventDataMarginDecrease {
             account_id: account.account_id.clone(),
@@ -549,12 +588,13 @@ impl Contract {
             account_id: account.account_id.clone(),
             pos_id: pos_id.clone(),
             amount_in: token_p_amount.into(),
+            action_ts: ts.into(),
             op,
             liquidator_id,
         };
         swap_detail.set_client_echo(&swap_ref.to_msg_string());
         let swap_msg = swap_detail.to_msg_string();
-        ext_fungible_token::ext(mt.token_p_id.clone())
+        ext_ft_core::ext(mt.token_p_id.clone())
             .with_attached_deposit(1)
             .with_static_gas(GAS_FOR_FT_TRANSFER_CALL)
             .ft_transfer_call(
@@ -575,6 +615,108 @@ impl Contract {
                     ),
             );
         event
+    }
+
+    pub(crate) fn process_margin_liquidate_direct(
+        &mut self,
+        pos_owner_id: &AccountId,
+        pos_id: &String,
+        prices: &Prices,
+        liquidator: &mut Account,
+    ) {
+        let mut pos_owner = self.internal_unwrap_margin_account(pos_owner_id);
+        let mt = pos_owner
+            .margin_positions
+            .remove(pos_id)
+            .expect("Position not exist");
+        assert!(
+            !mt.is_locking,
+            "Position is currently waiting for a trading result."
+        );
+        let pd = PositionDirection::new(&mt.token_c_id, &mt.token_d_id, &mt.token_p_id);
+        let mbtl = self.internal_unwrap_margin_base_token_limit_or_default(pd.get_base_token_id());
+        assert!(
+            self.is_mt_liquidatable(&mt, prices, mbtl.min_safety_buffer),
+            "Margin position is not liquidatable"
+        );
+        let (repay_token_d_shares, claim_token_p_shares) = if mt.token_c_id == mt.token_p_id {
+            let mut asset_c_p = self.internal_unwrap_asset(&mt.token_c_id);
+            let mut asset_d = self.internal_unwrap_asset(&mt.token_d_id);
+
+            let total_debt_amount = asset_d
+                .margin_debt
+                .shares_to_amount(mt.token_d_shares, true);
+            let hp_fee = u128_ratio(
+                mt.debt_cap,
+                asset_d.unit_acc_hp_interest - mt.uahpi_at_open,
+                UNIT,
+            );
+            let need_debt_supplied_shares = asset_d.supplied.amount_to_shares(total_debt_amount + hp_fee, true);
+            asset_d.supplied.withdraw(need_debt_supplied_shares, total_debt_amount + hp_fee);
+            asset_d.margin_debt.withdraw(mt.token_d_shares, total_debt_amount);
+            let mut account_asset_d = liquidator.internal_unwrap_asset(&mt.token_d_id);
+            account_asset_d.withdraw_shares(need_debt_supplied_shares);
+            liquidator.internal_set_asset(&mt.token_d_id, account_asset_d);
+
+            let position_shares = asset_c_p.supplied.amount_to_shares(mt.token_p_amount, false);
+            asset_c_p.margin_position -= mt.token_p_amount;
+            asset_c_p.supplied.deposit(position_shares, mt.token_p_amount);
+            let mut account_asset_c_p = liquidator.internal_get_asset_or_default(&mt.token_c_id);
+            account_asset_c_p.deposit_shares(mt.token_c_shares);
+            account_asset_c_p.deposit_shares(position_shares);
+            liquidator.internal_set_asset(&mt.token_c_id, account_asset_c_p);
+
+            self.internal_set_asset(&mt.token_c_id, asset_c_p);
+            self.internal_set_asset(&mt.token_d_id, asset_d);
+            (need_debt_supplied_shares, position_shares)
+        } else {
+            let mut asset_c_d = self.internal_unwrap_asset(&mt.token_c_id);
+            let mut asset_p = self.internal_unwrap_asset(&mt.token_p_id);
+
+            let total_debt_amount = asset_c_d
+                .margin_debt
+                .shares_to_amount(mt.token_d_shares, true);
+            let hp_fee = u128_ratio(
+                mt.debt_cap,
+                asset_c_d.unit_acc_hp_interest - mt.uahpi_at_open,
+                UNIT,
+            );
+            let need_debt_supplied_shares = asset_c_d.supplied.amount_to_shares(total_debt_amount + hp_fee, true);
+            asset_c_d.supplied.withdraw(need_debt_supplied_shares, total_debt_amount + hp_fee);
+            asset_c_d.margin_debt.withdraw(mt.token_d_shares, total_debt_amount);
+            let mut account_asset_c_d = liquidator.internal_unwrap_asset(&mt.token_c_id);
+            account_asset_c_d.deposit_shares(mt.token_c_shares);
+            account_asset_c_d.withdraw_shares(need_debt_supplied_shares);
+            liquidator.internal_set_asset(&mt.token_c_id, account_asset_c_d);
+
+            let position_shares = asset_p.supplied.amount_to_shares(mt.token_p_amount, false);
+            asset_p.margin_position -= mt.token_p_amount;
+            asset_p.supplied.deposit(position_shares, mt.token_p_amount);
+            let mut account_asset_p = liquidator.internal_get_asset_or_default(&mt.token_p_id);
+            account_asset_p.deposit_shares(position_shares);
+            liquidator.internal_set_asset(&mt.token_p_id, account_asset_p);
+
+            self.internal_set_asset(&mt.token_c_id, asset_c_d);
+            self.internal_set_asset(&mt.token_p_id, asset_p);
+            (need_debt_supplied_shares, position_shares)
+        };
+        self.internal_set_margin_account(&pos_owner_id, pos_owner);
+
+        liquidator.add_affected_farm(FarmId::Supplied(mt.token_c_id.clone()));
+        liquidator.add_affected_farm(FarmId::Supplied(mt.token_d_id.clone()));
+        liquidator.add_affected_farm(FarmId::Supplied(mt.token_p_id.clone()));
+
+        events::emit::margin_liquidate_direct(
+            &pos_owner_id,
+            &liquidator.account_id,
+            pos_id,
+            &mt.token_d_id,
+            &repay_token_d_shares,
+            &mt.token_c_id,
+            &mt.token_c_shares,
+            &mt.token_p_id,
+            &claim_token_p_shares,
+        );
     }
 }
 
@@ -599,13 +741,17 @@ impl Contract {
         if amount_in_used == 0 {
             // trading failed, revert margin operation
             let mut account = self.internal_unwrap_margin_account(&account_id);
+            account.position_latest_actions.remove(&pos_id);
             if op == "open" {
                 let mt = account.margin_positions.get(&pos_id).unwrap().clone();
                 let mut asset_d = self.internal_unwrap_asset(&mt.token_d_id);
                 asset_d.margin_pending_debt -= amount_in.0;
                 self.internal_set_asset(&mt.token_d_id, asset_d);
                 account.deposit_supply_shares(&mt.token_c_id, &mt.token_c_shares);
+                // Remove margin_position storage
+                account.storage_tracker.start();
                 account.margin_positions.remove(&pos_id);
+                account.storage_tracker.stop();
                 events::emit::margin_open_failed(&account_id, &pos_id);
                 
             } else if op == "decrease" {
@@ -626,6 +772,7 @@ impl Contract {
                 self.internal_set_asset(&mt.token_p_id, asset_p);
                 mt.is_locking = false;
                 mt.token_p_amount = pre_token_p_amount;
+                // Update existing margin_position storage
                 account.margin_positions.insert(&pos_id, &mt);
                 events::emit::margin_decrease_failed(&account_id, &pos_id);
             }

@@ -1,4 +1,5 @@
 use crate::*;
+use events::emit::LostfoundSupplyShares;
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct MarginAccount {
@@ -9,10 +10,17 @@ pub struct MarginAccount {
     pub supplied: HashMap<TokenId, Shares>,
     // margin trading related
     pub margin_positions: UnorderedMap<PosId, MarginTradingPosition>,
+    // Record the timestamp of the position initiating the swap action.
+    pub position_latest_actions: HashMap<PosId, U64>,
+
+    /// Tracks changes in storage usage by persistent collections in this account.
+    #[borsh_skip]
+    pub storage_tracker: StorageTracker,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub enum VMarginAccount {
+    V0(MarginAccountV0),
     Current(MarginAccount),
 }
 
@@ -25,6 +33,7 @@ impl From<MarginAccount> for VMarginAccount {
 impl From<VMarginAccount> for MarginAccount {
     fn from(c: VMarginAccount) -> Self {
         match c {
+            VMarginAccount::V0(c) => c.into(),
             VMarginAccount::Current(c) => c,
         }
     }
@@ -38,6 +47,8 @@ impl MarginAccount {
             margin_positions: UnorderedMap::new(StorageKey::MarginPositions { 
                 account_id: account_id.clone()
             }),
+            position_latest_actions: HashMap::new(),
+            storage_tracker: Default::default(),
         }
     }
 
@@ -81,8 +92,41 @@ impl Contract {
         }
     }
 
-    pub(crate) fn internal_set_margin_account(&mut self, account_id: &AccountId, account: MarginAccount) {
+    pub(crate) fn internal_set_margin_account(&mut self, account_id: &AccountId, mut account: MarginAccount) {
+        let mut storage = self.internal_unwrap_storage(account_id);
+        storage
+            .storage_tracker
+            .consume(&mut account.storage_tracker);
+        storage.storage_tracker.start();
         self.margin_accounts.insert(account_id, &account.into());
+        storage.storage_tracker.stop();
+        self.internal_set_storage(account_id, storage);
+    }
+
+    // Used for situations where the margin account may exceed storage limits due to the addition of a new supplied type, but cannot panic.
+    pub(crate) fn internal_set_margin_account_without_panic(
+        &mut self, 
+        account_id: &AccountId, 
+        mut account: MarginAccount, 
+        asset_debt: &mut Asset,
+        asset_position: &mut Asset,
+        margin_account_updates: MarginAccountUpdates,
+    ) {
+        // Retrieve the account before the update, used for rolling back the state in case of insufficient storage.
+        let old_margin_account = self.internal_unwrap_margin_account(account_id);
+        let mut storage = self.internal_unwrap_storage(account_id);
+        storage
+            .storage_tracker
+            .consume(&mut account.storage_tracker);
+        storage.storage_tracker.start();
+        self.margin_accounts.insert(account_id, &account.into());
+        storage.storage_tracker.stop();
+        if !self.internal_set_storage_without_panic(account_id, storage) {
+            // Rollback the state.
+            self.margin_accounts.insert(account_id, &old_margin_account.into());
+            // Store the shares in asset.lostfound_shares.
+            margin_account_token_shares_to_lostfound(account_id, asset_debt, asset_position, margin_account_updates);
+        }
     }
 }
 
@@ -94,6 +138,7 @@ pub struct MarginAccountDetailedView {
     /// A list of assets that are supplied by the account (but not used a collateral).
     pub supplied: Vec<AssetView>,
     pub margin_positions: HashMap<PosId, MarginTradingPositionView>,
+    pub position_latest_actions: HashMap<PosId, U64>,
 }
 
 #[derive(Serialize)]
@@ -133,7 +178,8 @@ impl Contract {
                 .margin_positions
                 .into_iter()
                 .map(|(pos_id, mtp)| (pos_id, self.margin_trading_position_into_view(mtp)))
-                .collect()
+                .collect(),
+            position_latest_actions: account.position_latest_actions.clone(),
         }
     }
 
@@ -170,6 +216,13 @@ impl Contract {
             .map(|ma| self.margin_account_into_detailed_view(ma))
     }
 
+    pub fn list_margin_accounts(&self, account_ids: Vec<AccountId>) -> Vec<Option<MarginAccountDetailedView>> {
+        account_ids.iter().map(|account_id| {
+            self.internal_get_margin_account(&account_id)
+                .map(|ma| self.margin_account_into_detailed_view(ma))
+        }).collect()
+    }
+
     pub fn get_margin_accounts_paged(&self, from_index: Option<u64>, limit: Option<u64>) -> Vec<MarginAccountDetailedView> {
         let values = self.margin_accounts.values_as_vector();
         let from_index = from_index.unwrap_or(0);
@@ -182,4 +235,18 @@ impl Contract {
     pub fn get_num_margin_accounts(&self) -> u32 {
         self.margin_accounts.len() as _
     }
+}
+
+pub fn margin_account_token_shares_to_lostfound(
+    account_id: &AccountId, 
+    asset_debt: &mut Asset,
+    asset_position: &mut Asset,
+    margin_account_updates: MarginAccountUpdates,
+) {
+    asset_debt.lostfound_shares += margin_account_updates.get_token_d_amount();
+    asset_position.lostfound_shares += margin_account_updates.get_token_p_amount();
+    events::emit::lostfound_supply_shares(LostfoundSupplyShares {
+        account_id: account_id.clone(),
+        shares: margin_account_updates.to_hash_map()
+    });
 }

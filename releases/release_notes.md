@@ -1,13 +1,57 @@
 # Release Notes
 
+Version 0.15.0
+```bash=
+# codehash: 8tBFoeAGUikSdC6hHJmQv7Y4BndZcA2gKTikRgKQDLTf
+```
+- Prohibit update_config from modifying owner_id, add a set_owner_id function that only allows setting a registered user as the owner.
+- Allow the owner to initiate SwapReference if the position action times out and is not completed.
+- If the liquidator deregisters their account during the liquidation process, all liquidation profits will go to the owner.
+
+Version 0.14.3
+```bash=
+# codehash: TdQAXwbxGsnwe2icachwgDBVbAnpQNh1ZogoTT15GdF
+```
+- add some events
+- add MarginBaseTokenLimit
+- add LiquidateMTPositionDirect Action
+
+Version 0.14.2
+```bash=
+# codehash: 6Ee1Sn4U8Mj8a9Z9qk3NVK3X8NR8oUNwqu9LmjmnCAq4
+```
+- fix internal_set_storage_without_panic issue
+
+Version 0.14.1
+```bash=
+# codehash: 4rJN4v168Uu5aTaVhEu9k4DDATdpfZrgd9w2MYvK3gQC
+```
+- add protocol debts storage
+
+Version 0.14.0
+```bash=
+# codehash: 7g3ExMPR2kVzaqawGuUTwh38CuzBnTMeX3oowoHBMVon
+```
+- fix audit recommendation
+
+- add fee events
+
+- replace workspaces with near-workspaces
+
+- add update_max_active_user_margin_position and update_asset_holding_position_fee_rate
+
+- add some account view funcs
+
+- if the withdraw amount is zero, only log without panic
+
 Version 0.13.0
-```bssh=
+```bash=
 # codehash: DgDSGmJygsCbtWuAbytjgSH99pPTQhDzRkcxrqTnj4xa 
 ```
 - margin trading
 
 Version 0.12.0
-```bssh=
+```bash=
 # codehash: MozRqmM6agrrtLNdWaW852iuATCnRcL3PgxfYdzmb77 
 ```
 - Improve gas usage for querying pyth oracle. 
@@ -31,19 +75,19 @@ Version 0.12.0
   Those accounts in the farmer blacklist won't get any further reward from farming. This is used for the possible requirement that relative parties won't compete for farm rewards with regular farmers.
 
 Version 0.10.0
-```bssh=
+```bash=
 # codehash: GcntYxNjD6y4XhiJuyd6ar4FQoTY3ZA1wQ3VJfraX4pC 
 ```
 - Support pyth oracle and switch between pyth and priceoracle.
 
 Version 0.9.1
-```bssh=
+```bash=
 # codehash: 8wSzoqHRtNXdV1xTwT6JvD7HYXLqKwqJyskeR9BkCdcv 
 ```
 - fix an old account auto-upgradation issue in liquidation.
 
 Version 0.9.0
-```bssh=
+```bash=
 # codehash: DUBWfFT1h3NNtvngw22SenyDpeUGN5PRLcNxaopMUpNe 
 ```
 - lp as collateral.

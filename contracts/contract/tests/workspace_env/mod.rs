@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(unused_imports)]
 
 pub use std::collections::HashMap;
 pub use contract::*;
@@ -11,8 +12,9 @@ pub use near_sdk::{
     serde::{Deserialize, Serialize},
 };
 pub use near_contract_standards::storage_management::StorageBalance;
-pub use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker, result::{Result, ExecutionFinalResult}};
-
+pub use near_workspaces::{
+    types::{Gas, NearToken}, result::ExecutionFinalResult, Account, Contract, Result, AccountId
+};
 
 pub use near_units::parse_near;
 

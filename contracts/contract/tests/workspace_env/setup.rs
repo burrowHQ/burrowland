@@ -7,7 +7,7 @@ pub const PYTH_ID: &str = "pyth.test.near";
 pub const BOOSTER_TOKEN_ID: &str = "booster.test.near";
 pub const BOOSTER_TOKEN_DECIMALS: u8 = 18;
 
-const PREVIOUS_BURROWLAND_WASM: &str = "../../releases/burrowland_0.12.0.wasm";
+const PREVIOUS_BURROWLAND_WASM: &str = "../../releases/burrowland_0.13.0.wasm";
 pub const BURROWLAND_WASM: &str = "../../res/burrowland.wasm";
 const REF_EXCHANGE_WASM: &str = "../../res/mock_ref_exchange.wasm";
 pub const BOOST_FARMING_WASM: &str = "../../res/mock_boost_farming.wasm";
@@ -24,7 +24,7 @@ pub async fn deploy_burrowland_with_pyth(
 ) -> Result<Burrowland> {
     let burrowland = root
         .create_subaccount("burrowland")
-        .initial_balance(parse_near!("50 N"))
+        .initial_balance(NearToken::from_near(50))
         .transact()
         .await?
         .unwrap();
@@ -60,6 +60,48 @@ pub async fn deploy_burrowland_with_pyth(
         .transact()
         .await?
         .is_success());
+    // check!(root.call(burrowland.id(), "set_margin_base_token_limit_gur")
+    //     .args_json(json!({
+    //         "token_id": "wrap.test.near",
+    //         "mbtlg": {
+    //             "min_safety_buffer_gur": vec![0, 10000],
+    //             "max_leverage_rate_gur": vec![0, 255],
+    //             "max_common_slippage_rate_gur": vec![0, 10000],
+    //             "max_forceclose_slippage_rate_gur": vec![0, 10000],
+    //             "liq_benefit_protocol_rate_gur": vec![0, 10000],
+    //             "liq_benefit_liquidator_rate_gur": vec![0, 10000],
+    //             "min_base_token_short_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "min_base_token_long_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "max_base_token_short_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "max_base_token_long_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "total_base_token_available_short_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "total_base_token_available_long_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //         }
+    //     }))
+    //     .max_gas()
+    //     .deposit(NearToken::from_yoctonear(1))
+    //     .transact());
+    // check!(root.call(burrowland.id(), "set_margin_base_token_limit")
+    //     .args_json(json!({
+    //         "token_id": "wrap.test.near",
+    //         "mbtl": {
+    //             "min_safety_buffer": 1000,
+    //             "max_leverage_rate": 10,
+    //             "max_common_slippage_rate": 1000,
+    //             "max_forceclose_slippage_rate": 1000,
+    //             "liq_benefit_protocol_rate": 2000,
+    //             "liq_benefit_liquidator_rate": 3000,
+    //             "min_base_token_short_position": "0",
+    //             "min_base_token_long_position": "0",
+    //             "max_base_token_short_position": u128::MAX.to_string(),
+    //             "max_base_token_long_position": u128::MAX.to_string(),
+    //             "total_base_token_available_short": u128::MAX.to_string(),
+    //             "total_base_token_available_long": u128::MAX.to_string(),
+    //         }
+    //     }))
+    //     .max_gas()
+    //     .deposit(NearToken::from_yoctonear(1))
+    //     .transact());
     Ok(Burrowland(burrowland))
 }
 
@@ -68,7 +110,7 @@ pub async fn deploy_burrowland_with_price_oracle(
 ) -> Result<Burrowland> {
     let burrowland = root
         .create_subaccount("burrowland")
-        .initial_balance(parse_near!("50 N"))
+        .initial_balance(NearToken::from_near(50))
         .transact()
         .await?
         .unwrap();
@@ -104,6 +146,48 @@ pub async fn deploy_burrowland_with_price_oracle(
         .transact()
         .await?
         .is_success());
+    // check!(root.call(burrowland.id(), "set_margin_base_token_limit_gur")
+    //     .args_json(json!({
+    //         "token_id": "wrap.test.near",
+    //         "mbtlg": {
+    //             "min_safety_buffer_gur": vec![0, 10000],
+    //             "max_leverage_rate_gur": vec![0, 255],
+    //             "max_common_slippage_rate_gur": vec![0, 10000],
+    //             "max_forceclose_slippage_rate_gur": vec![0, 10000],
+    //             "liq_benefit_protocol_rate_gur": vec![0, 10000],
+    //             "liq_benefit_liquidator_rate_gur": vec![0, 10000],
+    //             "min_base_token_short_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "min_base_token_long_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "max_base_token_short_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "max_base_token_long_position_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "total_base_token_available_short_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //             "total_base_token_available_long_gur": vec!["0".to_string(), u128::MAX.to_string()],
+    //         }
+    //     }))
+    //     .max_gas()
+    //     .deposit(NearToken::from_yoctonear(1))
+    //     .transact());
+    // check!(root.call(burrowland.id(), "set_margin_base_token_limit")
+    //     .args_json(json!({
+    //         "token_id": "wrap.test.near",
+    //         "mbtl": {
+    //             "min_safety_buffer": 1000,
+    //             "max_leverage_rate": 10,
+    //             "max_common_slippage_rate": 1000,
+    //             "max_forceclose_slippage_rate": 1000,
+    //             "liq_benefit_protocol_rate": 2000,
+    //             "liq_benefit_liquidator_rate": 3000,
+    //             "min_base_token_short_position": "0",
+    //             "min_base_token_long_position": "0",
+    //             "max_base_token_short_position": u128::MAX.to_string(),
+    //             "max_base_token_long_position": u128::MAX.to_string(),
+    //             "total_base_token_available_short": u128::MAX.to_string(),
+    //             "total_base_token_available_long": u128::MAX.to_string(),
+    //         }
+    //     }))
+    //     .max_gas()
+    //     .deposit(NearToken::from_yoctonear(1))
+    //     .transact());
     Ok(Burrowland(burrowland))
 }
 
@@ -112,7 +196,7 @@ pub async fn deploy_previous_version_burrowland(
 ) -> Result<Burrowland> {
     let burrowland = root
         .create_subaccount("burrowland")
-        .initial_balance(parse_near!("50 N"))
+        .initial_balance(NearToken::from_near(50))
         .transact()
         .await?
         .unwrap();
@@ -122,7 +206,7 @@ pub async fn deploy_previous_version_burrowland(
         .unwrap();
     check!(burrowland.call("new")
     .args_json(json!({
-        "config": ConfigV3 {
+        "config": Config {
             oracle_account_id: near_sdk::AccountId::new_unchecked(ORACLE_ID.to_string()),
             pyth_oracle_account_id: near_sdk::AccountId::new_unchecked(PYTH_ID.to_string()),
             ref_exchange_id: near_sdk::AccountId::new_unchecked("ref_exchange.test.near".to_string()),
@@ -141,6 +225,7 @@ pub async fn deploy_previous_version_burrowland(
             enable_price_oracle: false,
             enable_pyth_oracle: true,
             boost_suppress_factor: 1,
+            dcl_id: Some(near_sdk::AccountId::new_unchecked("dcl.test.near".to_string()),)
         },
     }))
     .max_gas()
@@ -156,7 +241,7 @@ pub async fn deploy_mock_ft(
 
     let mock_ft = root
         .create_subaccount(symbol)
-        .initial_balance(parse_near!("50 N"))
+        .initial_balance(NearToken::from_near(50))
         .transact()
         .await?
         .unwrap();
@@ -171,7 +256,7 @@ pub async fn deploy_mock_ft(
             "symbol": symbol,
             "decimals": decimal,
         }))
-        .gas(300_000_000_000_000)
+        .max_gas()
         .transact()
         .await?
         .is_success());
@@ -183,7 +268,7 @@ pub async fn deploy_oralce(
 ) -> Result<Oralce> {
     let oralce = root
         .create_subaccount("oracle")
-        .initial_balance(parse_near!("50 N"))
+        .initial_balance(NearToken::from_near(50))
         .transact()
         .await?
         .unwrap();
@@ -199,7 +284,7 @@ pub async fn deploy_ref_exchange(
 ) -> Result<RefExchange> {
     let ref_exchange = root
         .create_subaccount("ref_exchange")
-        .initial_balance(parse_near!("50 N"))
+        .initial_balance(NearToken::from_near(50))
         .transact()
         .await?
         .unwrap();
@@ -227,7 +312,7 @@ pub async fn deploy_boost_farming(
 ) -> Result<BoostFarmingContract> {
     let boost_farming = root
         .create_subaccount("boost_farming")
-        .initial_balance(parse_near!("50 N"))
+        .initial_balance(NearToken::from_near(50))
         .transact()
         .await?
         .unwrap();
@@ -252,7 +337,7 @@ pub async fn deploy_boost_farming(
 // ) -> Result<BoostFarmingContract> {
 //     let boost_farming = root
 //         .create_subaccount("boost_farming")
-//         .initial_balance(parse_near!("50 N"))
+//         .initial_balance(NearToken::from_near(50))
 //         .transact()
 //         .await?
 //         .unwrap();
@@ -281,7 +366,7 @@ pub async fn deploy_mock_rated_token(
 
     let mock_rated_token = root
         .create_subaccount(symbol)
-        .initial_balance(parse_near!("50 N"))
+        .initial_balance(NearToken::from_near(50))
         .transact()
         .await?
         .unwrap();
@@ -297,7 +382,7 @@ pub async fn deploy_mock_rated_token(
             "decimals": decimals,
             "price": price
         }))
-        .gas(300_000_000_000_000)
+        .max_gas()
         .transact()
         .await?
         .is_success());
@@ -310,7 +395,7 @@ pub async fn deploy_mock_pyth(
 ) -> Result<PythContract> {
     let mock_pyth = root
         .create_subaccount("pyth")
-        .initial_balance(parse_near!("50 N"))
+        .initial_balance(NearToken::from_near(50))
         .transact()
         .await?
         .unwrap();
@@ -320,7 +405,7 @@ pub async fn deploy_mock_pyth(
         .unwrap();
     assert!(mock_pyth
         .call("new")
-        .gas(300_000_000_000_000)
+        .max_gas()
         .transact()
         .await?
         .is_success());
@@ -332,7 +417,7 @@ pub async fn deploy_mock_dcl(
 ) -> Result<DclExchange> {
     let dcl = root
         .create_subaccount("dcl")
-        .initial_balance(parse_near!("50 N"))
+        .initial_balance(NearToken::from_near(50))
         .transact()
         .await?
         .unwrap();
@@ -346,7 +431,7 @@ pub async fn deploy_mock_dcl(
             "wnear_id": "wnear.test.near".to_string(),
             "farming_contract_id": "boost_farming.test.near".to_string(),
         }))
-        .gas(300_000_000_000_000)
+        .max_gas()
         .transact()
         .await?
         .is_success());

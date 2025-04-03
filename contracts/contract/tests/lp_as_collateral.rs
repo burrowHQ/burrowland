@@ -6,7 +6,7 @@ use crate::workspace_env::*;
 
 #[tokio::test]
 async fn test_exchange_boost_farm() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let usdt_token_contract = deploy_mock_ft(&root, "nusdt", 6).await?;
@@ -87,7 +87,7 @@ async fn test_exchange_boost_farm() -> Result<()> {
 
 // #[tokio::test]
 // async fn test_boost_farm_upgrade() -> Result<()> {
-//     let worker = workspaces::sandbox().await?;
+//     let worker = near_workspaces::sandbox().await?;
 //     let root = worker.root_account()?;
 
 //     let usdt_token_contract = deploy_mock_ft(&root, "nusdt", 6).await?;
@@ -161,7 +161,7 @@ async fn test_exchange_boost_farm() -> Result<()> {
 
 #[tokio::test]
 async fn test_exchange_burrowland_boost_farm() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
@@ -203,9 +203,10 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
-        check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
-        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
+        check!(wrap_token_contract.ft_mint(&root, &root, NearToken::from_near(10000).as_yoctonear()));
+        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, NearToken::from_near(10000).as_yoctonear()));
         check!(burrowland_contract.storage_deposit(&root));
     }
     let boost_farming_contract = deploy_boost_farming(&root).await?;
@@ -311,7 +312,7 @@ async fn test_exchange_burrowland_boost_farm() -> Result<()> {
 
 #[tokio::test]
 async fn test_position_liquidate() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
@@ -353,9 +354,10 @@ async fn test_position_liquidate() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
-        check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
-        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
+        check!(wrap_token_contract.ft_mint(&root, &root, NearToken::from_near(10000).as_yoctonear()));
+        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, NearToken::from_near(10000).as_yoctonear()));
         check!(burrowland_contract.storage_deposit(&root));
     }
     let boost_farming_contract = deploy_boost_farming(&root).await?;
@@ -407,8 +409,8 @@ async fn test_position_liquidate() -> Result<()> {
     check!(burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
     price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
     
-    check!(wrap_token_contract.ft_mint(&root, &bob, parse_near!("10000 N")));
-    check!(burrowland_contract.deposit(&wrap_token_contract, &bob, parse_near!("10000 N")));
+    check!(wrap_token_contract.ft_mint(&root, &bob, NearToken::from_near(10000).as_yoctonear()));
+    check!(burrowland_contract.deposit(&wrap_token_contract, &bob, NearToken::from_near(10000).as_yoctonear()));
     check!(ref_exchange_contract.mft_register( &bob, ":0".to_string(), bob.id()));
 
     let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
@@ -486,7 +488,7 @@ async fn test_position_liquidate() -> Result<()> {
 
 #[tokio::test]
 async fn test_position_force_close() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
@@ -528,9 +530,10 @@ async fn test_position_force_close() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
-        check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
-        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
+        check!(wrap_token_contract.ft_mint(&root, &root, NearToken::from_near(10000).as_yoctonear()));
+        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, NearToken::from_near(10000).as_yoctonear()));
         check!(burrowland_contract.storage_deposit(&root));
     }
     let boost_farming_contract = deploy_boost_farming(&root).await?;
@@ -586,8 +589,8 @@ async fn test_position_force_close() -> Result<()> {
     check!(logs burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
     price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
     
-    check!(wrap_token_contract.ft_mint(&root, &bob, parse_near!("10000 N")));
-    check!(burrowland_contract.deposit(&wrap_token_contract, &bob, parse_near!("10000 N")));
+    check!(wrap_token_contract.ft_mint(&root, &bob, NearToken::from_near(10000).as_yoctonear()));
+    check!(burrowland_contract.deposit(&wrap_token_contract, &bob, NearToken::from_near(10000).as_yoctonear()));
     check!(ref_exchange_contract.mft_register( &bob, ":0".to_string(), bob.id()));
 
     // let alice_burrowland_account = burrowland_contract.get_account_all_positions(&alice).await?.unwrap();
@@ -645,7 +648,7 @@ async fn test_position_force_close() -> Result<()> {
 
 #[tokio::test]
 async fn test_position_farming_with_force_close() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
@@ -687,9 +690,10 @@ async fn test_position_farming_with_force_close() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
-        check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
-        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
+        check!(wrap_token_contract.ft_mint(&root, &root, NearToken::from_near(10000).as_yoctonear()));
+        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, NearToken::from_near(10000).as_yoctonear()));
         check!(burrowland_contract.storage_deposit(&root));
     }
     let boost_farming_contract = deploy_boost_farming(&root).await?;
@@ -744,7 +748,7 @@ async fn test_position_farming_with_force_close() -> Result<()> {
     check!(burrowland_contract.position_increase_collateral(&alice, &token_id, 0));
     let current_timestamp = worker.view_block().await?.timestamp();
     check!(burrowland_contract.position_borrow_and_withdraw(&alice, &oralce_contract, burrowland_contract.0.id(), 
-    price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), parse_near!("100 N"), 0));
+    price_data(current_timestamp, Some(100000)), token_id.to_string(), wrap_token_contract.0.id(), NearToken::from_near(100).as_yoctonear(), 0));
     
     check!(boost_farming_contract.stake_free_seed(&alice, &ref_exchange_contract, ":0".to_string(), d(20000, 18)), "Not enough free shares");
     check!(boost_farming_contract.stake_free_seed(&alice, &ref_exchange_contract, ":0".to_string(), d(10000, 18)));
@@ -768,7 +772,7 @@ async fn test_position_farming_with_force_close() -> Result<()> {
 
 #[tokio::test]
 async fn test_position_farming_liquidate() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
@@ -810,9 +814,10 @@ async fn test_position_farming_liquidate() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
-        check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
-        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
+        check!(wrap_token_contract.ft_mint(&root, &root, NearToken::from_near(10000).as_yoctonear()));
+        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, NearToken::from_near(10000).as_yoctonear()));
         check!(burrowland_contract.storage_deposit(&root));
     }
     let boost_farming_contract = deploy_boost_farming(&root).await?;
@@ -893,7 +898,7 @@ async fn test_position_farming_liquidate() -> Result<()> {
 
 #[tokio::test]
 async fn test_twap() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
@@ -935,9 +940,10 @@ async fn test_twap() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
-        check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
-        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
+        check!(wrap_token_contract.ft_mint(&root, &root, NearToken::from_near(10000).as_yoctonear()));
+        check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, NearToken::from_near(10000).as_yoctonear()));
         check!(burrowland_contract.storage_deposit(&root));
     }
     let boost_farming_contract = deploy_boost_farming(&root).await?;

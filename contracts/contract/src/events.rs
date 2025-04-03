@@ -432,4 +432,124 @@ pub mod emit {
             data,
         );
     }
+
+    #[derive(Serialize, Clone)]
+    #[serde(crate = "near_sdk::serde")]
+    #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
+    pub struct FeeDetail {
+        // normal or margin
+        pub fee_type: String, 
+        pub token_id: TokenId,
+        #[serde(with = "u128_dec_format")]
+        pub interest: Balance,
+        #[serde(with = "u128_dec_format")]
+        pub reserved: Balance,
+        #[serde(with = "u128_dec_format")]
+        pub prot_fee: Balance,
+    }
+
+    impl FeeDetail {
+        pub fn new(fee_type: String, token_id: TokenId, interest: Balance) -> Self {
+            Self {
+                fee_type,
+                token_id,
+                interest,
+                reserved: 0,
+                prot_fee: 0,
+            }
+        }
+    }
+    
+    pub fn fee_detail(fee_detail: FeeDetail) {
+        log_event(
+            "fee_detail",
+            fee_detail,
+        );
+    }
+
+    #[derive(Serialize)]
+    #[serde(crate = "near_sdk::serde")]
+    pub struct LostfoundSupplyShares {
+        pub account_id: AccountId,
+        pub shares: HashMap<AccountId, U128>
+    }
+
+    pub fn lostfound_supply_shares(lostfound_supply_shares: LostfoundSupplyShares) {
+        log_event(
+            "lostfound_supply_share",
+            lostfound_supply_shares,
+        );
+    }
+
+    pub fn new_protocol_debts(token_id: &AccountId, amount: u128) {
+        log_event(
+            "new_protocol_debts",
+            json!({
+                "token_id": token_id,
+                "amount": U128(amount),
+            }),
+        );
+    }
+
+    pub fn repay_protocol_debts(token_id: &AccountId, amount: u128) {
+        log_event(
+            "repay_protocol_debts",
+            json!({
+                "token_id": token_id,
+                "amount": U128(amount),
+            }),
+        );
+    }
+
+    pub fn forceclose_protocol_loss(token_id: &AccountId, amount: u128) {
+        log_event(
+            "forceclose_protocol_loss",
+            json!({
+                "token_id": token_id,
+                "amount": U128(amount),
+            }),
+        );
+    }
+
+    pub fn margin_benefits(account_id: &AccountId, updates: &MarginAccountUpdates) {
+        log_event(
+            "margin_benefits",
+            json!({
+                "account_id": account_id,
+                "token_c_id": updates.token_c_update.0,
+                "token_c_shares": updates.token_c_update.1.to_string(),
+                "token_d_id": updates.token_d_update.0,
+                "token_d_shares": updates.token_d_update.1.to_string(),
+                "token_p_id": updates.token_p_update.0,
+                "token_p_shares": updates.token_p_update.1.to_string(),
+            }),
+        );
+    }
+
+    pub fn margin_liquidate_direct(
+        account_id: &AccountId, 
+        liquidator_id: &AccountId,
+        pos_id: &String, 
+        repay_token_d_id: &TokenId, 
+        repay_token_d_shares: &U128, 
+        claim_token_c_id: &TokenId, 
+        claim_token_c_shares: &U128,
+        claim_token_p_id: &TokenId, 
+        claim_token_p_shares: &U128,
+    ) {
+        log_event(
+            "margin_liquidate_direct",
+            json!({
+                "account_id": account_id,
+                "liquidator_id": liquidator_id, 
+                "pos_id": pos_id,
+                "repay_token_d_id": repay_token_d_id, 
+                "repay_token_d_shares": repay_token_d_shares, 
+                "claim_token_c_id": claim_token_c_id, 
+                "claim_token_c_shares": claim_token_c_shares,
+                "claim_token_p_id": claim_token_p_id, 
+                "claim_token_p_shares": claim_token_p_shares,
+            }),
+        );
+    }
 }

@@ -126,10 +126,22 @@ impl Contract {
         self.assert_owner();
         config.assert_valid();
         let current_config = self.internal_config();
+        require!(current_config.owner_id == config.owner_id, "Can't change owner_id");
         if current_config.booster_token_id != config.booster_token_id || 
             current_config.booster_decimals != config.booster_decimals {
             env::panic_str("Can't change booster_token_id/booster_decimals");
         }
+        self.config.set(&config);
+    }
+
+    #[payable]
+    pub fn set_owner_id(&mut self, owner_id: AccountId) {
+        assert_one_yocto();
+        self.assert_owner();
+        // The owner must be a registered account.
+        self.internal_unwrap_account(&owner_id);
+        let mut config = self.internal_config();
+        config.owner_id = owner_id;
         self.config.set(&config);
     }
 
@@ -191,7 +203,9 @@ impl Contract {
         let mut asset = self.internal_unwrap_asset(&token_id);
         if asset.config.extra_decimals != asset_config.extra_decimals {
             assert!(
-                asset.borrowed.balance == 0 && asset.supplied.balance == 0 && asset.prot_fee == 0 && asset.reserved == 0,
+                asset.borrowed.balance == 0 && asset.supplied.balance == 0 && 
+                asset.margin_debt.balance == 0 && asset.margin_pending_debt == 0 && asset.margin_position == 0 &&
+                asset.prot_fee == 0 && asset.reserved == 0,
                 "Can't change extra decimals if any of the balances are not 0"
             );
         }
@@ -204,7 +218,7 @@ impl Contract {
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner.
     #[payable]
-    pub fn update_asset_limit(&mut self, token_id: AccountId, supplied_limit: Option<U128>, borrowed_limit: Option<U128>) {
+    pub fn update_asset_limit(&mut self, token_id: AccountId, supplied_limit: Option<U128>, borrowed_limit: Option<U128>, min_borrowed_amount: Option<U128>) {
         assert_one_yocto();
         self.assert_owner();
         let mut asset = self.internal_unwrap_asset(&token_id);
@@ -214,7 +228,24 @@ impl Contract {
         if borrowed_limit.is_some() {
             asset.config.borrowed_limit = borrowed_limit;
         }
+        if min_borrowed_amount.is_some() {
+            asset.config.min_borrowed_amount = min_borrowed_amount;
+        }
         asset.config.assert_valid();
+        self.internal_set_asset(&token_id, asset);
+    }
+
+    /// Updates the holding_position_fee_rate for the asset with the a given token_id.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn update_asset_holding_position_fee_rate(&mut self, token_id: AccountId, holding_position_fee_rate: LowU128) {
+        assert_one_yocto();
+        self.assert_owner();
+        assert!(holding_position_fee_rate.0 >= BIG_DIVISOR, "Invalid holding_position_fee_rate");
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        asset.config.holding_position_fee_rate = holding_position_fee_rate;
         self.internal_set_asset(&token_id, asset);
     }
     
@@ -481,6 +512,20 @@ impl Contract {
         self.internal_set_account(&owner_id, account);
 
         events::emit::increase_reserved(&owner_id, increase_amount, &asset_amount.token_id);
+    }
+
+    /// Return the lostfound shares to the margin account.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner.
+    #[payable]
+    pub fn return_margin_account_lostfound_supply_shares(&mut self, account_id: AccountId, token_id: AccountId, shares: U128) {
+        assert_one_yocto();
+        self.assert_owner();
+        let asset = self.internal_unwrap_asset(&token_id);
+        assert!(shares.0 <= asset.lostfound_shares, "Invalid shares");
+        let mut margin_account = self.internal_unwrap_margin_account(&account_id);
+        margin_account.deposit_supply_shares(&token_id, &shares);
+        self.internal_set_margin_account(&account_id, margin_account);
     }
 }
 

@@ -51,6 +51,11 @@ impl Storage {
             "Not enough storage balance"
         );
     }
+
+    fn check_storage_covered(&self) -> bool {
+        let storage_balance_needed = Balance::from(self.used_bytes) * env::storage_byte_cost();
+        storage_balance_needed <= self.storage_balance
+    }
 }
 
 impl Contract {
@@ -81,6 +86,26 @@ impl Contract {
         storage.storage_tracker.bytes_released = 0;
         storage.storage_tracker.bytes_added = 0;
         self.storage.insert(account_id, &storage.into());
+    }
+
+    pub fn internal_set_storage_without_panic(&mut self, account_id: &AccountId, mut storage: Storage) -> bool {
+        let can_covered = if storage.storage_tracker.bytes_added >= storage.storage_tracker.bytes_released {
+            let extra_bytes_used =
+                storage.storage_tracker.bytes_added - storage.storage_tracker.bytes_released;
+            storage.used_bytes = storage.used_bytes.checked_add(extra_bytes_used).unwrap_or(u64::MAX);
+            storage.check_storage_covered()
+        } else {
+            let bytes_released =
+                storage.storage_tracker.bytes_released - storage.storage_tracker.bytes_added;
+            storage.used_bytes = storage.used_bytes.checked_sub(bytes_released).unwrap_or(0);
+            true
+        };
+        storage.storage_tracker.bytes_released = 0;
+        storage.storage_tracker.bytes_added = 0;
+        if can_covered {
+            self.storage.insert(account_id, &storage.into());
+        }
+        can_covered
     }
 
     pub fn internal_storage_balance_of(&self, account_id: &AccountId) -> Option<StorageBalance> {

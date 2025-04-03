@@ -15,8 +15,7 @@ impl FtContract {
                 "account_id": receiver.id(),
                 "amount": U128::from(amount),
             }))
-            .gas(20_000_000_000_000)
-            .deposit(0)
+            .gas(Gas::from_tgas(20))
             .transact()
             .await
     }
@@ -34,8 +33,8 @@ impl FtContract {
                 "amount": U128::from(amount),
                 "memo": Option::<String>::None,
             }))
-            .gas(20_000_000_000_000)
-            .deposit(1)
+            .gas(Gas::from_tgas(20))
+            .deposit(NearToken::from_near(1))
             .transact()
             .await
     }
@@ -55,8 +54,8 @@ impl FtContract {
                 "memo": Option::<String>::None,
                 "msg": msg.clone(),
             }))
-            .gas(300_000_000_000_000)
-            .deposit(1)
+            .max_gas()
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -85,8 +84,8 @@ impl FtContract {
                 "account_id": Some(account_id),
                 "registration_only": Option::<bool>::None,
             }))
-            .gas(20_000_000_000_000)
-            .deposit(near_sdk::env::storage_byte_cost() * 125)
+            .gas(Gas::from_tgas(20))
+            .deposit(NearToken::from_yoctonear(near_sdk::env::storage_byte_cost() * 125))
             .transact()
             .await
     }
@@ -100,8 +99,8 @@ impl FtContract {
             .args_json(json!({
                 "force": Some(true),
             }))
-            .gas(20_000_000_000_000)
-            .deposit(1)
+            .gas(Gas::from_tgas(20))
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }

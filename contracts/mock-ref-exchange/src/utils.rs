@@ -115,6 +115,7 @@ impl From<TokenCache> for HashMap<AccountId, U128> {
     }
 }
 
+#[allow(unused)]
 #[ext_contract(ext_fungible_token)]
 pub trait FungibleToken {
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);

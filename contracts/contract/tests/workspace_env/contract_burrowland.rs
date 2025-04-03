@@ -15,8 +15,8 @@ impl Burrowland {
                 "account_id": Some(account.id()),
                 "registration_only": Option::<bool>::None,
             }))
-            .gas(20_000_000_000_000)
-            .deposit(parse_near!("1 N"))
+            .gas(Gas::from_tgas(20))
+            .deposit(NearToken::from_near(1))
             .transact()
             .await
     }
@@ -34,7 +34,7 @@ impl Burrowland {
                 "enable_pyth_oracle": enable_pyth_oracle
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -50,7 +50,7 @@ impl Burrowland {
                 "config": config,
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -68,7 +68,7 @@ impl Burrowland {
                 "asset_config": asset_config
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -86,7 +86,7 @@ impl Burrowland {
                 "asset_config": asset_config,
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -104,7 +104,7 @@ impl Burrowland {
                 "duration": duration,
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -166,7 +166,7 @@ impl Burrowland {
                 ]
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -203,7 +203,7 @@ impl Burrowland {
                 ],
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -271,7 +271,7 @@ impl Burrowland {
                 ],
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -290,7 +290,7 @@ impl Burrowland {
                 ],
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -312,7 +312,7 @@ impl Burrowland {
                 ],
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -359,7 +359,7 @@ impl Burrowland {
                 ],
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -406,7 +406,7 @@ impl Burrowland {
                 ],
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -448,7 +448,7 @@ impl Burrowland {
                 ],
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -466,7 +466,7 @@ impl Burrowland {
                 "stdd_amount": stdd_amount
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -484,7 +484,7 @@ impl Burrowland {
                 "stdd_amount": stdd_amount
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -523,7 +523,7 @@ impl Burrowland {
                 "reward_amount": reward_amount,
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -553,7 +553,7 @@ impl Burrowland {
             .args_json(json!({
                 "guardians": guardians,
             }))
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .max_gas()
             .transact()
             .await
@@ -569,7 +569,7 @@ impl Burrowland {
             .args_json(json!({
                 "guardians": guardians,
             }))
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .max_gas()
             .transact()
             .await
@@ -587,7 +587,7 @@ impl Burrowland {
                 "token_id": token_id,
                 "prot_ratio": prot_ratio
             }))
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .max_gas()
             .transact()
             .await
@@ -605,7 +605,7 @@ impl Burrowland {
                 "token_id": token_id,
                 "net_tvl_multiplier": net_tvl_multiplier
             }))
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .max_gas()
             .transact()
             .await
@@ -629,7 +629,7 @@ impl Burrowland {
                 "can_use_as_collateral": can_use_as_collateral, 
                 "can_borrow": can_borrow
             }))
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .max_gas()
             .transact()
             .await
@@ -653,7 +653,7 @@ impl Burrowland {
                 "can_use_as_collateral": can_use_as_collateral, 
                 "can_borrow": can_borrow
             }))
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .max_gas()
             .transact()
             .await
@@ -682,7 +682,7 @@ impl Burrowland {
                 }
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -710,7 +710,7 @@ impl Burrowland {
                 }
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -726,13 +726,38 @@ impl Burrowland {
                 "actions": actions,
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
 }
 
 impl Burrowland {
+    pub async fn list_protocol_debts(
+        &self,
+        token_ids: Vec<&AccountId>
+    ) -> Result<HashMap<AccountId, Option<U128>>> {
+        self.0
+            .call("list_protocol_debts")
+            .args_json(json!({
+                "token_ids": token_ids
+            }))
+            .view()
+            .await?
+            .json::<HashMap<AccountId, Option<U128>>>()
+    }
+
+    pub async fn get_all_protocol_debts(
+        &self,
+    ) -> Result<HashMap<AccountId, U128>> {
+        self.0
+            .call("get_all_protocol_debts")
+            .args_json(json!({}))
+            .view()
+            .await?
+            .json::<HashMap<AccountId, U128>>()
+    }
+
     pub async fn get_asset(
         &self,
         token_id: &AccountId
@@ -886,6 +911,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             "linear.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -904,6 +930,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             "stnear.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -922,6 +949,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             "nearx.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -940,6 +968,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             "wrap.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -958,6 +987,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             "neth.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -976,6 +1006,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             "ndai.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -994,6 +1025,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             "nusdt.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -1012,6 +1044,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             "nusdc.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -1030,6 +1063,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             _ => {
                 panic!("unsupported token: {:?}", token_id);
@@ -1062,6 +1096,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             "stnear.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -1080,6 +1115,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             "nearx.test.near" => AssetConfig {
                 reserve_ratio: 2500,
@@ -1098,6 +1134,7 @@ impl Burrowland {
                 max_change_rate: None,
                 supplied_limit: Some(u128::MAX.into()),
                 borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
             },
             _ => {
                 panic!("unsupported token: {:?}", token_id);
@@ -1129,7 +1166,7 @@ impl Burrowland {
                 "token_id": token_id, 
                 "token_party": token_party
             }))
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .max_gas()
             .transact()
             .await
@@ -1147,7 +1184,7 @@ impl Burrowland {
                 "dex_id": dex_id, 
                 "dex_version": dex_version
             }))
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .max_gas()
             .transact()
             .await
@@ -1164,7 +1201,7 @@ impl Burrowland {
                 "actions": actions,
             }))
             .max_gas()
-            .deposit(1)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -1334,6 +1371,31 @@ impl Burrowland {
                     token_p_amount: token_p_amount.into(),
                     min_token_d_amount: min_token_d_amount.into(),
                     swap_indication: swap_indication,
+                }
+            ],
+        }).await
+    }
+
+    pub async fn margin_trading_liquidate_mtposition_direct_by_oracle_call(
+        &self,
+        oracle: &Oralce,
+        price_data: PriceData,
+        caller: &Account,
+        pos_owner_id: &AccountId,
+        pos_id: &String,
+        token_d_id: &AccountId,
+        borrow_token_d_amount: u128,
+    ) -> Result<ExecutionFinalResult> {
+        oracle.oracle_call(caller, self.0.id(), price_data, PriceReceiverMsg::Execute {
+            actions: vec![
+                Action::Borrow(AssetAmount{
+                    token_id: near_sdk::AccountId::new_unchecked(token_d_id.to_string()),
+                    amount: Some(borrow_token_d_amount.into()),
+                    max_amount: None,
+                }),
+                Action::LiquidateMTPositionDirect { 
+                    pos_owner_id: near_sdk::AccountId::new_unchecked(pos_owner_id.to_string()),
+                    pos_id: pos_id.clone(),
                 }
             ],
         }).await

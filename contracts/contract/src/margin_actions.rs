@@ -173,6 +173,11 @@ impl Contract {
                         account_id, &pos_owner_id,
                         "Can't liquidate yourself"
                     );
+                    let config = self.internal_config();
+                    assert!(
+                        config.force_closing_enabled,
+                        "The force closing is not enabled"
+                    );
                     let mut pos_owner = self.internal_unwrap_margin_account(&pos_owner_id);
                     let event = self.process_decrease_margin_position(
                         &mut pos_owner,
@@ -188,14 +193,21 @@ impl Contract {
                     events::emit::margin_decrease_started("margin_forceclose_started", event);
                 }
                 MarginAction::Withdraw { token_id, amount } => {
+                    assert!(!token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
+                    let asset = self.internal_unwrap_asset(&token_id);
+                    assert!(asset.config.can_withdraw, "Withdrawals for this asset are not enabled");
                     if account.supplied.get(&token_id).is_some() {
-                        let amount = self.internal_margin_withdraw_supply(
+                        let (amount, ft_amount) = self.internal_margin_withdraw_supply(
                             account,
                             &token_id,
                             amount.map(|a| a.into()),
                         );
-                        self.internal_ft_transfer(account_id, &token_id, amount, true);
-                        events::emit::margin_asset_withdraw_started(&account_id, amount, &token_id);
+                        if ft_amount > 0 {
+                            self.internal_ft_transfer(account_id, &token_id, amount, ft_amount, true);
+                            events::emit::margin_asset_withdraw_started(&account_id, amount, &token_id);
+                        } else {
+                            events::emit::margin_asset_withdraw_succeeded(&account_id, amount, &token_id);
+                        }
                     }
                 }
             }
@@ -215,10 +227,12 @@ impl Contract {
             .clone();
         let asset_id = mt.token_c_id.clone();
         let asset = self.internal_unwrap_asset(&mt.token_c_id);
+        assert!(asset.config.can_use_as_collateral, "This asset can't be used as a collateral");
         let shares = asset.supplied.amount_to_shares(amount, false);
         let actual_amount = asset.supplied.shares_to_amount(shares, false);
         account.withdraw_supply_shares(&mt.token_c_id, &shares);
         mt.token_c_shares.0 += shares.0;
+        // Update existing margin_position storage
         account.margin_positions.insert(&pos_id, &mt);
         (asset_id, actual_amount)
     }
@@ -230,7 +244,6 @@ impl Contract {
         amount: Balance,
         prices: &Prices,
     ) -> AccountId {
-        let margin_config = self.internal_margin_config();
         let mut mt = account
             .margin_positions
             .get(pos_id)
@@ -240,6 +253,8 @@ impl Contract {
             !mt.is_locking,
             "Position is currently waiting for a trading result."
         );
+        let pd = PositionDirection::new(&mt.token_c_id, &mt.token_d_id, &mt.token_p_id);
+        let mbtl = self.internal_unwrap_margin_base_token_limit_or_default(pd.get_base_token_id());
         let token_id = mt.token_c_id.clone();
         let asset = self.internal_unwrap_asset(&mt.token_c_id);
         let shares = asset.supplied.amount_to_shares(amount, true);
@@ -252,7 +267,7 @@ impl Contract {
         mt.token_c_shares.0 -= shares.0;
 
         assert!(
-            !self.is_mt_liquidatable(&mt, prices, margin_config.min_safety_buffer),
+            !self.is_mt_liquidatable(&mt, prices, mbtl.min_safety_buffer),
             "Margin position would be below liquidation line"
         );
         assert!(
@@ -262,11 +277,12 @@ impl Contract {
 
         assert!(
             self.get_mtp_lr(&mt, prices).unwrap()
-                <= BigDecimal::from(margin_config.max_leverage_rate as u32),
+                <= BigDecimal::from(mbtl.max_leverage_rate as u32),
             "Leverage rate is too high"
         );
 
         account.deposit_supply_shares(&mt.token_c_id, &shares);
+        // Update existing margin_position storage
         account.margin_positions.insert(&pos_id, &mt);
 
         token_id
@@ -286,6 +302,7 @@ impl Contract {
         shares
     }
 
+    #[allow(unused)]
     pub(crate) fn internal_margin_deposit_without_asset_basic_check(
         &mut self,
         account: &mut MarginAccount,
@@ -305,7 +322,7 @@ impl Contract {
         account: &mut MarginAccount,
         token_id: &AccountId,
         amount: Option<Balance>,
-    ) -> Balance {
+    ) -> (Balance, Balance) {
         let mut asset = self.internal_unwrap_asset(token_id);
         let (withdraw_shares, withdraw_amount) = if let Some(amount) = amount {
             (asset.supplied.amount_to_shares(amount, true), amount)
@@ -314,11 +331,23 @@ impl Contract {
             let amount = asset.supplied.shares_to_amount(shares, false);
             (shares, amount)
         };
-        account.withdraw_supply_shares(token_id, &withdraw_shares);
-        asset.supplied.withdraw(withdraw_shares, withdraw_amount);
-        self.internal_set_asset(token_id, asset);
+        let available_amount = asset.available_amount();
+        assert!(
+            withdraw_amount <= available_amount,
+            "Withdraw error: Exceeded available amount {} of {}",
+            available_amount,
+            token_id
+        );
 
-        withdraw_amount
+        let withdraw_ft_amount = withdraw_amount / 10u128.pow(asset.config.extra_decimals as u32);
+        if withdraw_ft_amount > 0 {
+            account.withdraw_supply_shares(token_id, &withdraw_shares);
+            asset.supplied.withdraw(withdraw_shares, withdraw_amount);
+            self.internal_set_asset(token_id, asset);
+            (withdraw_amount, withdraw_ft_amount)
+        } else {
+            (0, 0)
+        }
     }
 }
 

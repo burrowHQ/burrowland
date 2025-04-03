@@ -7,7 +7,7 @@ use crate::workspace_env::*;
 
 #[tokio::test]
 async fn test_pyth() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -62,6 +62,7 @@ async fn test_pyth() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -224,7 +225,7 @@ async fn test_pyth() -> Result<()> {
 
 #[tokio::test]
 async fn test_position_liquidate_with_pyth() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -268,6 +269,7 @@ async fn test_position_liquidate_with_pyth() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -439,7 +441,7 @@ async fn test_position_liquidate_with_pyth() -> Result<()> {
 
 #[tokio::test]
 async fn test_position_liquidate_with_pyth_and_default_price() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -483,6 +485,7 @@ async fn test_position_liquidate_with_pyth_and_default_price() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -664,7 +667,7 @@ async fn test_position_liquidate_with_pyth_and_default_price() -> Result<()> {
 
 #[tokio::test]
 async fn test_liquidation_decrease_health_factor_with_pyth() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -768,7 +771,7 @@ async fn test_liquidation_decrease_health_factor_with_pyth() -> Result<()> {
     vec![asset_amount(wrap_token_contract.0.id(), wnear_amount_in), asset_amount(nusdt_token_contract.0.id(), usdt_amount_in)], vec![asset_amount(nusdc_token_contract.0.id(), usdc_amount_out)], None, None).await?;
 
     let logs = outcome.logs();
-    let event = &logs[0];
+    let event = &logs[4];
     assert!(event.starts_with(EVENT_JSON));
 
     let value: serde_json::Value =
@@ -810,7 +813,7 @@ async fn test_liquidation_decrease_health_factor_with_pyth() -> Result<()> {
 
 #[tokio::test]
 async fn test_position_force_close() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -854,6 +857,7 @@ async fn test_position_force_close() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -1030,7 +1034,7 @@ async fn test_position_force_close() -> Result<()> {
 
 #[tokio::test]
 async fn test_force_close_with_pyth() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -1100,7 +1104,7 @@ async fn test_force_close_with_pyth() -> Result<()> {
     let outcome = burrowland_contract.force_close_with_pyth(&bob, alice.id(), None, None).await?;
 
     let logs = outcome.logs();
-    let event = &logs[0];
+    let event = &logs[4];
     assert!(event.starts_with(EVENT_JSON));
 
     let value: serde_json::Value =
@@ -1127,7 +1131,7 @@ async fn test_force_close_with_pyth() -> Result<()> {
 
 #[tokio::test]
 async fn test_force_close_with_pyth_and_default_price() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -1188,7 +1192,8 @@ async fn test_force_close_with_pyth_and_default_price() -> Result<()> {
     let outcome = burrowland_contract.force_close_with_pyth(&bob, alice.id(), None, None).await?;
 
     let logs = outcome.logs();
-    let event = &logs[0];
+    println!("{:#?}", logs);
+    let event = &logs[4];
     assert!(event.starts_with(EVENT_JSON));
 
     let value: serde_json::Value =
@@ -1215,7 +1220,7 @@ async fn test_force_close_with_pyth_and_default_price() -> Result<()> {
 
 #[tokio::test]
 async fn test_batch_actions() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -1272,7 +1277,7 @@ async fn test_batch_actions() -> Result<()> {
 
 #[tokio::test]
 async fn test_position_batch_actions() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
@@ -1316,6 +1321,7 @@ async fn test_position_batch_actions() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -1421,7 +1427,7 @@ async fn test_position_batch_actions() -> Result<()> {
 
 #[tokio::test]
 async fn test_position_batch_actions_with_default_prices() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let token_id = "shadow_ref_v1-0".parse::<AccountId>().unwrap();
@@ -1463,6 +1469,7 @@ async fn test_position_batch_actions_with_default_prices() -> Result<()> {
             max_change_rate: None,
             supplied_limit: Some(u128::MAX.into()),
             borrowed_limit: Some(u128::MAX.into()),
+            min_borrowed_amount: Some(1u128.into()),
         }));
         check!(wrap_token_contract.ft_mint(&root, &root, parse_near!("10000 N")));
         check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, parse_near!("10000 N")));
@@ -1545,7 +1552,7 @@ async fn test_position_batch_actions_with_default_prices() -> Result<()> {
 
 #[tokio::test]
 async fn test_switch_price_oracle() -> Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
 
     let pyth_contract = deploy_mock_pyth(&root).await?;
