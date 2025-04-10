@@ -68,6 +68,6 @@ pub fn get_aurora_new_account_id() -> AccountId {
 
 pub fn update_aurora_token_id(assets: &mut HashMap<TokenId, Shares>) {
     if let Some(shares) = assets.remove(&get_aurora_old_account_id()) {
-        assets.entry(get_aurora_new_account_id()).and_modify(|U128(v)| *v += shares.0).or_insert(shares);
+        assets.insert(get_aurora_new_account_id(), shares);
     }
 }
