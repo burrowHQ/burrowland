@@ -32,6 +32,7 @@ pub enum VAccount {
     V0(AccountV0),
     V1(AccountV1),
     V2(AccountV2),
+    V3(AccountV3),
     Current(Account),
 }
 
@@ -41,6 +42,7 @@ impl VAccount {
             VAccount::V0(c) => c.into_account(is_view),
             VAccount::V1(c) => c.into_account(is_view),
             VAccount::V2(c) => c.into_account(),
+            VAccount::V3(c) => c.into_account(),
             VAccount::Current(c) => c,
         }
     }

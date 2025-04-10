@@ -49,3 +49,25 @@ pub(crate) fn is_min_amount_out_reasonable(
     min_amount_out
         >= amount_out - u128_ratio(amount_out, max_slippage_rate as u128, MAX_RATIO as u128)
 }
+
+const AURORA_OLD_ACCOUNT_ID: &str = "aurora";
+const AURORA_NEW_ACCOUNT_ID_MAINNET: &str = "eth.bridge.near";
+const AURORA_NEW_ACCOUNT_ID_TESTNET: &str = "eth.sepolia.testnet";
+
+pub fn get_aurora_old_account_id() -> AccountId {
+    AURORA_OLD_ACCOUNT_ID.parse().unwrap()
+}
+
+pub fn get_aurora_new_account_id() -> AccountId {
+    if env::current_account_id().to_string().ends_with(".near") {
+        AURORA_NEW_ACCOUNT_ID_MAINNET.parse().unwrap()
+    } else {
+        AURORA_NEW_ACCOUNT_ID_TESTNET.parse().unwrap()
+    }
+}
+
+pub fn update_aurora_token_id(assets: &mut HashMap<TokenId, Shares>) {
+    if let Some(shares) = assets.remove(&get_aurora_old_account_id()) {
+        assets.entry(get_aurora_new_account_id()).and_modify(|U128(v)| *v += shares.0).or_insert(shares);
+    }
+}

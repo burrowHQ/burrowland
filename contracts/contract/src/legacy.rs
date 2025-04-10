@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::*;
 
 /// Default multiplier for Net TVL farming. Equals to 1.
@@ -88,21 +90,24 @@ impl AccountV1 {
         let affected_farms = Default::default();
         let mut storage_tracker: StorageTracker = Default::default();
         // When is_view we can't touch/clean up storage.
-        let supplied = supplied_unordered_map
+        let mut supplied = supplied_unordered_map
             .iter()
             .map(|(key, value)| {
                 let AccountAsset { shares } = value.into();
                 (key, shares)
             })
             .collect();
-        let collateral = collateral_vec
+        update_aurora_token_id(&mut supplied);
+        let mut collateral = collateral_vec
             .into_iter()
             .map(|c| (c.token_id, c.shares))
             .collect();
-        let borrowed = borrowed_vec
+        update_aurora_token_id(&mut collateral);
+        let mut borrowed = borrowed_vec
             .into_iter()
             .map(|b| (b.token_id, b.shares))
             .collect();
+        update_aurora_token_id(&mut borrowed);
         let farms = farms_unordered_map
             .iter()
             .map(|(key, value)| (key, value.into()))
@@ -141,7 +146,7 @@ pub struct AccountV2 {
     /// Keeping track of data required for farms for this account.
     pub farms: HashMap<FarmId, AccountFarm>,
     #[borsh_skip]
-    pub affected_farms: std::collections::HashSet<FarmId>,
+    pub affected_farms: HashSet<FarmId>,
     /// Tracks changes in storage usage by persistent collections in this account.
     #[borsh_skip]
     pub storage_tracker: StorageTracker,
@@ -153,14 +158,17 @@ impl AccountV2 {
     pub fn into_account(self) -> Account {
         let AccountV2 {
             account_id,
-            supplied,
-            collateral,
-            borrowed,
+            mut supplied,
+            mut collateral,
+            mut borrowed,
             farms,
             affected_farms,
             storage_tracker,
             booster_staking,
         } = self;
+        update_aurora_token_id(&mut supplied);
+        update_aurora_token_id(&mut collateral);
+        update_aurora_token_id(&mut borrowed);
         Account {
             account_id,
             supplied,
@@ -170,6 +178,63 @@ impl AccountV2 {
             storage_tracker,
             booster_staking,
             is_locked: false,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AccountV3 {
+    /// A copy of an account ID. Saves one storage_read when iterating on accounts.
+    pub account_id: AccountId,
+    /// A list of assets that are supplied by the account (but not used a collateral).
+    /// It's not returned for account pagination.
+    pub supplied: HashMap<TokenId, Shares>,
+    pub positions: HashMap<String, Position>,
+    /// Keeping track of data required for farms for this account.
+    pub farms: HashMap<FarmId, AccountFarm>,
+    #[borsh_skip]
+    pub affected_farms: HashSet<FarmId>,
+    /// Tracks changes in storage usage by persistent collections in this account.
+    #[borsh_skip]
+    pub storage_tracker: StorageTracker,
+    /// Staking of booster token.
+    pub booster_staking: Option<BoosterStaking>,
+    pub is_locked: bool,
+}
+
+impl AccountV3 {
+    pub fn into_account(self) -> Account {
+        let AccountV3 {
+            account_id,
+            mut supplied,
+            mut positions,
+            farms,
+            affected_farms,
+            storage_tracker,
+            booster_staking,
+            is_locked,
+        } = self;
+        update_aurora_token_id(&mut supplied);
+        for position in positions.values_mut() {
+            match position {
+                Position::RegularPosition(p) => {
+                    update_aurora_token_id(&mut p.borrowed);
+                    update_aurora_token_id(&mut p.collateral);
+                },
+                Position::LPTokenPosition(p) => {
+                    update_aurora_token_id(&mut p.borrowed);
+                }
+            }
+        }
+        Account {
+            account_id,
+            supplied,
+            positions,
+            farms,
+            affected_farms,
+            storage_tracker,
+            booster_staking,
+            is_locked,
         }
     }
 }

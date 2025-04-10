@@ -7,41 +7,18 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     pub fn migrate_state() -> Self {
-        let ContractV0130 { 
-            accounts, 
-            storage, 
-            assets, 
-            asset_farms, 
-            asset_ids, 
-            config, 
-            guardians,
-            last_prices,
-            last_lp_token_infos,
-            token_pyth_info,
-            blacklist_of_farmers,
-            last_staking_token_prices,
-            margin_accounts,
-            margin_config,
-            accumulated_margin_position_num,
-        } = env::state_read().unwrap();
-        let margin_config_v0 = margin_config.get().unwrap();
-        Self { 
-            accounts, 
-            storage, 
-            assets, 
-            asset_farms, 
-            asset_ids, 
-            config,
-            guardians,
-            last_prices,
-            last_lp_token_infos,
-            token_pyth_info,
-            blacklist_of_farmers,
-            last_staking_token_prices,
-            margin_accounts,
-            margin_config: LazyOption::new(StorageKey::MarginConfig, Some(&margin_config_v0.into())),
-            accumulated_margin_position_num,
-        }
+        let mut root_state: Contract = env::state_read().unwrap();
+        let aurora_old_account_id = get_aurora_old_account_id();
+        let aurora_new_account_id = get_aurora_new_account_id();
+        let asset = root_state.assets.remove(&aurora_old_account_id).unwrap();
+        require!(root_state.assets.insert(&aurora_new_account_id, &asset).is_none());
+        require!(root_state.asset_ids.remove(&aurora_old_account_id));
+        require!(root_state.asset_ids.insert(&aurora_new_account_id));
+        let price = root_state.last_prices.remove(&aurora_old_account_id).unwrap();
+        require!(root_state.last_prices.insert(aurora_new_account_id.clone(), price).is_none());
+        let pyth_info = root_state.token_pyth_info.remove(&aurora_old_account_id).unwrap();
+        require!(root_state.token_pyth_info.insert(aurora_new_account_id, pyth_info).is_none());
+        root_state
     }
 
     /// Returns semver of this contract.

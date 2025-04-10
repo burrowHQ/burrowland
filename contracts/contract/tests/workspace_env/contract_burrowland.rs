@@ -188,6 +188,25 @@ impl Burrowland {
         }).await
     }
 
+    pub async fn borrow_with_pyth(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        borrow_amount: u128,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "execute_with_pyth")
+            .args_json(json!({
+                "actions": vec![
+                    Action::Borrow(asset_amount(token_id, borrow_amount)),
+                ],
+            }))
+            .max_gas()
+            .deposit(NearToken::from_yoctonear(1))
+            .transact()
+            .await
+    }
+
     pub async fn borrow_and_withdraw_with_pyth(
         &self,
         caller: &Account,
