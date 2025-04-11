@@ -89,7 +89,7 @@ impl AccountV1 {
         } = self;
         let affected_farms = Default::default();
         let mut storage_tracker: StorageTracker = Default::default();
-        // When is_view we can't touch/clean up storage.
+        // FIX-AURORA: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
         let mut supplied = supplied_unordered_map
             .iter()
             .map(|(key, value)| {
@@ -97,16 +97,19 @@ impl AccountV1 {
                 (key, shares)
             })
             .collect();
+        // FIX-AURORA: replace user supply.
         update_aurora_token_id(&mut supplied);
         let mut collateral = collateral_vec
             .into_iter()
             .map(|c| (c.token_id, c.shares))
             .collect();
+        // FIX-AURORA: replace user collateral.
         update_aurora_token_id(&mut collateral);
         let mut borrowed = borrowed_vec
             .into_iter()
             .map(|b| (b.token_id, b.shares))
             .collect();
+        // FIX-AURORA: replace user debt.
         update_aurora_token_id(&mut borrowed);
         let farms = farms_unordered_map
             .iter()
@@ -166,8 +169,12 @@ impl AccountV2 {
             storage_tracker,
             booster_staking,
         } = self;
+        // FIX-AURORA: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
+        // FIX-AURORA: replace user supply.
         update_aurora_token_id(&mut supplied);
+        // FIX-AURORA: replace user collateral.
         update_aurora_token_id(&mut collateral);
+        // FIX-AURORA: replace user debt.
         update_aurora_token_id(&mut borrowed);
         Account {
             account_id,
@@ -214,16 +221,22 @@ impl AccountV3 {
             booster_staking,
             is_locked,
         } = self;
+        // FIX-AURORA: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
+        // FIX-AURORA: replace user supply.
         update_aurora_token_id(&mut supplied);
         for position in positions.values_mut() {
             match position {
                 Position::RegularPosition(p) => {
+                    // FIX-AURORA: replace user debt in regular position.
                     update_aurora_token_id(&mut p.borrowed);
+                    // FIX-AURORA: replace user collateral in regular position.
                     update_aurora_token_id(&mut p.collateral);
                 },
                 Position::LPTokenPosition(p) => {
+                    // FIX-AURORA: replace user borrowed in LPTokenPosition.
                     update_aurora_token_id(&mut p.borrowed);
-                }
+                    // FIX-AURORA: No need to replace collateral as eth won't exist in this type of position.
+                } 
             }
         }
         Account {

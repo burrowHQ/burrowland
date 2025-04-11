@@ -58,6 +58,7 @@ pub fn get_aurora_old_account_id() -> AccountId {
     AURORA_OLD_ACCOUNT_ID.parse().unwrap()
 }
 
+/// FIX-AURORA: return correct new eth tokenID on both mainnet and testnet env
 pub fn get_aurora_new_account_id() -> AccountId {
     if env::current_account_id().to_string().ends_with(".near") {
         AURORA_NEW_ACCOUNT_ID_MAINNET.parse().unwrap()
@@ -66,6 +67,7 @@ pub fn get_aurora_new_account_id() -> AccountId {
     }
 }
 
+/// FIX-AURORA: to replace eth tokenID in keys of a given HashMap
 pub fn update_aurora_token_id(assets: &mut HashMap<TokenId, Shares>) {
     if let Some(shares) = assets.remove(&get_aurora_old_account_id()) {
         assets.insert(get_aurora_new_account_id(), shares);

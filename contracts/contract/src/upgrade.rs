@@ -10,12 +10,17 @@ impl Contract {
         let mut root_state: Contract = env::state_read().unwrap();
         let aurora_old_account_id = get_aurora_old_account_id();
         let aurora_new_account_id = get_aurora_new_account_id();
+        // FIX-AURORA: We take care of all the replacement in the root stucture in contract upgrading phase.
+        // FIX-AURORA: replace eth tokenID in assets lookupmap key
         let asset = root_state.assets.remove(&aurora_old_account_id).unwrap();
         require!(root_state.assets.insert(&aurora_new_account_id, &asset).is_none());
+        // FIX-AURORA: replace eth tokenID in asset_ids unorderedset key
         require!(root_state.asset_ids.remove(&aurora_old_account_id));
         require!(root_state.asset_ids.insert(&aurora_new_account_id));
+        // FIX-AURORA: replace eth tokenID in last_prices hashmap key
         let price = root_state.last_prices.remove(&aurora_old_account_id).unwrap();
         require!(root_state.last_prices.insert(aurora_new_account_id.clone(), price).is_none());
+        // FIX-AURORA: replace eth tokenID in token_pyth_info hashmap key
         let pyth_info = root_state.token_pyth_info.remove(&aurora_old_account_id).unwrap();
         require!(root_state.token_pyth_info.insert(aurora_new_account_id, pyth_info).is_none());
         root_state
