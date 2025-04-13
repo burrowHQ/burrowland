@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.15.1
+```bash=
+# codehash: 62DF7LoNvnu8Nypjg3nK97giGGjuPG9jTkdb3ddupLUs
+```
+- Fix aurora upgrade issue.
+
 Version 0.15.0
 ```bash=
 # codehash: 8tBFoeAGUikSdC6hHJmQv7Y4BndZcA2gKTikRgKQDLTf

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::*;
 
 /// Default multiplier for Net TVL farming. Equals to 1.
@@ -87,26 +89,34 @@ impl AccountV1 {
         } = self;
         let affected_farms = Default::default();
         let mut storage_tracker: StorageTracker = Default::default();
-        // When is_view we can't touch/clean up storage.
-        let supplied = supplied_unordered_map
+        // FIX-ETH: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
+        let mut supplied = supplied_unordered_map
             .iter()
             .map(|(key, value)| {
                 let AccountAsset { shares } = value.into();
                 (key, shares)
             })
             .collect();
-        let collateral = collateral_vec
+        // FIX-ETH: replace user supply.
+        update_account_assets_eth_token_id(&mut supplied);
+        let mut collateral = collateral_vec
             .into_iter()
             .map(|c| (c.token_id, c.shares))
             .collect();
-        let borrowed = borrowed_vec
+        // FIX-ETH: replace user collateral.
+        update_account_assets_eth_token_id(&mut collateral);
+        let mut borrowed = borrowed_vec
             .into_iter()
             .map(|b| (b.token_id, b.shares))
             .collect();
-        let farms = farms_unordered_map
+        // FIX-ETH: replace user debt.
+        update_account_assets_eth_token_id(&mut borrowed);
+        let mut farms = farms_unordered_map
             .iter()
             .map(|(key, value)| (key, value.into()))
             .collect();
+        // FIX-ETH: replace user farms.
+        update_account_farms_eth_token_id(&mut farms);
         // Clearing persistent storage if this is not a view call.
         if !is_view {
             storage_tracker.start();
@@ -141,7 +151,7 @@ pub struct AccountV2 {
     /// Keeping track of data required for farms for this account.
     pub farms: HashMap<FarmId, AccountFarm>,
     #[borsh_skip]
-    pub affected_farms: std::collections::HashSet<FarmId>,
+    pub affected_farms: HashSet<FarmId>,
     /// Tracks changes in storage usage by persistent collections in this account.
     #[borsh_skip]
     pub storage_tracker: StorageTracker,
@@ -153,14 +163,23 @@ impl AccountV2 {
     pub fn into_account(self) -> Account {
         let AccountV2 {
             account_id,
-            supplied,
-            collateral,
-            borrowed,
-            farms,
+            mut supplied,
+            mut collateral,
+            mut borrowed,
+            mut farms,
             affected_farms,
             storage_tracker,
             booster_staking,
         } = self;
+        // FIX-ETH: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
+        // FIX-ETH: replace user supply.
+        update_account_assets_eth_token_id(&mut supplied);
+        // FIX-ETH: replace user collateral.
+        update_account_assets_eth_token_id(&mut collateral);
+        // FIX-ETH: replace user debt.
+        update_account_assets_eth_token_id(&mut borrowed);
+        // FIX-ETH: replace user farms.
+        update_account_farms_eth_token_id(&mut farms);
         Account {
             account_id,
             supplied,
@@ -170,6 +189,71 @@ impl AccountV2 {
             storage_tracker,
             booster_staking,
             is_locked: false,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AccountV3 {
+    /// A copy of an account ID. Saves one storage_read when iterating on accounts.
+    pub account_id: AccountId,
+    /// A list of assets that are supplied by the account (but not used a collateral).
+    /// It's not returned for account pagination.
+    pub supplied: HashMap<TokenId, Shares>,
+    pub positions: HashMap<String, Position>,
+    /// Keeping track of data required for farms for this account.
+    pub farms: HashMap<FarmId, AccountFarm>,
+    #[borsh_skip]
+    pub affected_farms: HashSet<FarmId>,
+    /// Tracks changes in storage usage by persistent collections in this account.
+    #[borsh_skip]
+    pub storage_tracker: StorageTracker,
+    /// Staking of booster token.
+    pub booster_staking: Option<BoosterStaking>,
+    pub is_locked: bool,
+}
+
+impl AccountV3 {
+    pub fn into_account(self) -> Account {
+        let AccountV3 {
+            account_id,
+            mut supplied,
+            mut positions,
+            mut farms,
+            affected_farms,
+            storage_tracker,
+            booster_staking,
+            is_locked,
+        } = self;
+        // FIX-ETH: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
+        // FIX-ETH: replace user supply.
+        update_account_assets_eth_token_id(&mut supplied);
+        for position in positions.values_mut() {
+            match position {
+                Position::RegularPosition(p) => {
+                    // FIX-ETH: replace user debt in regular position.
+                    update_account_assets_eth_token_id(&mut p.borrowed);
+                    // FIX-ETH: replace user collateral in regular position.
+                    update_account_assets_eth_token_id(&mut p.collateral);
+                },
+                Position::LPTokenPosition(p) => {
+                    // FIX-ETH: replace user borrowed in LPTokenPosition.
+                    update_account_assets_eth_token_id(&mut p.borrowed);
+                    // FIX-ETH: No need to replace collateral as eth won't exist in this type of position.
+                } 
+            }
+        }
+        // FIX-ETH: replace user farms.
+        update_account_farms_eth_token_id(&mut farms);
+        Account {
+            account_id,
+            supplied,
+            positions,
+            farms,
+            affected_farms,
+            storage_tracker,
+            booster_staking,
+            is_locked,
         }
     }
 }
