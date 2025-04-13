@@ -8,27 +8,57 @@ impl Contract {
     #[init(ignore_state)]
     pub fn migrate_state() -> Self {
         let mut root_state: Contract = env::state_read().unwrap();
-        let aurora_old_account_id = get_aurora_old_account_id();
-        let aurora_new_account_id = get_aurora_new_account_id();
-        // FIX-AURORA: We take care of all the replacement in the root stucture in contract upgrading phase.
-        // FIX-AURORA: replace eth tokenID in assets lookupmap key
-        let asset = root_state.assets.remove(&aurora_old_account_id).unwrap();
-        require!(root_state.assets.insert(&aurora_new_account_id, &asset).is_none());
-        // FIX-AURORA: replace eth tokenID in asset_ids unorderedset key
-        require!(root_state.asset_ids.remove(&aurora_old_account_id));
-        require!(root_state.asset_ids.insert(&aurora_new_account_id));
-        // FIX-AURORA: replace eth tokenID in last_prices hashmap key
-        let price = root_state.last_prices.remove(&aurora_old_account_id).unwrap();
-        require!(root_state.last_prices.insert(aurora_new_account_id.clone(), price).is_none());
-        // FIX-AURORA: replace eth tokenID in token_pyth_info hashmap key
-        let pyth_info = root_state.token_pyth_info.remove(&aurora_old_account_id).unwrap();
-        require!(root_state.token_pyth_info.insert(aurora_new_account_id, pyth_info).is_none());
+        let eth_old_account_id = get_eth_old_account_id();
+        let eth_new_account_id = get_eth_new_account_id();
+        // FIX-ETH: We take care of all the replacement in the root stucture in contract upgrading phase.
+        // FIX-ETH: replace eth tokenID in assets lookupmap key
+        let asset = root_state.assets.remove(&eth_old_account_id).unwrap();
+        require!(root_state.assets.insert(&eth_new_account_id, &asset).is_none());
+        // FIX-ETH: replace eth tokenID in asset_ids unorderedset key
+        require!(root_state.asset_ids.remove(&eth_old_account_id));
+        require!(root_state.asset_ids.insert(&eth_new_account_id));
+        // FIX-ETH: replace eth tokenID in last_prices hashmap key
+        let price = root_state.last_prices.remove(&eth_old_account_id).unwrap();
+        require!(root_state.last_prices.insert(eth_new_account_id.clone(), price).is_none());
+        // FIX-ETH: replace eth tokenID in token_pyth_info hashmap key
+        let pyth_info = root_state.token_pyth_info.remove(&eth_old_account_id).unwrap();
+        require!(root_state.token_pyth_info.insert(eth_new_account_id.clone(), pyth_info).is_none());
+        // FIX-ETH: replace eth tokenID in asset_farms hashmap key
+        root_state.update_asset_farms_eth_token_id(&eth_old_account_id, &eth_new_account_id);
         root_state
     }
 
     /// Returns semver of this contract.
     pub fn get_version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
+    }
+}
+
+impl Contract {
+    pub fn update_asset_farms_eth_token_id(&mut self, eth_old_account_id: &AccountId, eth_new_account_id: &AccountId) {
+        // FarmId::NetTvl has no eth in either rewards or inactive_rewards.
+        // No update is needed.
+
+        // FarmId::Supplied(eth) has no eth in rewards.
+        // Only the key and inactive_rewards need to be updated.
+        let mut supplied_farm = self.asset_farms.remove(&FarmId::Supplied(eth_old_account_id.clone())).unwrap();
+        match &mut supplied_farm {
+            VAssetFarm::Current(asset_farm) => {
+                let eth_inactive_reward = asset_farm.inactive_rewards.remove(&eth_old_account_id).unwrap();  
+                require!(asset_farm.inactive_rewards.insert(eth_new_account_id, &eth_inactive_reward).is_none());
+            },
+        }
+        require!(self.asset_farms.insert(&FarmId::Supplied(eth_new_account_id.clone()), &supplied_farm).is_none());
+
+        // FarmId::Borrowed(eth) has no eth in either rewards or inactive_rewards.
+        // Only the key needs to be updated.
+        let borrowed_farm = self.asset_farms.remove(&FarmId::Borrowed(eth_old_account_id.clone())).unwrap();
+        require!(self.asset_farms.insert(&FarmId::Borrowed(eth_new_account_id.clone()), &borrowed_farm).is_none());
+
+        // FarmId::TokenNetBalance(eth) has no eth in either rewards or inactive_rewards.
+        // Only the key needs to be updated.
+        let token_net_balance_farm = self.asset_farms.remove(&FarmId::TokenNetBalance(eth_old_account_id.clone())).unwrap();
+        require!(self.asset_farms.insert(&FarmId::TokenNetBalance(eth_new_account_id.clone()), &token_net_balance_farm).is_none());
     }
 }
 

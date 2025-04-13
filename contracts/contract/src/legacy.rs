@@ -89,7 +89,7 @@ impl AccountV1 {
         } = self;
         let affected_farms = Default::default();
         let mut storage_tracker: StorageTracker = Default::default();
-        // FIX-AURORA: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
+        // FIX-ETH: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
         let mut supplied = supplied_unordered_map
             .iter()
             .map(|(key, value)| {
@@ -97,24 +97,26 @@ impl AccountV1 {
                 (key, shares)
             })
             .collect();
-        // FIX-AURORA: replace user supply.
-        update_aurora_token_id(&mut supplied);
+        // FIX-ETH: replace user supply.
+        update_account_assets_eth_token_id(&mut supplied);
         let mut collateral = collateral_vec
             .into_iter()
             .map(|c| (c.token_id, c.shares))
             .collect();
-        // FIX-AURORA: replace user collateral.
-        update_aurora_token_id(&mut collateral);
+        // FIX-ETH: replace user collateral.
+        update_account_assets_eth_token_id(&mut collateral);
         let mut borrowed = borrowed_vec
             .into_iter()
             .map(|b| (b.token_id, b.shares))
             .collect();
-        // FIX-AURORA: replace user debt.
-        update_aurora_token_id(&mut borrowed);
-        let farms = farms_unordered_map
+        // FIX-ETH: replace user debt.
+        update_account_assets_eth_token_id(&mut borrowed);
+        let mut farms = farms_unordered_map
             .iter()
             .map(|(key, value)| (key, value.into()))
             .collect();
+        // FIX-ETH: replace user farms.
+        update_account_farms_eth_token_id(&mut farms);
         // Clearing persistent storage if this is not a view call.
         if !is_view {
             storage_tracker.start();
@@ -164,18 +166,20 @@ impl AccountV2 {
             mut supplied,
             mut collateral,
             mut borrowed,
-            farms,
+            mut farms,
             affected_farms,
             storage_tracker,
             booster_staking,
         } = self;
-        // FIX-AURORA: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
-        // FIX-AURORA: replace user supply.
-        update_aurora_token_id(&mut supplied);
-        // FIX-AURORA: replace user collateral.
-        update_aurora_token_id(&mut collateral);
-        // FIX-AURORA: replace user debt.
-        update_aurora_token_id(&mut borrowed);
+        // FIX-ETH: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
+        // FIX-ETH: replace user supply.
+        update_account_assets_eth_token_id(&mut supplied);
+        // FIX-ETH: replace user collateral.
+        update_account_assets_eth_token_id(&mut collateral);
+        // FIX-ETH: replace user debt.
+        update_account_assets_eth_token_id(&mut borrowed);
+        // FIX-ETH: replace user farms.
+        update_account_farms_eth_token_id(&mut farms);
         Account {
             account_id,
             supplied,
@@ -215,30 +219,32 @@ impl AccountV3 {
             account_id,
             mut supplied,
             mut positions,
-            farms,
+            mut farms,
             affected_farms,
             storage_tracker,
             booster_staking,
             is_locked,
         } = self;
-        // FIX-AURORA: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
-        // FIX-AURORA: replace user supply.
-        update_aurora_token_id(&mut supplied);
+        // FIX-ETH: Account version upgrade is a lazy upgrade, only execute when the account was about to be accessed.
+        // FIX-ETH: replace user supply.
+        update_account_assets_eth_token_id(&mut supplied);
         for position in positions.values_mut() {
             match position {
                 Position::RegularPosition(p) => {
-                    // FIX-AURORA: replace user debt in regular position.
-                    update_aurora_token_id(&mut p.borrowed);
-                    // FIX-AURORA: replace user collateral in regular position.
-                    update_aurora_token_id(&mut p.collateral);
+                    // FIX-ETH: replace user debt in regular position.
+                    update_account_assets_eth_token_id(&mut p.borrowed);
+                    // FIX-ETH: replace user collateral in regular position.
+                    update_account_assets_eth_token_id(&mut p.collateral);
                 },
                 Position::LPTokenPosition(p) => {
-                    // FIX-AURORA: replace user borrowed in LPTokenPosition.
-                    update_aurora_token_id(&mut p.borrowed);
-                    // FIX-AURORA: No need to replace collateral as eth won't exist in this type of position.
+                    // FIX-ETH: replace user borrowed in LPTokenPosition.
+                    update_account_assets_eth_token_id(&mut p.borrowed);
+                    // FIX-ETH: No need to replace collateral as eth won't exist in this type of position.
                 } 
             }
         }
+        // FIX-ETH: replace user farms.
+        update_account_farms_eth_token_id(&mut farms);
         Account {
             account_id,
             supplied,
