@@ -153,34 +153,12 @@ impl Contract {
                 }
                 Action::Repay(asset_amount) => {
                     let position = REGULAR_POSITION.to_string();
-                    let amount = if asset_amount.token_id == *ETH_OLD_ACCOUNT_ID {
-                        let mut account_asset = account.internal_unwrap_asset(&ETH_NEW_ACCOUNT_ID);
-                        // FIX-ETH: repay the old eth debt using the supplied new eth.
-                        let amount = self.internal_repay_old_eth(&position, &mut account_asset, account, &asset_amount);
-                        account.internal_set_asset(&ETH_NEW_ACCOUNT_ID, account_asset);
-                        amount
-                    } else {
-                        let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
-                        let amount = self.internal_repay(&position, &mut account_asset, account, &asset_amount);
-                        account.internal_set_asset(&asset_amount.token_id, account_asset);
-                        amount
-                    };
+                    let amount = self.internal_owner_repay(&position, account, &asset_amount);
                     account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
                     events::emit::repay(&account_id, amount, &asset_amount.token_id, &position);
                 }
                 Action::PositionRepay{ position, asset_amount} => {
-                    let amount = if asset_amount.token_id == *ETH_OLD_ACCOUNT_ID {
-                        let mut account_asset = account.internal_unwrap_asset(&ETH_NEW_ACCOUNT_ID);
-                        // FIX-ETH: repay the old eth debt using the supplied new eth.
-                        let amount = self.internal_repay_old_eth(&position, &mut account_asset, account, &asset_amount);
-                        account.internal_set_asset(&ETH_NEW_ACCOUNT_ID, account_asset);
-                        amount
-                    } else {
-                        let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
-                        let amount = self.internal_repay(&position, &mut account_asset, account, &asset_amount);
-                        account.internal_set_asset(&asset_amount.token_id, account_asset);
-                        amount
-                    };
+                    let amount = self.internal_owner_repay(&position, account, &asset_amount);
                     account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
                     events::emit::repay(&account_id, amount, &asset_amount.token_id, &position);
                 }
@@ -446,6 +424,47 @@ impl Contract {
         amount
     }
 
+    pub fn internal_owner_repay(
+        &mut self,
+        position: &String,
+        account: &mut Account,
+        asset_amount: &AssetAmount,
+    ) -> Balance {
+        if asset_amount.token_id == *ETH_OLD_ACCOUNT_ID {
+            let mut account_asset = account.internal_unwrap_asset(&ETH_NEW_ACCOUNT_ID);
+            // FIX-ETH: repay the old eth debt using the supplied new eth.
+            let amount = self.internal_repay_old_eth(&position, &mut account_asset, account, &asset_amount);
+            account.internal_set_asset(&ETH_NEW_ACCOUNT_ID, account_asset);
+            amount
+        } else {
+            let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
+            let amount = self.internal_repay(&position, &mut account_asset, account, &asset_amount);
+            account.internal_set_asset(&asset_amount.token_id, account_asset);
+            amount
+        }
+    }
+
+    pub fn internal_liquidate_repay(
+        &mut self,
+        position: &String,
+        account: &mut Account,
+        liquidation_account: &mut Account,
+        asset_amount: &AssetAmount,
+    ) -> Balance {
+        if asset_amount.token_id == *ETH_OLD_ACCOUNT_ID {
+            let mut account_asset = account.internal_unwrap_asset(&ETH_NEW_ACCOUNT_ID);
+            // FIX-ETH: repay the old eth debt using the supplied new eth.
+            let amount = self.internal_repay_old_eth(&position, &mut account_asset, liquidation_account, &asset_amount);
+            account.internal_set_asset(&ETH_NEW_ACCOUNT_ID, account_asset);
+            amount
+        } else {
+            let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
+            let amount = self.internal_repay(&position, &mut account_asset, liquidation_account, &asset_amount);
+            account.internal_set_asset(&asset_amount.token_id, account_asset);
+            amount
+        }
+    }
+
     pub fn internal_repay(
         &mut self,
         position: &String,
@@ -557,10 +576,7 @@ impl Contract {
         for asset_amount in in_assets {
             liquidation_account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
             liquidation_account.add_affected_farm(FarmId::TokenNetBalance(asset_amount.token_id.clone()));
-            let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
-            let amount =
-                self.internal_repay(&position, &mut account_asset, &mut liquidation_account, &asset_amount);
-            account.internal_set_asset(&asset_amount.token_id, account_asset);
+            let amount = self.internal_liquidate_repay(&position, account, &mut liquidation_account, &asset_amount);
             let asset = self.internal_unwrap_asset(&asset_amount.token_id);
 
             borrowed_repaid_sum = borrowed_repaid_sum
