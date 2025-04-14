@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.15.1
+```bash=
+# codehash: 5N25QGRC4dnTVNB4nFF3NBmH8ReSiTbhyUrFNk8kLSnw
+```
+- Support repay old eth asset.
+
 Version 0.15.0
 ```bash=
 # codehash: 8tBFoeAGUikSdC6hHJmQv7Y4BndZcA2gKTikRgKQDLTf

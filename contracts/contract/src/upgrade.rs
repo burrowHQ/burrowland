@@ -7,41 +7,7 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     pub fn migrate_state() -> Self {
-        let ContractV0130 { 
-            accounts, 
-            storage, 
-            assets, 
-            asset_farms, 
-            asset_ids, 
-            config, 
-            guardians,
-            last_prices,
-            last_lp_token_infos,
-            token_pyth_info,
-            blacklist_of_farmers,
-            last_staking_token_prices,
-            margin_accounts,
-            margin_config,
-            accumulated_margin_position_num,
-        } = env::state_read().unwrap();
-        let margin_config_v0 = margin_config.get().unwrap();
-        Self { 
-            accounts, 
-            storage, 
-            assets, 
-            asset_farms, 
-            asset_ids, 
-            config,
-            guardians,
-            last_prices,
-            last_lp_token_infos,
-            token_pyth_info,
-            blacklist_of_farmers,
-            last_staking_token_prices,
-            margin_accounts,
-            margin_config: LazyOption::new(StorageKey::MarginConfig, Some(&margin_config_v0.into())),
-            accumulated_margin_position_num,
-        }
+        env::state_read().unwrap()
     }
 
     /// Returns semver of this contract.
