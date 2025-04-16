@@ -493,7 +493,7 @@ impl Contract {
 
             borrowed_shares = asset.borrowed.amount_to_shares(amount, false);
             assert!(borrowed_shares.0 > 0, "Shares can't be 0");
-            assert!(borrowed_shares.0 <= available_borrowed_shares.0);
+            assert!(borrowed_shares.0 <= available_borrowed_shares.0, "Repaying shares exceeds available borrowed shares");
         }
 
         asset.supplied.withdraw(supplied_shares, amount);
@@ -537,7 +537,7 @@ impl Contract {
 
             borrowed_shares = borrowed_asset.borrowed.amount_to_shares(amount, false);
             assert!(borrowed_shares.0 > 0, "Shares can't be 0");
-            assert!(borrowed_shares.0 <= available_borrowed_shares.0);
+            assert!(borrowed_shares.0 <= available_borrowed_shares.0, "Repaying shares exceeds available borrowed shares");
         }
 
         supplied_asset.supplied.withdraw(supplied_shares, amount);

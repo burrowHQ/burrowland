@@ -244,6 +244,21 @@ impl Burrowland {
         }).unwrap()).await
     }
 
+    pub async fn deposit_repay (
+        &self,
+        token_contract: &FtContract,
+        caller: &Account,
+        amount: u128,
+        repay_token_id: &AccountId,
+        repay_amount: u128,
+    ) -> Result<ExecutionFinalResult> {
+        token_contract.ft_transfer_call(caller, self.0.id(), amount, serde_json::to_string(&TokenReceiverMsg::ExecuteWithPyth {
+            actions: vec![
+                Action::Repay(asset_amount(repay_token_id, repay_amount)),
+            ]
+        }).unwrap()).await
+    }
+
     pub async fn supply_to_collateral(
         &self,
         token_contract: &FtContract,
@@ -971,6 +986,44 @@ impl Burrowland {
                 min_borrowed_amount: Some(1u128.into()),
             },
             "wrap.test.near" => AssetConfig {
+                reserve_ratio: 2500,
+                prot_ratio: 0,
+                target_utilization: 8000,
+                target_utilization_rate: U128(1000000000003593629036885046),
+                max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
+                volatility_ratio: 6000,
+                extra_decimals: 0,
+                can_deposit: true,
+                can_withdraw: true,
+                can_use_as_collateral: true,
+                can_borrow: true,
+                net_tvl_multiplier: 10000,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
+            },
+            "aurora.test.near" => AssetConfig {
+                reserve_ratio: 2500,
+                prot_ratio: 0,
+                target_utilization: 8000,
+                target_utilization_rate: U128(1000000000003593629036885046),
+                max_utilization_rate: U128(1000000000039724853136740579),
+                holding_position_fee_rate: U128(1000000000000000000000000000),
+                volatility_ratio: 6000,
+                extra_decimals: 0,
+                can_deposit: true,
+                can_withdraw: true,
+                can_use_as_collateral: true,
+                can_borrow: true,
+                net_tvl_multiplier: 10000,
+                max_change_rate: None,
+                supplied_limit: Some(u128::MAX.into()),
+                borrowed_limit: Some(u128::MAX.into()),
+                min_borrowed_amount: Some(1u128.into()),
+            },
+            "eth.test.near" => AssetConfig {
                 reserve_ratio: 2500,
                 prot_ratio: 0,
                 target_utilization: 8000,

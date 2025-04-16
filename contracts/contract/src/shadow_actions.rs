@@ -192,7 +192,7 @@ impl Contract {
 
                     borrowed_shares = borrowed_asset.borrowed.amount_to_shares(amount, false);
                     assert!(borrowed_shares.0 > 0, "Shares can't be 0");
-                    assert!(borrowed_shares.0 <= available_borrowed_shares.0);
+                    assert!(borrowed_shares.0 <= available_borrowed_shares.0, "Repaying shares exceeds available borrowed shares");
                 }
                 liquidation_account.decrease_borrowed(position, &ETH_OLD_ACCOUNT_ID, borrowed_shares);
                 account_asset.withdraw_shares(supplied_shares);
@@ -229,7 +229,7 @@ impl Contract {
     
                     borrowed_shares = asset.borrowed.amount_to_shares(amount, false);
                     assert!(borrowed_shares.0 > 0, "Shares can't be 0");
-                    assert!(borrowed_shares.0 <= available_borrowed_shares.0);
+                    assert!(borrowed_shares.0 <= available_borrowed_shares.0, "Repaying shares exceeds available borrowed shares");
                 }
                 liquidation_account.decrease_borrowed(position, &asset_amount.token_id, borrowed_shares);
                 account_asset.withdraw_shares(supplied_shares);
