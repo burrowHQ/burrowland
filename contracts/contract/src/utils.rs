@@ -49,3 +49,27 @@ pub(crate) fn is_min_amount_out_reasonable(
     min_amount_out
         >= amount_out - u128_ratio(amount_out, max_slippage_rate as u128, MAX_RATIO as u128)
 }
+
+pub static ETH_OLD_ACCOUNT_ID: Lazy<TokenId> = Lazy::new(|| {
+    #[cfg(feature = "test")]
+    { 
+        "aurora.test.near".parse().unwrap() 
+    }
+
+    #[cfg(not(feature = "test"))]
+    "aurora".parse().unwrap()
+});
+
+pub static ETH_NEW_ACCOUNT_ID: Lazy<TokenId> = Lazy::new(|| {
+    #[cfg(feature = "test")]
+    { 
+        "eth.test.near".parse().unwrap() 
+    }
+
+    #[cfg(not(feature = "test"))]
+    if env::current_account_id().as_str().ends_with(".near") {
+        "eth.bridge.near".parse().unwrap()
+    } else {
+        "eth.sepolia.testnet".parse().unwrap()
+    }
+});

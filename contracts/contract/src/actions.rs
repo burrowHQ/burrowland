@@ -153,17 +153,13 @@ impl Contract {
                 }
                 Action::Repay(asset_amount) => {
                     let position = REGULAR_POSITION.to_string();
-                    let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
+                    let amount = self.internal_owner_repay(&position, account, &asset_amount);
                     account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
-                    let amount = self.internal_repay(&position, &mut account_asset, account, &asset_amount);
-                    account.internal_set_asset(&asset_amount.token_id, account_asset);
                     events::emit::repay(&account_id, amount, &asset_amount.token_id, &position);
                 }
                 Action::PositionRepay{ position, asset_amount} => {
-                    let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
+                    let amount = self.internal_owner_repay(&position, account, &asset_amount);
                     account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
-                    let amount = self.internal_repay(&position, &mut account_asset, account, &asset_amount);
-                    account.internal_set_asset(&asset_amount.token_id, account_asset);
                     events::emit::repay(&account_id, amount, &asset_amount.token_id, &position);
                 }
                 Action::Liquidate {
@@ -428,6 +424,47 @@ impl Contract {
         amount
     }
 
+    pub fn internal_owner_repay(
+        &mut self,
+        position: &String,
+        account: &mut Account,
+        asset_amount: &AssetAmount,
+    ) -> Balance {
+        if asset_amount.token_id == *ETH_OLD_ACCOUNT_ID {
+            let mut account_asset = account.internal_unwrap_asset(&ETH_NEW_ACCOUNT_ID);
+            // FIX-ETH: repay the old eth debt using the supplied new eth.
+            let amount = self.internal_repay_old_eth(&position, &mut account_asset, account, &asset_amount);
+            account.internal_set_asset(&ETH_NEW_ACCOUNT_ID, account_asset);
+            amount
+        } else {
+            let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
+            let amount = self.internal_repay(&position, &mut account_asset, account, &asset_amount);
+            account.internal_set_asset(&asset_amount.token_id, account_asset);
+            amount
+        }
+    }
+
+    pub fn internal_liquidate_repay(
+        &mut self,
+        position: &String,
+        account: &mut Account,
+        liquidation_account: &mut Account,
+        asset_amount: &AssetAmount,
+    ) -> Balance {
+        if asset_amount.token_id == *ETH_OLD_ACCOUNT_ID {
+            let mut account_asset = account.internal_unwrap_asset(&ETH_NEW_ACCOUNT_ID);
+            // FIX-ETH: repay the old eth debt using the supplied new eth.
+            let amount = self.internal_repay_old_eth(&position, &mut account_asset, liquidation_account, &asset_amount);
+            account.internal_set_asset(&ETH_NEW_ACCOUNT_ID, account_asset);
+            amount
+        } else {
+            let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
+            let amount = self.internal_repay(&position, &mut account_asset, liquidation_account, &asset_amount);
+            account.internal_set_asset(&asset_amount.token_id, account_asset);
+            amount
+        }
+    }
+
     pub fn internal_repay(
         &mut self,
         position: &String,
@@ -456,7 +493,7 @@ impl Contract {
 
             borrowed_shares = asset.borrowed.amount_to_shares(amount, false);
             assert!(borrowed_shares.0 > 0, "Shares can't be 0");
-            assert!(borrowed_shares.0 <= available_borrowed_shares.0);
+            assert!(borrowed_shares.0 <= available_borrowed_shares.0, "Repaying shares exceeds available borrowed shares");
         }
 
         asset.supplied.withdraw(supplied_shares, amount);
@@ -464,6 +501,51 @@ impl Contract {
         self.internal_set_asset(&asset_amount.token_id, asset);
 
         account.decrease_borrowed(position, &asset_amount.token_id, borrowed_shares);
+
+        account_asset.withdraw_shares(supplied_shares);
+
+        amount
+    }
+
+    pub fn internal_repay_old_eth(
+        &mut self,
+        position: &String,
+        account_asset: &mut AccountAsset,
+        account: &mut Account,
+        asset_amount: &AssetAmount,
+    ) -> Balance {
+        let mut borrowed_asset = self.internal_unwrap_asset(&ETH_OLD_ACCOUNT_ID);
+        let mut supplied_asset = self.internal_unwrap_asset(&ETH_NEW_ACCOUNT_ID);
+
+        let available_borrowed_shares = account.internal_unwrap_borrowed(position, &ETH_OLD_ACCOUNT_ID);
+
+        let (mut borrowed_shares, mut amount) = asset_amount_to_shares(
+            &borrowed_asset.borrowed,
+            available_borrowed_shares,
+            &asset_amount,
+            true,
+        );
+
+        let mut supplied_shares = supplied_asset.supplied.amount_to_shares(amount, true);
+        if supplied_shares.0 > account_asset.shares.0 {
+            supplied_shares = account_asset.shares;
+            amount = supplied_asset.supplied.shares_to_amount(supplied_shares, false);
+            if let Some(min_amount) = &asset_amount.amount {
+                assert!(amount >= min_amount.0, "Not enough supplied balance");
+            }
+            assert!(amount > 0, "Repayment amount can't be 0");
+
+            borrowed_shares = borrowed_asset.borrowed.amount_to_shares(amount, false);
+            assert!(borrowed_shares.0 > 0, "Shares can't be 0");
+            assert!(borrowed_shares.0 <= available_borrowed_shares.0, "Repaying shares exceeds available borrowed shares");
+        }
+
+        supplied_asset.supplied.withdraw(supplied_shares, amount);
+        borrowed_asset.borrowed.withdraw(borrowed_shares, amount);
+        self.internal_set_asset(&ETH_OLD_ACCOUNT_ID, borrowed_asset);
+        self.internal_set_asset(&ETH_NEW_ACCOUNT_ID, supplied_asset);
+
+        account.decrease_borrowed(position, &ETH_OLD_ACCOUNT_ID, borrowed_shares);
 
         account_asset.withdraw_shares(supplied_shares);
 
@@ -494,10 +576,7 @@ impl Contract {
         for asset_amount in in_assets {
             liquidation_account.add_affected_farm(FarmId::Borrowed(asset_amount.token_id.clone()));
             liquidation_account.add_affected_farm(FarmId::TokenNetBalance(asset_amount.token_id.clone()));
-            let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
-            let amount =
-                self.internal_repay(&position, &mut account_asset, &mut liquidation_account, &asset_amount);
-            account.internal_set_asset(&asset_amount.token_id, account_asset);
+            let amount = self.internal_liquidate_repay(&position, account, &mut liquidation_account, &asset_amount);
             let asset = self.internal_unwrap_asset(&asset_amount.token_id);
 
             borrowed_repaid_sum = borrowed_repaid_sum

@@ -521,11 +521,13 @@ impl Contract {
     pub fn return_margin_account_lostfound_supply_shares(&mut self, account_id: AccountId, token_id: AccountId, shares: U128) {
         assert_one_yocto();
         self.assert_owner();
-        let asset = self.internal_unwrap_asset(&token_id);
+        let mut asset = self.internal_unwrap_asset(&token_id);
         assert!(shares.0 <= asset.lostfound_shares, "Invalid shares");
+        asset.lostfound_shares -= shares.0;
         let mut margin_account = self.internal_unwrap_margin_account(&account_id);
         margin_account.deposit_supply_shares(&token_id, &shares);
         self.internal_set_margin_account(&account_id, margin_account);
+        self.internal_set_asset(&token_id, asset);
     }
 }
 

@@ -4,7 +4,7 @@ build: build-burrowland build-testoracle build-mock-ref-exchange build-mock-boos
 
 build-burrowland: contracts/contract
 	rustup target add wasm32-unknown-unknown
-	RUSTFLAGS=$(RFLAGS) cargo build -p contract --target wasm32-unknown-unknown --release
+	RUSTFLAGS=$(RFLAGS) cargo build -p contract --target wasm32-unknown-unknown --release --features=test
 	mkdir -p res
 	cp target/wasm32-unknown-unknown/release/contract.wasm ./res/burrowland.wasm
 
