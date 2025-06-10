@@ -20,6 +20,10 @@ pub struct AssetAmount {
 #[serde(crate = "near_sdk::serde")]
 pub enum Action {
     Withdraw(AssetAmount),
+    ClientEchoWithdraw{
+        echo_echo: String,
+        asset_amount: AssetAmount,
+    },
     IncreaseCollateral(AssetAmount),
     PositionIncreaseCollateral{
         position: String,
@@ -80,6 +84,19 @@ impl Contract {
                         let (amount, ft_amount) = self.internal_withdraw(account, &asset_amount);
                         if ft_amount > 0 {
                             self.internal_ft_transfer(account_id, &asset_amount.token_id, amount, ft_amount, false);
+                            events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
+                        } else {
+                            events::emit::withdraw_succeeded(&account_id, amount, &asset_amount.token_id);
+                        }
+                    }
+                }
+                Action::ClientEchoWithdraw { echo_echo, asset_amount } => {
+                    assert!(in_client_echo_sender_whitelist(account_id.as_str()), "Unauthorized client echo sender: {}", account_id);
+                    assert!(!asset_amount.token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
+                    if account.supplied.get(&asset_amount.token_id).is_some() {
+                        let (amount, ft_amount) = self.internal_withdraw(account, &asset_amount);
+                        if ft_amount > 0 {
+                            self.internal_ft_transfer_call(account_id, &asset_amount.token_id, amount, ft_amount, echo_echo);
                             events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
                         } else {
                             events::emit::withdraw_succeeded(&account_id, amount, &asset_amount.token_id);

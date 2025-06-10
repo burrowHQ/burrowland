@@ -33,6 +33,7 @@ mod pyth;
 mod actions_pyth;
 mod protocol_debts;
 mod storage_keys;
+mod client_echo;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -65,6 +66,7 @@ pub use crate::margin_base_token_limit::*;
 pub use crate::pyth::*;
 pub use crate::protocol_debts::*;
 pub use crate::storage_keys::*;
+pub use crate::client_echo::*;
 
 use common::*;
 
@@ -75,7 +77,7 @@ use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::PromiseError;
 use near_sdk::{
     assert_one_yocto, env, ext_contract, log, near_bindgen, AccountId, Balance, BorshStorageKey,
-    Duration, Gas, PanicOnDefault, Promise, Timestamp, require,
+    Duration, Gas, PanicOnDefault, Promise, Timestamp, require, promise_result_as_success
 };
 use once_cell::sync::Lazy;
 use std::collections::HashMap;

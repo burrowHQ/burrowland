@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.15.2
+```bash=
+# codehash: 5DjEch5w3xQohyhjyyzSbtzKVK7B7NWpwanR6fmi3Gf8
+```
+- add ClientEchoWithdraw action
+
 Version 0.15.1
 ```bash=
 # codehash: 3tn26XotRReEY95qfojKgmw1R2ttnBNjnYDQDMg7zivo
