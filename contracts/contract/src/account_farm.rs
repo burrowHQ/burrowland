@@ -218,7 +218,6 @@ impl Contract {
     }
 
     pub fn internal_account_apply_affected_farms(&mut self, account: &mut Account) {
-        let config = self.internal_config();
         if account.affected_farms.is_empty() {
             return;
         }
@@ -247,13 +246,9 @@ impl Contract {
         for (token_id, &reward) in &all_rewards {
             self.internal_deposit(account, &token_id, reward);
         }
-        account.sync_booster_policy(&config);
-        let booster_balance = account
-            .booster_staking
-            .as_ref()
-            .map(|b| b.x_booster_amount)
-            .unwrap_or(0);
-        let booster_base = 10u128.pow(config.booster_decimals as u32) * config.boost_suppress_factor;
+        
+        let booster_tokens = read_booster_tokens_from_storage();
+        account.sync_booster_policy(&booster_tokens);
 
         for (farm_id, mut account_farm, mut asset_farm, inactive_rewards) in farms {
             let shares = if self.blacklist_of_farmers.contains(&account.account_id) {
@@ -270,17 +265,7 @@ impl Contract {
                 let account_farm_reward = account_farm.rewards.get_mut(token_id).unwrap();
                 asset_farm_reward.boosted_shares -= account_farm_reward.boosted_shares;
                 if shares > 0 {
-                    let extra_shares = if asset_farm_reward.booster_log_base > 0
-                        && booster_balance > booster_base
-                    {
-                        let log_base =
-                            (asset_farm_reward.booster_log_base as f64) / 10f64.powi(config.booster_decimals as i32);
-                        ((shares as f64)
-                            * ((booster_balance as f64) / (booster_base as f64)).log(log_base))
-                            as u128
-                    } else {
-                        0
-                    };
+                    let extra_shares = get_booster_extra_shares(&account, shares, &asset_farm_reward, &booster_tokens);
                     account_farm_reward.boosted_shares = shares + extra_shares;
                     asset_farm_reward.boosted_shares += account_farm_reward.boosted_shares;
                 }
@@ -300,6 +285,29 @@ impl Contract {
             }
         }
     }
+}
+
+pub fn get_booster_extra_shares(account: &Account, shares: u128, asset_farm_reward: &AssetFarmReward, booster_tokens: &HashMap<TokenId, BoosterTokenInfo>) -> u128 {
+    asset_farm_reward.booster_log_bases.iter().filter_map(|(booster_token_id, U128(booster_log_base))| {
+        let booster_token_info = booster_tokens.get(booster_token_id)?;
+        if !booster_token_info.enable {
+            return Some(0);
+        }
+        
+        let booster_staking = account.booster_stakings.get(booster_token_id)?;
+
+        let decimals = booster_token_info.booster_decimals as u32;
+        let booster_base = 10u128.pow(decimals) * booster_token_info.boost_suppress_factor;
+
+        if booster_staking.x_booster_amount <= booster_base {
+            Some(0)
+        } else {
+            let log_base = (*booster_log_base as f64) / 10f64.powi(decimals as i32);
+            let ratio = booster_staking.x_booster_amount as f64 / booster_base as f64;
+            let extra = (shares as f64 * ratio.log(log_base)) as u128;
+            Some(extra)
+        }
+    }).sum::<u128>()
 }
 
 #[near_bindgen]

@@ -24,6 +24,7 @@ pub struct Config {
     pub booster_token_id: TokenId,
 
     /// The number of decimals of the booster fungible token.
+    #[deprecated]
     pub booster_decimals: u8,
 
     /// The total number of different assets
@@ -45,14 +46,17 @@ pub struct Config {
     pub pyth_price_valid_duration_sec: DurationSec,
 
     /// The minimum duration to stake booster token in seconds.
+    #[deprecated]
     pub minimum_staking_duration_sec: DurationSec,
 
     /// The maximum duration to stake booster token in seconds.
+    #[deprecated]
     pub maximum_staking_duration_sec: DurationSec,
 
     /// The rate of xBooster for the amount of Booster given for the maximum staking duration.
     /// Assuming the 100% multiplier at the minimum staking duration. Should be no less than 100%.
     /// E.g. 20000 means 200% multiplier (or 2X).
+    #[deprecated]
     pub x_booster_multiplier_at_maximum_staking_duration: u32,
 
     /// Whether an account with bad debt can be liquidated using reserves.
@@ -65,6 +69,7 @@ pub struct Config {
     pub enable_pyth_oracle: bool,
     /// The factor that suppresses the effect of boost.
     /// E.g. 1000 means that in the calculation, the actual boost amount will be divided by 1000.
+    #[deprecated]
     pub boost_suppress_factor: u128,
     /// The account ID of the dcl contract
     pub dcl_id: Option<AccountId>,
@@ -72,18 +77,9 @@ pub struct Config {
 
 impl Config {
     pub fn assert_valid(&self) {
-        assert!(self.max_num_assets <= MAX_NUM_ASSETS, "Invalid max_num_assets");
-        assert!(self.dcl_id.is_some(), "Missing dcl id");
-        assert!(
-            self.minimum_staking_duration_sec < self.maximum_staking_duration_sec,
-            "The maximum staking duration must be greater than minimum staking duration"
-        );
-        assert!(
-            self.x_booster_multiplier_at_maximum_staking_duration >= MIN_BOOSTER_MULTIPLIER,
-            "xBooster multiplier should be no less than 100%"
-        );
-        assert!(self.boost_suppress_factor > 0, "The boost_suppress_factor must be greater than 0");
-        assert!(self.enable_price_oracle == !self.enable_pyth_oracle, "Only one oracle can be started at a time");
+        require!(self.max_num_assets <= MAX_NUM_ASSETS, "Invalid max_num_assets");
+        require!(self.dcl_id.is_some(), "Missing dcl id");
+        require!(self.enable_price_oracle == !self.enable_pyth_oracle, "Only one oracle can be started at a time");
     }
 }
 
@@ -117,23 +113,6 @@ impl Contract {
         self.internal_config()
     }
 
-    /// Updates the current config.
-    /// - Requires one yoctoNEAR.
-    /// - Requires to be called by the contract owner.
-    #[payable]
-    pub fn update_config(&mut self, config: Config) {
-        assert_one_yocto();
-        self.assert_owner();
-        config.assert_valid();
-        let current_config = self.internal_config();
-        require!(current_config.owner_id == config.owner_id, "Can't change owner_id");
-        if current_config.booster_token_id != config.booster_token_id || 
-            current_config.booster_decimals != config.booster_decimals {
-            env::panic_str("Can't change booster_token_id/booster_decimals");
-        }
-        self.config.set(&config);
-    }
-
     #[payable]
     pub fn set_owner_id(&mut self, owner_id: AccountId) {
         assert_one_yocto();
@@ -145,34 +124,67 @@ impl Contract {
         self.config.set(&config);
     }
 
-    /// Adjust boost staking policy.
-    /// - Panics if minimum_staking_duration_sec >= maximum_staking_duration_sec.
-    /// - Panics if x_booster_multiplier_at_maximum_staking_duration < MIN_BOOSTER_MULTIPLIER.
-    /// - Requires one yoctoNEAR.
-    /// - Requires to be called by the contract owner or guardians.
     #[payable]
-    pub fn adjust_boost_staking_policy(&mut self, minimum_staking_duration_sec: DurationSec, maximum_staking_duration_sec: DurationSec, x_booster_multiplier_at_maximum_staking_duration: u32) {
+    pub fn update_price_oracle_config(&mut self, oracle_account_id: Option<AccountId>, maximum_recency_duration_sec: Option<DurationSec>, maximum_staleness_duration_sec: Option<DurationSec>) {
         assert_one_yocto();
-        self.assert_owner_or_guardians();
+        self.assert_owner();
         let mut config = self.internal_config();
-        config.minimum_staking_duration_sec = minimum_staking_duration_sec;
-        config.maximum_staking_duration_sec = maximum_staking_duration_sec;
-        config.x_booster_multiplier_at_maximum_staking_duration = x_booster_multiplier_at_maximum_staking_duration;
+        if let Some(oracle_account_id) = oracle_account_id {
+            config.oracle_account_id = oracle_account_id;
+        }
+        if let Some(maximum_recency_duration_sec) = maximum_recency_duration_sec {
+            config.maximum_recency_duration_sec = maximum_recency_duration_sec;
+        }
+        if let Some(maximum_staleness_duration_sec) = maximum_staleness_duration_sec {
+            config.maximum_staleness_duration_sec = maximum_staleness_duration_sec;
+        }
+        self.config.set(&config);
+    }
+
+    #[payable]
+    pub fn update_pyth_oracle_config(&mut self, pyth_oracle_account_id: Option<AccountId>, pyth_price_valid_duration_sec: Option<DurationSec>) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut config = self.internal_config();
+        if let Some(pyth_oracle_account_id) = pyth_oracle_account_id {
+            config.pyth_oracle_account_id = pyth_oracle_account_id;
+        }
+        if let Some(pyth_price_valid_duration_sec) = pyth_price_valid_duration_sec {
+            config.pyth_price_valid_duration_sec = pyth_price_valid_duration_sec;
+        }
+        self.config.set(&config);
+    }
+
+    #[payable]
+    pub fn update_lp_config(&mut self, ref_exchange_id: Option<AccountId>, lp_tokens_info_valid_duration_sec: Option<DurationSec>) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut config = self.internal_config();
+        if let Some(ref_exchange_id) = ref_exchange_id {
+            config.ref_exchange_id = ref_exchange_id;
+        }
+        if let Some(lp_tokens_info_valid_duration_sec) = lp_tokens_info_valid_duration_sec {
+            config.lp_tokens_info_valid_duration_sec = lp_tokens_info_valid_duration_sec;
+        }
+        self.config.set(&config);
+    }
+
+    #[payable]
+    pub fn update_max_num_assets(&mut self, max_num_assets: u32) {
+        assert_one_yocto();
+        self.assert_owner();
+        let mut config = self.internal_config();
+        config.max_num_assets = max_num_assets;
         config.assert_valid();
         self.config.set(&config);
     }
 
-    /// Adjust boost suppress factor.
-    /// - Panics if boost_suppress_factor <= 0.
-    /// - Requires one yoctoNEAR.
-    /// - Requires to be called by the contract owner.
     #[payable]
-    pub fn adjust_boost_suppress_factor(&mut self, boost_suppress_factor: u128) {
+    pub fn update_force_closing_enabled(&mut self, force_closing_enabled: bool) {
         assert_one_yocto();
         self.assert_owner();
         let mut config = self.internal_config();
-        config.boost_suppress_factor = boost_suppress_factor;
-        config.assert_valid();
+        config.force_closing_enabled = force_closing_enabled;
         self.config.set(&config);
     }
 
@@ -393,11 +405,15 @@ impl Contract {
         farm_id: FarmId,
         reward_token_id: AccountId,
         new_reward_per_day: U128,
-        new_booster_log_base: U128,
+        new_booster_log_bases: HashMap<TokenId, U128>,
         reward_amount: U128,
     ) {
         assert_one_yocto();
         self.assert_owner();
+        let check_new_booster_log_bases_valid = new_booster_log_bases.iter().all(|(k, v)| 
+            v.0 > 0 || self.internal_unwrap_booster_token_info(k).enable
+        );
+        require!(check_new_booster_log_bases_valid, "Invalid new_booster_log_bases");
         match &farm_id {
             FarmId::Supplied(token_id) | FarmId::Borrowed(token_id) | FarmId::TokenNetBalance(token_id) => {
                 assert!(self.assets.contains_key(token_id));
@@ -429,7 +445,7 @@ impl Contract {
             .or_else(|| asset_farm.internal_remove_inactive_asset_farm_reward(&reward_token_id))
             .unwrap_or_default();
         asset_farm_reward.reward_per_day = new_reward_per_day.into();
-        asset_farm_reward.booster_log_base = new_booster_log_base.into();
+        asset_farm_reward.booster_log_bases = new_booster_log_bases;
         asset_farm_reward.remaining_rewards += reward_amount.0;
         asset_farm
             .rewards

@@ -229,7 +229,7 @@ impl ExtSelf for Contract {
         let remain_ft_amount = match promise_result_as_success() {
             Some(result_bytes) => {
                 let used_amount = serde_json::from_slice::<U128>(&result_bytes).unwrap();
-                ft_amount.0 - used_amount.0
+                ft_amount.0.checked_sub(used_amount.0).unwrap_or(0) 
             }
             None => ft_amount.0,
         };

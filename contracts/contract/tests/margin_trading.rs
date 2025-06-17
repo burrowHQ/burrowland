@@ -70,6 +70,7 @@ async fn test_margin_trading() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -108,6 +109,7 @@ async fn test_margin_trading() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -138,6 +140,7 @@ async fn test_margin_trading() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -243,6 +246,7 @@ async fn test_margin_trading_with_pyth() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -279,6 +283,7 @@ async fn test_margin_trading_with_pyth() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -307,6 +312,7 @@ async fn test_margin_trading_with_pyth() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -395,6 +401,7 @@ async fn test_margin_trading_liquidate_direct_short() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -519,6 +526,7 @@ async fn test_margin_trading_liquidate_direct_long() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -640,6 +648,7 @@ async fn test_margin_trading_liquidate() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -674,6 +683,7 @@ async fn test_margin_trading_liquidate() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -778,6 +788,7 @@ async fn test_margin_trading_liquidate_with_pyth() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -818,6 +829,7 @@ async fn test_margin_trading_liquidate_with_pyth() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -904,6 +916,7 @@ async fn test_margin_trading_forceclose() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -936,6 +949,7 @@ async fn test_margin_trading_forceclose() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -1042,6 +1056,7 @@ async fn test_margin_trading_forceclose_with_pyth() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -1080,6 +1095,7 @@ async fn test_margin_trading_forceclose_with_pyth() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -1582,6 +1598,7 @@ async fn test_margin_trading_forceclose_reserve_not_enough() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,
@@ -1614,6 +1631,7 @@ async fn test_margin_trading_forceclose_reserve_not_enough() -> Result<()> {
             swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
                 referral_id: None,
                 client_echo: None,
+                skip_degen_price_sync: None,
                 actions: vec![
                     RefV1Action::Swap(RefV1SwapAction{
                         pool_id: 0,

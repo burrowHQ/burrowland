@@ -2,9 +2,10 @@
 
 Version 0.15.2
 ```bash=
-# codehash: 5DjEch5w3xQohyhjyyzSbtzKVK7B7NWpwanR6fmi3Gf8
+# codehash: 8S1uZ8M3wkNg1jrLVtATyHr3YcBN3HaRJeyybaqyf5it
 ```
-- add ClientEchoWithdraw action
+- Add ClientEchoWithdraw action
+- Support multi booster token
 
 Version 0.15.1
 ```bash=

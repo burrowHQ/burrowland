@@ -24,6 +24,7 @@ pub struct Account {
 
     /// Staking of booster token.
     pub booster_staking: Option<BoosterStaking>,
+    pub booster_stakings: HashMap<TokenId, BoosterStaking>,
     pub is_locked: bool,
 }
 
@@ -32,6 +33,7 @@ pub enum VAccount {
     V0(AccountV0),
     V1(AccountV1),
     V2(AccountV2),
+    V3(AccountV3),
     Current(Account),
 }
 
@@ -41,6 +43,7 @@ impl VAccount {
             VAccount::V0(c) => c.into_account(is_view),
             VAccount::V1(c) => c.into_account(is_view),
             VAccount::V2(c) => c.into_account(),
+            VAccount::V3(c) => c.into_account(),
             VAccount::Current(c) => c,
         }
     }
@@ -62,6 +65,7 @@ impl Account {
             affected_farms: HashSet::new(),
             storage_tracker: Default::default(),
             booster_staking: None,
+            booster_stakings: HashMap::new(),
             is_locked: false,
         }
     }
@@ -180,32 +184,36 @@ impl Account {
         }) as u32
     }
 
-    pub fn sync_booster_policy(&mut self, config: &Config) {
-        if let Some(booster_staking) = self.booster_staking.as_mut() {
-            let timestamp = env::block_timestamp();
-            if booster_staking.unlock_timestamp > timestamp {
-                let remain_duration_ns = booster_staking.unlock_timestamp - timestamp;
-                let maximum_staking_duration_ns = to_nano(config.maximum_staking_duration_sec);
-                let max_x_booster_amount = compute_x_booster_amount(
-                    config,
-                    booster_staking.staked_booster_amount,
-                    maximum_staking_duration_ns,
-                );
-                let recount_duration_ns = max(
-                    to_nano(config.minimum_staking_duration_sec),
-                    min(remain_duration_ns, maximum_staking_duration_ns)
-                );
-                let recount_x_booster_amount = compute_x_booster_amount(
-                    config,
-                    booster_staking.staked_booster_amount,
-                    recount_duration_ns,
-                );
-                booster_staking.x_booster_amount = min(
-                    max_x_booster_amount,
-                    max(booster_staking.x_booster_amount, recount_x_booster_amount)
-                );
-                if remain_duration_ns > maximum_staking_duration_ns {
-                    booster_staking.unlock_timestamp = timestamp + maximum_staking_duration_ns;
+    pub fn sync_booster_policy(&mut self, booster_tokens: &HashMap<TokenId, BoosterTokenInfo>) {
+        for (booster_token_id, booster_staking) in self.booster_stakings.iter_mut() {
+            if let Some(booster_token_info) = booster_tokens.get(booster_token_id) {
+                let timestamp = env::block_timestamp();
+                if booster_token_info.enable && booster_staking.unlock_timestamp > timestamp {
+                    let remain_duration_ns = booster_staking.unlock_timestamp - timestamp;
+                    let maximum_staking_duration_ns = to_nano(booster_token_info.maximum_staking_duration_sec);
+                    let max_x_booster_amount = compute_x_booster_amount(
+                        &booster_token_info,
+                        booster_staking.staked_booster_amount,
+                        maximum_staking_duration_ns,
+                    );
+                    let recount_duration_ns = max(
+                        to_nano(booster_token_info.minimum_staking_duration_sec),
+                        min(remain_duration_ns, maximum_staking_duration_ns)
+                    );
+                    let recount_x_booster_amount = compute_x_booster_amount(
+                        &booster_token_info,
+                        booster_staking.staked_booster_amount,
+                        recount_duration_ns,
+                    );
+                    booster_staking.x_booster_amount = min(
+                        max_x_booster_amount,
+                        max(booster_staking.x_booster_amount, recount_x_booster_amount)
+                    );
+                    if remain_duration_ns > maximum_staking_duration_ns {
+                        booster_staking.unlock_timestamp = timestamp + maximum_staking_duration_ns;
+                    }
+                } else {
+                    booster_staking.x_booster_amount = 0;
                 }
             } else {
                 booster_staking.x_booster_amount = 0;

@@ -211,6 +211,7 @@ pub mod emit {
 
     pub fn booster_stake(
         account_id: &AccountId,
+        booster_token_id: &AccountId,
         amount: Balance,
         duration: DurationSec,
         extra_x_booster_amount: Balance,
@@ -220,6 +221,7 @@ pub mod emit {
             "booster_stake",
             json!({
                 "account_id": account_id,
+                "booster_token_id": booster_token_id,
                 "booster_amount": U128(amount),
                 "duration": duration,
                 "x_booster_amount": U128(extra_x_booster_amount),
@@ -229,11 +231,12 @@ pub mod emit {
         );
     }
 
-    pub fn booster_unstake(account_id: &AccountId, booster_staking: &BoosterStaking) {
+    pub fn booster_unstake(account_id: &AccountId, booster_token_id: &AccountId, booster_staking: &BoosterStaking) {
         log_event(
             "booster_unstake",
             json!({
                 "account_id": account_id,
+                "booster_token_id": booster_token_id,
                 "total_booster_amount": U128(booster_staking.staked_booster_amount),
                 "total_x_booster_amount": U128(booster_staking.x_booster_amount),
             }),
