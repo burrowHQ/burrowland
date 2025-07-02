@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.15.2
+```bash=
+# codehash: FpEaRG4aQakn5wTr15cKXFgrhtLm2NyQ56cQa7kMPjRX
+```
+- Add batch_views
+
 Version 0.15.1
 ```bash=
 # codehash: 3tn26XotRReEY95qfojKgmw1R2ttnBNjnYDQDMg7zivo
