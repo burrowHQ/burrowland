@@ -1,11 +1,17 @@
 # Release Notes
 
-Version 0.15.2
+Version 0.15.3
 ```bash=
-# codehash: 8S1uZ8M3wkNg1jrLVtATyHr3YcBN3HaRJeyybaqyf5it
+# codehash: AL8x1MhEuRq7yzuDiWUAx8mpT71cvoNA3duCwb9oVAqY
 ```
 - Add ClientEchoWithdraw action
 - Support multi booster token
+
+Version 0.15.2
+```bash=
+# codehash: FpEaRG4aQakn5wTr15cKXFgrhtLm2NyQ56cQa7kMPjRX
+```
+- Add batch_views
 
 Version 0.15.1
 ```bash=

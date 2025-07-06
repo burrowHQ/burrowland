@@ -289,6 +289,36 @@ impl Contract {
     pub fn get_last_staking_token_prices(&self) -> HashMap<TokenId, U128> {
         self.last_staking_token_prices.clone()
     }
+
+    pub fn batch_views(
+        &self, 
+        account_id: Option<AccountId>, 
+        assets: Option<bool>, 
+        config: Option<bool>, 
+        margin_config: Option<bool>,
+        default_margin_base_token_limit: Option<bool>,
+        margin_base_token_limit: Option<bool>,
+        token_pyth_infos: Option<bool>,
+    ) -> (
+        Option<AccountAllPositionsDetailedView>, 
+        Option<MarginAccountDetailedView>,
+        Option<Vec<AssetDetailedView>>,
+        Option<Config>,
+        Option<MarginConfig>,
+        Option<MarginBaseTokenLimit>,
+        Option<HashMap<AccountId, MarginBaseTokenLimit>>,
+        Option<HashMap<AccountId, TokenPythInfo>>,
+    ) {
+        let regular_account = account_id.as_ref().and_then(|v| self.get_account_all_positions(v.clone()));
+        let margin_account = account_id.and_then(|v| self.get_margin_account(v.clone()));
+        let assets = assets.and_then(|v| v.then(|| self.get_assets_paged_detailed(None, None)));
+        let config = config.and_then(|v| v.then(|| self.get_config()));
+        let margin_config = margin_config.and_then(|v| v.then(|| self.get_margin_config()));
+        let default_margin_base_token_limit = default_margin_base_token_limit.and_then(|v| v.then(|| self.get_default_margin_base_token_limit()));
+        let margin_base_token_limit = margin_base_token_limit.and_then(|v| v.then(|| self.get_margin_base_token_limit_paged(None, None)));
+        let token_pyth_infos = token_pyth_infos.and_then(|v| v.then(|| self.get_all_token_pyth_infos()));
+        (regular_account, margin_account, assets, config, margin_config, default_margin_base_token_limit, margin_base_token_limit, token_pyth_infos)
+    }
 }
 
 #[cfg(test)]
