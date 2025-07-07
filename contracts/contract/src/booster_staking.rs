@@ -172,6 +172,7 @@ impl Contract {
         }
 
         if let Some(client_echo) = client_echo {
+            assert!(in_client_echo_sender_whitelist(account_id.as_str()), "Unauthorized client echo sender: {}", account_id);
             let asset = self.internal_unwrap_asset(&booster_token_id);
             let ft_amount = unstake_amount / 10u128.pow(asset.config.extra_decimals as u32);
             if ft_amount > 0 {
