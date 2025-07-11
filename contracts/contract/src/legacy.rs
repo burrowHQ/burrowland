@@ -1465,6 +1465,30 @@ impl From<AssetFarmRewardV0> for AssetFarmReward {
     }
 }
 
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AssetFarmV0 {
+    pub block_timestamp: Timestamp,
+    /// Active rewards for the farm
+    pub rewards: HashMap<TokenId, AssetFarmRewardV0>,
+    /// Inactive rewards
+    pub inactive_rewards: LookupMap<TokenId, VAssetFarmReward>,
+}
+
+impl From<AssetFarmV0> for AssetFarm {
+    fn from(a: AssetFarmV0) -> Self {
+        let AssetFarmV0 { 
+            block_timestamp, 
+            rewards, 
+            inactive_rewards,
+        } = a;
+        Self {
+            block_timestamp, 
+            rewards: rewards.into_iter().map(|(k, v)| (k, v.into())).collect(), 
+            inactive_rewards,
+        }
+    }
+}
+
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct ContractV080 {
     pub accounts: UnorderedMap<AccountId, VAccount>,

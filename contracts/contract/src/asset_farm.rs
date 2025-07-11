@@ -136,12 +136,14 @@ impl AssetFarm {
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub enum VAssetFarm {
+    V0(AssetFarmV0),
     Current(AssetFarm),
 }
 
 impl From<VAssetFarm> for AssetFarm {
     fn from(v: VAssetFarm) -> Self {
         match v {
+            VAssetFarm::V0(c) => c.into(),
             VAssetFarm::Current(c) => c,
         }
     }
