@@ -33,12 +33,14 @@ impl Clone for AssetFarm {
 
 #[derive(BorshSerialize, BorshDeserialize, Clone)]
 pub enum VAssetFarmReward {
+    V0(AssetFarmRewardV0),
     Current(AssetFarmReward),
 }
 
 impl From<VAssetFarmReward> for AssetFarmReward {
     fn from(v: VAssetFarmReward) -> Self {
         match v {
+            VAssetFarmReward::V0(c) => c.into(),
             VAssetFarmReward::Current(c) => c,
         }
     }
@@ -59,8 +61,7 @@ pub struct AssetFarmReward {
     pub reward_per_day: Balance,
     /// The log base for the booster. Used to compute boosted shares per account.
     /// Including decimals of the booster.
-    #[serde(with = "u128_dec_format")]
-    pub booster_log_base: Balance,
+    pub booster_log_bases: HashMap<TokenId, U128>,
 
     /// The amount of rewards remaining to distribute.
     #[serde(with = "u128_dec_format")]
@@ -135,12 +136,14 @@ impl AssetFarm {
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub enum VAssetFarm {
+    V0(AssetFarmV0),
     Current(AssetFarm),
 }
 
 impl From<VAssetFarm> for AssetFarm {
     fn from(v: VAssetFarm) -> Self {
         match v {
+            VAssetFarm::V0(c) => c.into(),
             VAssetFarm::Current(c) => c,
         }
     }

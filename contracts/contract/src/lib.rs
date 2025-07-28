@@ -33,6 +33,8 @@ mod pyth;
 mod actions_pyth;
 mod protocol_debts;
 mod storage_keys;
+mod client_echo;
+mod booster_tokens;
 
 pub use crate::account::*;
 pub use crate::account_asset::*;
@@ -65,6 +67,8 @@ pub use crate::margin_base_token_limit::*;
 pub use crate::pyth::*;
 pub use crate::protocol_debts::*;
 pub use crate::storage_keys::*;
+pub use crate::client_echo::*;
+pub use crate::booster_tokens::*;
 
 use common::*;
 
@@ -75,10 +79,10 @@ use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::PromiseError;
 use near_sdk::{
     assert_one_yocto, env, ext_contract, log, near_bindgen, AccountId, Balance, BorshStorageKey,
-    Duration, Gas, PanicOnDefault, Promise, Timestamp, require,
+    Duration, Gas, PanicOnDefault, Promise, Timestamp, require, promise_result_as_success
 };
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 #[derive(BorshSerialize, BorshStorageKey)]
@@ -335,6 +339,11 @@ mod unit_env {
     }
 
     impl UnitEnv {
+        pub fn init_booster_tokens(&mut self){
+            testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
+            self.contract.add_booster_token_info(booster_token_id(), 18, 2678400, 31536000, 40000, U128(1));
+        }
+
         pub fn init_users(&mut self){
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(d(1, 23)).build());
             self.contract.storage_deposit(Some(alice()), None);
@@ -590,7 +599,7 @@ mod unit_env {
             reward_amount: Balance
         ){
             testing_env!(self.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
-            self.contract.add_asset_farm_reward(farm_id, reward_token_id, new_reward_per_day.into(), new_booster_log_base.into(), reward_amount.into());
+            self.contract.add_asset_farm_reward(farm_id, reward_token_id, new_reward_per_day.into(), HashMap::from([(booster_token_id(), U128(new_booster_log_base))]), reward_amount.into());
         }
 
         pub fn account_farm_claim_all(&mut self, account_id: AccountId){
@@ -720,6 +729,7 @@ mod unit_env {
         value * 10u128.pow(decimals as _)
     }
 
+    #[allow(deprecated)]
     pub fn init_unit_env() -> UnitEnv {
         let mut context = VMContextBuilder::new();
         testing_env!(context.predecessor_account_id(owner_id()).build());
@@ -750,6 +760,7 @@ mod unit_env {
         };
         test_env.init_assets();
         test_env.init_users();
+        test_env.init_booster_tokens();
         test_env
     }
 
@@ -953,19 +964,19 @@ mod booster {
         let account = test_env.contract.get_account(alice()).unwrap();
         assert_eq!(account.supplied[0].balance, amount);
         assert_eq!(account.supplied[0].token_id, booster_token_id());
-        assert!(account.booster_staking.is_none());
+        assert!(account.booster_stakings.is_empty());
 
         let duration_sec: DurationSec = MAX_DURATION_SEC;
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(amount.into()), duration_sec);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(amount.into()), duration_sec);
         
         let asset = test_env.get_asset(booster_token_id());
         assert_eq!(asset.supplied.balance, 0);
 
         let account = test_env.contract.get_account(alice()).unwrap();
         assert!(account.supplied.is_empty());
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, amount);
         assert_eq!(booster_staking.x_booster_amount, amount * 4);
         assert_eq!(
@@ -977,18 +988,18 @@ mod booster {
 
         let account = test_env.contract.get_account(alice()).unwrap();
         assert!(account.supplied.is_empty());
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.x_booster_amount, amount * 4);
 
         test_env.skip_time_to_by_sec(duration_sec);
 
         let account = test_env.contract.get_account(alice()).unwrap();
         assert!(account.supplied.is_empty());
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.x_booster_amount, amount * 4);
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_unstake_booster();
+        test_env.contract.account_unstake_booster(Some(booster_token_id()), None);
 
         let asset = test_env.get_asset(booster_token_id());
         assert_eq!(asset.supplied.balance, amount);
@@ -996,7 +1007,7 @@ mod booster {
         let account = test_env.contract.get_account(alice()).unwrap();
         assert_eq!(account.supplied[0].balance, amount);
         assert_eq!(account.supplied[0].token_id, booster_token_id());
-        assert!(account.booster_staking.is_none());
+        assert!(account.booster_stakings.is_empty());
     }
 
 
@@ -1011,7 +1022,7 @@ mod booster {
         let duration_sec: DurationSec = MAX_DURATION_SEC;
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some((amount / 2).into()), duration_sec);
+        test_env.contract.account_stake_booster(booster_token_id(), Some((amount / 2).into()), duration_sec);
 
         let asset = test_env.get_asset(booster_token_id());
         assert_eq!(asset.supplied.balance, amount / 2);
@@ -1019,7 +1030,7 @@ mod booster {
         let account = test_env.contract.get_account(alice()).unwrap();
         assert_eq!(account.supplied[0].balance, amount / 2);
         assert_eq!(account.supplied[0].token_id, booster_token_id());
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, amount / 2);
         assert_eq!(booster_staking.x_booster_amount, amount / 2 * 4);
         assert_eq!(
@@ -1030,14 +1041,14 @@ mod booster {
         test_env.skip_time_to_by_sec(duration_sec / 2 );
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some((amount / 2).into()), duration_sec / 2);
+        test_env.contract.account_stake_booster(booster_token_id(), Some((amount / 2).into()), duration_sec / 2);
 
         let asset = test_env.get_asset(booster_token_id());
         assert_eq!(asset.supplied.balance, 0);
 
         let account = test_env.contract.get_account(alice()).unwrap();
         assert!(account.supplied.is_empty());
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, amount);
         assert_eq!(
             booster_staking.x_booster_amount,
@@ -1056,7 +1067,7 @@ mod booster {
         test_env.skip_time_to_by_sec(duration_sec);
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_unstake_booster();
+        test_env.contract.account_unstake_booster(Some(booster_token_id()), None);
 
         let asset = test_env.get_asset(booster_token_id());
         assert_eq!(asset.supplied.balance, amount);
@@ -1064,7 +1075,7 @@ mod booster {
         let account = test_env.contract.get_account(alice()).unwrap();
         assert_eq!(account.supplied[0].balance, amount);
         assert_eq!(account.supplied[0].token_id, booster_token_id());
-        assert!(account.booster_staking.is_none());
+        assert!(account.booster_stakings.is_empty());
     }
 
     #[test]
@@ -1078,19 +1089,19 @@ mod booster {
         let duration_sec: DurationSec = MAX_DURATION_SEC;
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some((amount / 2).into()), duration_sec);
+        test_env.contract.account_stake_booster(booster_token_id(), Some((amount / 2).into()), duration_sec);
         
         test_env.skip_time_to_by_sec(duration_sec / 2 );
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some((amount / 2).into()), duration_sec);
+        test_env.contract.account_stake_booster(booster_token_id(), Some((amount / 2).into()), duration_sec);
 
         let asset = test_env.get_asset(booster_token_id());
         assert_eq!(asset.supplied.balance, 0);
 
         let account = test_env.contract.get_account(alice()).unwrap();
         assert!(account.supplied.is_empty());
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, amount);
         assert_eq!(booster_staking.x_booster_amount, amount * 4);
         assert_eq!(
@@ -1099,7 +1110,7 @@ mod booster {
         );
 
         test_env.skip_time_to_by_sec(duration_sec + duration_sec / 2);
-        test_env.contract.account_unstake_booster();
+        test_env.contract.account_unstake_booster(Some(booster_token_id()), None);
 
         let asset = test_env.get_asset(booster_token_id());
         assert_eq!(asset.supplied.balance, amount);
@@ -1107,7 +1118,7 @@ mod booster {
         let account = test_env.contract.get_account(alice()).unwrap();
         assert_eq!(account.supplied[0].balance, amount);
         assert_eq!(account.supplied[0].token_id, booster_token_id());
-        assert!(account.booster_staking.is_none());
+        assert!(account.booster_stakings.is_empty());
     }
 }
 
@@ -1392,7 +1403,7 @@ mod farms {
         test_env.deposit(booster_token_id(), alice(), booster_amount);
         
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(booster_amount.into()), MAX_DURATION_SEC);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(booster_amount.into()), MAX_DURATION_SEC);
 
         let reward_per_day = d(100, 18);
         let total_reward = d(3000, 18);
@@ -1406,29 +1417,29 @@ mod farms {
         test_env.account_farm_claim_all(alice());
 
         let account = test_env.contract.get_account(alice()).unwrap();
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
         assert_eq!(booster_staking.x_booster_amount, d(20, 18));
         assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC));
         assert_eq!(account.farms[0].rewards[0].boosted_shares, d(200, 18));
         
         testing_env!(test_env.context.predecessor_account_id(owner_id()).build());
-        test_env.contract.adjust_boost_staking_policy(2678400, MAX_DURATION_SEC / 2, 40000);
+        test_env.contract.update_booster_token_info(booster_token_id(), Some((2678400, MAX_DURATION_SEC / 2)), Some(40000), None, None);
         test_env.account_farm_claim_all(alice());
         
         let account = test_env.contract.get_account(alice()).unwrap();
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
         assert_eq!(booster_staking.x_booster_amount, d(20, 18));
         assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC / 2));
         assert_eq!(account.farms[0].rewards[0].boosted_shares, d(200, 18));
 
         testing_env!(test_env.context.predecessor_account_id(owner_id()).build());
-        test_env.contract.adjust_boost_staking_policy(2678400, MAX_DURATION_SEC / 2, 20000);
+        test_env.contract.update_booster_token_info(booster_token_id(), Some((2678400, MAX_DURATION_SEC / 2)), Some(20000), None, None);
         test_env.account_farm_claim_all(alice());
 
         let account = test_env.contract.get_account(alice()).unwrap();
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
         assert_eq!(booster_staking.x_booster_amount, d(10, 18));
         assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC / 2));
@@ -1439,7 +1450,7 @@ mod farms {
 
         test_env.account_farm_claim_all(alice());
         let account = test_env.contract.get_account(alice()).unwrap();
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
         assert_eq!(booster_staking.x_booster_amount, 0);
         assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC / 2));
@@ -1457,7 +1468,7 @@ mod farms {
 
         test_env.account_farm_claim_all(alice());
         let account = test_env.contract.get_account(alice()).unwrap();
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
         assert_eq!(booster_staking.x_booster_amount, 0);
         assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC / 2));
@@ -1478,7 +1489,7 @@ mod farms {
         test_env.deposit(booster_token_id(), alice(), booster_amount);
         
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(booster_amount.into()), MAX_DURATION_SEC);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(booster_amount.into()), MAX_DURATION_SEC);
 
         let reward_per_day = d(100, 18);
         let total_reward = d(3000, 18);
@@ -1492,7 +1503,7 @@ mod farms {
         test_env.account_farm_claim_all(alice());
 
         let account = test_env.contract.get_account(alice()).unwrap();
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(5000, 18));
         assert_eq!(booster_staking.x_booster_amount, d(20000, 18));
         assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC));
@@ -1500,10 +1511,10 @@ mod farms {
             * ((d(20000, 18) as f64) / (10f64.powi(18))).log(20f64)) as u128);
 
         testing_env!(test_env.context.predecessor_account_id(owner_id()).build());
-        test_env.contract.adjust_boost_suppress_factor(1000);
+        test_env.contract.update_booster_token_info(booster_token_id(), None, None, Some(U128(1000)), None);
         test_env.account_farm_claim_all(alice());
         let account = test_env.contract.get_account(alice()).unwrap();
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(5000, 18));
         assert_eq!(booster_staking.x_booster_amount, d(20000, 18));
         assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC));
@@ -1520,7 +1531,8 @@ mod farms {
         let mut test_env = init_unit_env();
 
         testing_env!(test_env.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
-        test_env.contract.adjust_boost_staking_policy(MIN_DURATION_SEC, MAX_DURATION_SEC, 120000);
+        test_env.contract.update_booster_token_info(booster_token_id(), Some((MIN_DURATION_SEC, MAX_DURATION_SEC)), Some(120000), None, None);
+
 
         test_env.skip_time_to_by_sec(10);
 
@@ -1528,10 +1540,10 @@ mod farms {
         test_env.deposit(booster_token_id(), alice(), booster_amount);
         
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(d(5, 18).into()), MAX_DURATION_SEC);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(d(5, 18).into()), MAX_DURATION_SEC);
 
         let account = test_env.contract.get_account(alice()).unwrap();
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(5, 18));
         assert_eq!(booster_staking.x_booster_amount, d(60, 18));
         assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MAX_DURATION_SEC));
@@ -1539,20 +1551,21 @@ mod farms {
         test_env.skip_time_to_by_sec(10 + MIN_DURATION_SEC * 2);
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(d(5, 18).into()), MAX_DURATION_SEC);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(d(5, 18).into()), MAX_DURATION_SEC);
         let account = test_env.contract.get_account(alice()).unwrap();
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(10, 18));
         assert_eq!(booster_staking.x_booster_amount, d(120, 18));
         assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MIN_DURATION_SEC * 2 + MAX_DURATION_SEC));
 
         testing_env!(test_env.context.predecessor_account_id(owner_id()).build());
-        test_env.contract.adjust_boost_staking_policy(MIN_DURATION_SEC, MIN_DURATION_SEC * 3, 30000);
+        test_env.contract.update_booster_token_info(booster_token_id(), Some((MIN_DURATION_SEC, MIN_DURATION_SEC * 3)), Some(30000), None, None);
+
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(d(5, 18).into()), MIN_DURATION_SEC * 3);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(d(5, 18).into()), MIN_DURATION_SEC * 3);
         let account = test_env.contract.get_account(alice()).unwrap();
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(15, 18));
         assert_eq!(booster_staking.x_booster_amount, d(45, 18));
         assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MIN_DURATION_SEC * 5));
@@ -1560,12 +1573,12 @@ mod farms {
         test_env.skip_time_to_by_sec(10 + MIN_DURATION_SEC * 4);
 
         testing_env!(test_env.context.predecessor_account_id(owner_id()).build());
-        test_env.contract.adjust_boost_staking_policy(MIN_DURATION_SEC, MAX_DURATION_SEC, 120000);
+        test_env.contract.update_booster_token_info(booster_token_id(), Some((MIN_DURATION_SEC, MAX_DURATION_SEC)), Some(120000), None, None);
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(d(5, 18).into()), MAX_DURATION_SEC);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(d(5, 18).into()), MAX_DURATION_SEC);
         let account = test_env.contract.get_account(alice()).unwrap();
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(20, 18));
         assert_eq!(booster_staking.x_booster_amount, d(240, 18));
         assert_eq!(booster_staking.unlock_timestamp, to_nano(10 + MIN_DURATION_SEC * 4 + MAX_DURATION_SEC));
@@ -1592,7 +1605,7 @@ mod farms {
         test_env.deposit(booster_token_id(), alice(), booster_amount);
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(booster_amount.into()), MAX_DURATION_SEC);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(booster_amount.into()), MAX_DURATION_SEC);
     
         let amount = d(100, 18);
         test_env.deposit(ndai_token_id(), alice(), amount);
@@ -1613,7 +1626,7 @@ mod farms {
         let account = test_env.contract.get_account(alice()).unwrap();
         assert_balances(&account.supplied, &[av(ndai_token_id(), amount)]);
 
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, booster_amount);
         assert_eq!(booster_staking.x_booster_amount, booster_amount * 4);
 
@@ -1649,7 +1662,7 @@ mod farms {
 
         // Increasing booster stake updates all farms.
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(booster_amount.into()), MAX_DURATION_SEC);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(booster_amount.into()), MAX_DURATION_SEC);
 
         let asset = test_env.get_asset(nusdc_token_id());
         assert_eq!(asset.supplied.balance, farmed_amount);
@@ -1684,7 +1697,7 @@ mod farms {
                 * 3,
         );
         assert_eq!(account.farms[0].rewards[0].unclaimed_amount, 0);
-        let booster_staking = account.booster_staking.unwrap();
+        let booster_staking = account.booster_stakings.get(&booster_token_id()).unwrap();
         assert_eq!(booster_staking.staked_booster_amount, d(100, 18));
         assert_eq!(booster_staking.x_booster_amount, d(400, 18));
         clean_assets_cache();
@@ -1702,7 +1715,7 @@ mod farms {
         test_env.deposit(booster_token_id(), alice(), booster_amount);
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(booster_amount.into()), MAX_DURATION_SEC);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(booster_amount.into()), MAX_DURATION_SEC);
 
         test_env.skip_time_to_by_sec(10 + MAX_DURATION_SEC - ONE_DAY_SEC * 3);
 
@@ -1760,7 +1773,7 @@ mod farms {
 
         // Unstaking booster updates all farms.
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_unstake_booster();
+        test_env.contract.account_unstake_booster(Some(booster_token_id()), None);
 
         let asset = test_env.get_asset(nusdc_token_id());
         assert_eq!(asset.supplied.balance, farmed_amount);
@@ -1795,7 +1808,7 @@ mod farms {
                 .0,
         );
         assert_eq!(account.farms[0].rewards[0].unclaimed_amount, 0);
-        assert!(account.booster_staking.is_none());
+        assert!(account.booster_stakings.get(&booster_token_id()).is_none());
         clean_assets_cache();
         clean_assets_farm_cache();
     }
@@ -1811,13 +1824,13 @@ mod farms {
         test_env.deposit(booster_token_id(), alice(), booster_amount_alice);
 
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(booster_amount_alice.into()), MAX_DURATION_SEC);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(booster_amount_alice.into()), MAX_DURATION_SEC);
 
         let booster_amount_bob = d(100, 18);
         test_env.deposit(booster_token_id(), bob(), booster_amount_bob);
 
         testing_env!(test_env.context.predecessor_account_id(bob()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(booster_amount_bob.into()), MAX_DURATION_SEC);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(booster_amount_bob.into()), MAX_DURATION_SEC);
 
         let reward_per_day = d(100, 18);
         let total_reward = d(3000, 18);
@@ -1900,7 +1913,7 @@ mod farms {
 
         // Increasing booster stake updates all farms.
         testing_env!(test_env.context.predecessor_account_id(alice()).attached_deposit(1).build());
-        test_env.contract.account_stake_booster(Some(extra_booster_amount.into()), MAX_DURATION_SEC);
+        test_env.contract.account_stake_booster(booster_token_id(), Some(extra_booster_amount.into()), MAX_DURATION_SEC);
 
         let asset = test_env.get_asset(nusdc_token_id());
         // The amount of only for Alice, but Bob still unclaimed
@@ -2814,5 +2827,42 @@ mod liquidation {
         test_env.contract.storage.insert(&AccountId::new_unchecked("storage".to_string()), &VStorage::Current(Storage { storage_balance: 10u128.pow(25), used_bytes: 1000, storage_tracker: Default::default() }));
         let _tmp_account = account.clone();
         test_env.contract.internal_set_account(&AccountId::new_unchecked("storage".to_string()), account);
+    }
+
+    #[test]
+    fn test_get_booster_extra_shares() {
+        let user_account_id = AccountId::new_unchecked("user".to_string());
+        let booster_token_id = AccountId::new_unchecked("booster".to_string());
+        let booster_token_id2 = AccountId::new_unchecked("booster2".to_string());
+        let mut account = Account::new(&user_account_id);
+        let mut asset_farm_reward: AssetFarmReward = Default::default();
+        let mut booster_tokens: HashMap<TokenId, BoosterTokenInfo> = Default::default();
+        assert_eq!(get_booster_extra_shares(&account, 10000, &asset_farm_reward, &booster_tokens), 0);
+        booster_tokens.insert(booster_token_id.clone(), BoosterTokenInfo::new(
+            booster_token_id.clone(),
+            18,
+            2678400,
+            31536000,
+            40000,
+            1
+        ));
+        asset_farm_reward.booster_log_bases.insert(booster_token_id.clone(), 10u128.pow(19).into());
+        assert_eq!(get_booster_extra_shares(&account, 10000, &asset_farm_reward, &booster_tokens), 0);
+        account.booster_stakings.insert(booster_token_id.clone(), BoosterStaking { staked_booster_amount: 50, x_booster_amount: 100, unlock_timestamp: u64::MAX });
+        assert_eq!(get_booster_extra_shares(&account, 10000, &asset_farm_reward, &booster_tokens), 0);
+        account.booster_stakings.insert(booster_token_id.clone(), BoosterStaking { staked_booster_amount: 50 * 10u128.pow(18), x_booster_amount: 100 * 10u128.pow(18), unlock_timestamp: u64::MAX });
+        assert_eq!(get_booster_extra_shares(&account, 10000, &asset_farm_reward, &booster_tokens), 20000);
+        booster_tokens.insert(booster_token_id2.clone(), BoosterTokenInfo::new(
+            booster_token_id2.clone(),
+            18,
+            2678400,
+            31536000,
+            40000,
+            1
+        ));
+        account.booster_stakings.insert(booster_token_id2.clone(), BoosterStaking { staked_booster_amount: 50 * 10u128.pow(18), x_booster_amount: 100 * 10u128.pow(18), unlock_timestamp: u64::MAX });
+        assert_eq!(get_booster_extra_shares(&account, 10000, &asset_farm_reward, &booster_tokens), 20000);
+        asset_farm_reward.booster_log_bases.insert(booster_token_id2.clone(), 10u128.pow(19).into());
+        assert_eq!(get_booster_extra_shares(&account, 10000, &asset_farm_reward, &booster_tokens), 40000);
     }
 }

@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use crate::*;
 
 use contract::Config;
@@ -7,7 +9,7 @@ pub const PYTH_ID: &str = "pyth.test.near";
 pub const BOOSTER_TOKEN_ID: &str = "booster.test.near";
 pub const BOOSTER_TOKEN_DECIMALS: u8 = 18;
 
-const PREVIOUS_BURROWLAND_WASM: &str = "../../releases/burrowland_0.15.1.wasm";
+const PREVIOUS_BURROWLAND_WASM: &str = "../../releases/burrowland_0.15.2.wasm";
 pub const BURROWLAND_WASM: &str = "../../res/burrowland.wasm";
 const REF_EXCHANGE_WASM: &str = "../../res/mock_ref_exchange.wasm";
 pub const BOOST_FARMING_WASM: &str = "../../res/mock_boost_farming.wasm";
@@ -60,6 +62,20 @@ pub async fn deploy_burrowland_with_pyth(
         .transact()
         .await?
         .is_success());
+
+    check!(root.call(burrowland.id(), "add_booster_token_info")
+        .args_json(json!({
+            "booster_token_id": BOOSTER_TOKEN_ID,
+            "booster_decimals": 18,
+            "minimum_staking_duration_sec": 2678400,
+            "maximum_staking_duration_sec": 31536000,
+            "x_booster_multiplier_at_maximum_staking_duration": 40000,
+            "boost_suppress_factor": "1",
+        }))
+        .deposit(NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact());
+
     // check!(root.call(burrowland.id(), "set_margin_base_token_limit_gur")
     //     .args_json(json!({
     //         "token_id": "wrap.test.near",
@@ -146,6 +162,20 @@ pub async fn deploy_burrowland_with_price_oracle(
         .transact()
         .await?
         .is_success());
+
+    check!(root.call(burrowland.id(), "add_booster_token_info")
+        .args_json(json!({
+            "booster_token_id": BOOSTER_TOKEN_ID,
+            "booster_decimals": 18,
+            "minimum_staking_duration_sec": 2678400,
+            "maximum_staking_duration_sec": 31536000,
+            "x_booster_multiplier_at_maximum_staking_duration": 40000,
+            "boost_suppress_factor": "1",
+        }))
+        .deposit(NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact());
+
     // check!(root.call(burrowland.id(), "set_margin_base_token_limit_gur")
     //     .args_json(json!({
     //         "token_id": "wrap.test.near",

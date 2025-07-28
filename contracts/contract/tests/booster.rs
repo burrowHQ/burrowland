@@ -55,7 +55,7 @@ async fn test_booster_stake_all() -> Result<()> {
 
     let account = burrowland_contract.get_account(&alice).await?.unwrap();
     assert!(account.supplied.is_empty());
-    let booster_staking = account.booster_staking.unwrap();
+    let booster_staking = account.booster_stakings.get(&BOOSTER_TOKEN_ID.parse().unwrap()).unwrap();
     assert_eq!(booster_staking.staked_booster_amount, amount);
     assert_eq!(booster_staking.x_booster_amount, amount * 4);
     Ok(())

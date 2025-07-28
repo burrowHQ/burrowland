@@ -30,6 +30,7 @@ pub struct AccountDetailedView {
     pub has_non_farmed_assets: bool,
     /// Staking of booster token.
     pub booster_staking: Option<BoosterStaking>,
+    pub booster_stakings: HashMap<TokenId, BoosterStaking>,
 }
 
 #[derive(Serialize)]
@@ -74,6 +75,7 @@ pub struct AccountAllPositionsDetailedView {
     pub has_non_farmed_assets: bool,
     /// Staking of booster token.
     pub booster_staking: Option<BoosterStaking>,
+    pub booster_stakings: HashMap<TokenId, BoosterStaking>,
     pub is_locked: bool
 }
 
@@ -168,6 +170,7 @@ impl Contract {
             farms,
             has_non_farmed_assets,
             booster_staking: account.booster_staking,
+            booster_stakings: account.booster_stakings,
         }
     }
 
@@ -281,6 +284,7 @@ impl Contract {
             farms,
             has_non_farmed_assets,
             booster_staking: account.booster_staking,
+            booster_stakings: account.booster_stakings,
             is_locked: account.is_locked
         }
     }

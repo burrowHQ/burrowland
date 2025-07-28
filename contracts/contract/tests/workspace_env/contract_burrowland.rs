@@ -100,6 +100,7 @@ impl Burrowland {
         caller
             .call(self.0.id(), "account_stake_booster")
             .args_json(json!({
+                "booster_token_id": BOOSTER_TOKEN_ID,
                 "amount": amount,
                 "duration": duration,
             }))
@@ -534,7 +535,7 @@ impl Burrowland {
                 "farm_id": farm_id,
                 "reward_token_id": reward_token_id,
                 "new_reward_per_day": new_reward_per_day,
-                "new_booster_log_base": new_booster_log_base,
+                "new_booster_log_bases": HashMap::from([(BOOSTER_TOKEN_ID, new_booster_log_base)]),
                 "reward_amount": reward_amount,
             }))
             .max_gas()

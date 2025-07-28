@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use crate::*;
 
 /// Default multiplier for Net TVL farming. Equals to 1.
@@ -122,6 +124,7 @@ impl AccountV1 {
             affected_farms,
             storage_tracker,
             booster_staking,
+            booster_stakings: HashMap::new(),
             is_locked: false,
         }
     }
@@ -169,7 +172,54 @@ impl AccountV2 {
             affected_farms,
             storage_tracker,
             booster_staking,
+            booster_stakings: HashMap::new(),
             is_locked: false,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AccountV3 {
+    /// A copy of an account ID. Saves one storage_read when iterating on accounts.
+    pub account_id: AccountId,
+    /// A list of assets that are supplied by the account (but not used a collateral).
+    /// It's not returned for account pagination.
+    pub supplied: HashMap<TokenId, Shares>,
+    pub positions: HashMap<String, Position>,
+    /// Keeping track of data required for farms for this account.
+    pub farms: HashMap<FarmId, AccountFarm>,
+    #[borsh_skip]
+    pub affected_farms: HashSet<FarmId>,
+    /// Tracks changes in storage usage by persistent collections in this account.
+    #[borsh_skip]
+    pub storage_tracker: StorageTracker,
+    /// Staking of booster token.
+    pub booster_staking: Option<BoosterStaking>,
+    pub is_locked: bool,
+}
+
+impl AccountV3 {
+    pub fn into_account(self) -> Account {
+        let AccountV3 {
+            account_id,
+            supplied,
+            positions,
+            farms,
+            affected_farms,
+            storage_tracker,
+            booster_staking,
+            is_locked,
+        } = self;
+        Account {
+            account_id,
+            supplied,
+            positions,
+            farms,
+            affected_farms,
+            storage_tracker,
+            booster_staking,
+            booster_stakings: HashMap::new(),
+            is_locked,
         }
     }
 }
@@ -1378,6 +1428,63 @@ impl From<MarginConfigV1> for MarginConfig {
             liq_benefit_protocol_rate,
             liq_benefit_liquidator_rate,
             max_position_action_wait_sec: 3600,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Clone)]
+pub struct AssetFarmRewardV0 {
+    /// The amount of reward distributed per day.
+    pub reward_per_day: Balance,
+    /// The log base for the booster. Used to compute boosted shares per account.
+    /// Including decimals of the booster.
+    pub booster_log_base: Balance,
+    /// The amount of rewards remaining to distribute.
+    pub remaining_rewards: Balance,
+    /// The total number of boosted shares.
+    pub boosted_shares: Balance,
+    pub reward_per_share: BigDecimal,
+}
+
+impl From<AssetFarmRewardV0> for AssetFarmReward {
+    fn from(a: AssetFarmRewardV0) -> Self {
+        let AssetFarmRewardV0 { 
+            reward_per_day, 
+            booster_log_base: _, 
+            remaining_rewards, 
+            boosted_shares, 
+            reward_per_share,
+        } = a;
+        Self {
+            reward_per_day, 
+            booster_log_bases: HashMap::new(), 
+            remaining_rewards, 
+            boosted_shares, 
+            reward_per_share,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AssetFarmV0 {
+    pub block_timestamp: Timestamp,
+    /// Active rewards for the farm
+    pub rewards: HashMap<TokenId, AssetFarmRewardV0>,
+    /// Inactive rewards
+    pub inactive_rewards: LookupMap<TokenId, VAssetFarmReward>,
+}
+
+impl From<AssetFarmV0> for AssetFarm {
+    fn from(a: AssetFarmV0) -> Self {
+        let AssetFarmV0 { 
+            block_timestamp, 
+            rewards, 
+            inactive_rewards,
+        } = a;
+        Self {
+            block_timestamp, 
+            rewards: rewards.into_iter().map(|(k, v)| (k, v.into())).collect(), 
+            inactive_rewards,
         }
     }
 }

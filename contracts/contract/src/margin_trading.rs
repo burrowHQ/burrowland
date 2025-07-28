@@ -79,6 +79,7 @@ pub enum RefV1TokenReceiverMessage {
         /// If not None, dex would use ft_transfer_call
         /// to send token_out back to predecessor with this msg.
         client_echo: Option<String>,
+        skip_degen_price_sync: Option<bool>,
     },
 }
 
@@ -89,6 +90,7 @@ impl RefV1TokenReceiverMessage {
             referral_id: _,
             actions,
             client_echo: _,
+            skip_degen_price_sync: _,
         } = self;
         let action = actions.first().unwrap();
         let token_in = action.get_token_in();
@@ -102,6 +104,7 @@ impl RefV1TokenReceiverMessage {
             referral_id: _,
             actions,
             client_echo: _,
+            skip_degen_price_sync: _,
         } = self;
         let action = actions.last().unwrap();
         let token_out = action.get_token_out();
@@ -115,6 +118,7 @@ impl RefV1TokenReceiverMessage {
                 referral_id: _,
                 actions: _,
                 client_echo,
+                skip_degen_price_sync: _,
             } => client_echo.clone(),
         }
     }
@@ -125,6 +129,7 @@ impl RefV1TokenReceiverMessage {
                 referral_id: _,
                 actions: _,
                 ref mut client_echo,
+                skip_degen_price_sync: _,
             } => *client_echo = Some(echo.clone()),
         }
     }

@@ -131,28 +131,6 @@ async fn test_withdraw_prot_fee_reserved_failed() -> Result<()> {
     Ok(())
 }
 
-
-#[tokio::test]
-async fn test_modify_booster_token_id_and_decimals() -> Result<()> {
-    let worker = near_workspaces::sandbox().await?;
-    let root = worker.root_account()?;
-
-    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
-
-    let mut config = burrowland_contract.get_config().await?;
-    config.booster_token_id = "new_booster_token_id".parse().unwrap();
-    check!(burrowland_contract.update_config(&root, &config), "Can't change booster_token_id/booster_decimals");
-
-    let mut config = burrowland_contract.get_config().await?;
-    config.booster_decimals = 0;
-    check!(burrowland_contract.update_config(&root, &config), "Can't change booster_token_id/booster_decimals");
-
-    let config = burrowland_contract.get_config().await?;
-    check!(burrowland_contract.update_config(&root, &config));
-
-    Ok(())
-}
-
 #[tokio::test]
 async fn test_modify_config() -> Result<()> {
     let worker = near_workspaces::sandbox().await?;

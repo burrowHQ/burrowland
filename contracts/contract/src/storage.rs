@@ -206,6 +206,7 @@ impl StorageManagement for Contract {
             assert!(account.positions.is_empty(), "still has positions");
             assert!(account.farms.is_empty(), "still has farms");
             assert!(account.booster_staking.is_none(), "still has booster_staking");
+            assert!(account.booster_stakings.is_empty(), "still has booster_stakings");
             if let Some(margin_account) = self.internal_get_margin_account(&account_id) {
                 assert!(margin_account.supplied.is_empty(), "still has margin supplied");
                 assert!(margin_account.margin_positions.is_empty(), "still has margin positions");

@@ -1,8 +1,8 @@
 use crate::*;
+use near_contract_standards::fungible_token::core::ext_ft_core;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_sdk::json_types::U128;
 use near_sdk::{is_promise_success, serde_json, PromiseOrValue};
-use near_contract_standards::fungible_token::core::ext_ft_core;
 
 const GAS_FOR_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
 const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 20);
@@ -155,6 +155,26 @@ impl Contract {
                 }
             )
     }
+
+    pub fn internal_ft_transfer_call(
+        &mut self,
+        account_id: &AccountId,
+        token_id: &TokenId,
+        amount: Balance,
+        ft_amount: Balance,
+        client_echo: String,
+    ) {
+        ext_ft_core::ext(token_id.clone())
+            .with_attached_deposit(ONE_YOCTO)
+            .with_static_gas(Gas::ONE_TERA * 30)
+            .ft_transfer_call(account_id.clone(), ft_amount.into(), None, client_echo)
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(Gas::ONE_TERA * 15)
+                    .with_unused_gas_weight(0)
+                    .after_ft_transfer_call(account_id.clone(), token_id.clone(), ft_amount.into(), amount.into())
+            );
+    }
 }
 
 #[allow(unused)]
@@ -162,8 +182,19 @@ impl Contract {
 trait ExtSelf {
     fn after_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
         -> bool;
-    fn after_margin_asset_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
-        -> bool;
+    fn after_ft_transfer_call(
+        &mut self,
+        account_id: AccountId,
+        token_id: TokenId,
+        ft_amount: U128,
+        amount: U128,
+    );
+    fn after_margin_asset_ft_transfer(
+        &mut self,
+        account_id: AccountId,
+        token_id: TokenId,
+        amount: U128,
+    ) -> bool;
 }
 
 #[near_bindgen]
@@ -185,6 +216,37 @@ impl ExtSelf for Contract {
             events::emit::withdraw_succeeded(&account_id, amount.0, &token_id);
         }
         promise_success
+    }
+
+    #[private]
+    fn after_ft_transfer_call(
+        &mut self,
+        account_id: AccountId,
+        token_id: TokenId,
+        ft_amount: U128,
+        amount: U128,
+    ) {
+        let remain_ft_amount = match promise_result_as_success() {
+            Some(result_bytes) => {
+                let used_amount = serde_json::from_slice::<U128>(&result_bytes).unwrap();
+                ft_amount.0.checked_sub(used_amount.0).unwrap_or(0) 
+            }
+            None => ft_amount.0,
+        };
+        if remain_ft_amount == 0 {
+            events::emit::withdraw_succeeded(&account_id, amount.0, &token_id);
+        } else {
+            let remain_amount = u128_ratio(amount.0, remain_ft_amount, ft_amount.0);
+            let mut account = self.internal_unwrap_account(&account_id);
+            self.internal_deposit_without_asset_basic_check(&mut account, &token_id, remain_amount);
+            self.internal_set_account(&account_id, account);
+            if remain_ft_amount == ft_amount.0 {
+                events::emit::withdraw_failed(&account_id, amount.0, &token_id);
+            } else {
+                events::emit::withdraw_failed(&account_id, remain_amount, &token_id);
+                events::emit::withdraw_succeeded(&account_id, amount.0 - remain_amount, &token_id);
+            }
+        }
     }
 
     #[private]
