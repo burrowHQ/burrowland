@@ -25,6 +25,8 @@ pub struct AssetDetailedView {
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
     pub prot_fee: Balance,
+    /// the amounts belongs to each benficiaries, can not be borrowed, can not affect borrowing rate.
+    pub beneficiary_fees: HashMap<AccountId, U128>,
     /// The amount of global unit accumulated holding-position interest.
     #[serde(with = "u128_dec_format")]
     pub uahpi: Balance,
@@ -77,6 +79,7 @@ impl Contract {
             margin_position,
             reserved,
             prot_fee,
+            beneficiary_fees,
             unit_acc_hp_interest,
             last_update_timestamp,
             config,
@@ -92,6 +95,7 @@ impl Contract {
             margin_position,
             reserved,
             prot_fee,
+            beneficiary_fees,
             uahpi: unit_acc_hp_interest,
             last_update_timestamp,
             config,

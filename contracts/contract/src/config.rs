@@ -1,3 +1,5 @@
+use near_sdk::PromiseOrValue;
+
 use crate::*;
 
 pub const MIN_BOOSTER_MULTIPLIER: u32 = 10000;
@@ -275,19 +277,36 @@ impl Contract {
         self.internal_set_asset(&token_id, asset);
     }
 
-    /// Updates the prot_ratio for the asset with the a given token_id.
-    /// - Panics if the prot_ratio is invalid.
+
+    /// Update or insert a beneficiary to a given asset.
+    /// - Panics if the beneficiaries is invalid after upsert.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner or guardians.
     #[payable]
-    pub fn update_asset_prot_ratio(&mut self, token_id: AccountId, prot_ratio: u32) {
+    pub fn upsert_beneficiary(&mut self, token_id: AccountId, account_id: AccountId, bps: u32) {
         assert_one_yocto();
         self.assert_owner_or_guardians();
-        assert!(prot_ratio <= MAX_RATIO);
         let mut asset = self.internal_unwrap_asset(&token_id);
-        asset.config.prot_ratio = prot_ratio;
+        asset.config.beneficiaries.insert(account_id, bps);
+        asset.config.assert_valid();
         self.internal_set_asset(&token_id, asset);
+        // TODO: add event
+    }
+
+    /// Remove a beneficiary from a given asset.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    /// Note: removing a beneficiary doesn't affect his currently collected fee.
+    #[payable]
+    pub fn remove_beneficiary(&mut self, token_id: AccountId, account_id: AccountId) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        asset.config.beneficiaries.remove(&account_id);
+        self.internal_set_asset(&token_id, asset);
+        // TODO: add event
     }
 
     /// Enable or disable oracle
@@ -471,6 +490,26 @@ impl Contract {
             self.deposit_to_owner(&token_id, stdd_amount);
 
             events::emit::claim_prot_fee(&self.internal_config().owner_id, stdd_amount, &token_id);
+        }
+    }
+
+    /// Only beneficiary himself can withdraw
+    #[payable]
+    pub fn withdraw_beneficiary_fee(&mut self, token_id: AccountId) -> PromiseOrValue<bool> {
+        assert_one_yocto();
+        let beneficiary = env::predecessor_account_id();
+        let mut asset = self.internal_unwrap_asset(&token_id);
+
+        let stdd_amount = asset.beneficiary_fees.get(&beneficiary).unwrap_or(&U128(0)).0;
+        
+        if stdd_amount > 0 {
+            asset.beneficiary_fees.remove(&beneficiary);
+            let ft_amount = stdd_amount / 10u128.pow(asset.config.extra_decimals as u32);
+            self.internal_set_asset(&token_id, asset);
+            // TODO: add event
+            self.internal_beneficiary_withdraw(&beneficiary, &token_id, stdd_amount, ft_amount).into()
+        } else {
+            PromiseOrValue::Value(false)
         }
     }
 

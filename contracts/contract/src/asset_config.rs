@@ -34,9 +34,9 @@ pub struct AssetConfig {
     /// The ratio of interest that is reserved by the protocol (multiplied by 10000).
     /// E.g. 2500 means 25% from borrowed interests goes to the reserve.
     pub reserve_ratio: u32,
-    /// The ratio of reserved interest that belongs to the protocol (multiplied by 10000).
-    /// E.g. 2500 means 25% from reserved interests goes to the prot.
-    pub prot_ratio: u32,
+    /// The ratio of reserved interest that belongs to each beneficiary (multiplied by 10000).
+    /// E.g. 2500 means 25% from reserved interests goes to him.
+    pub beneficiaries: HashMap<AccountId, u32>,
     /// Target utilization ratio (multiplied by 10000).
     /// E.g. 8000 means the protocol targets 80% of assets are borrowed.
     pub target_utilization: u32,
@@ -90,7 +90,8 @@ pub struct AssetConfig {
 impl AssetConfig {
     pub fn assert_valid(&self) {
         assert!(self.reserve_ratio <= MAX_RATIO);
-        assert!(self.prot_ratio <= MAX_RATIO);
+        let total_ratio: u32 = self.beneficiaries.values().sum();
+        assert!(total_ratio <= MAX_RATIO);
         assert!(self.target_utilization < MAX_POS);
         assert!(self.target_utilization_rate.0 >= BIG_DIVISOR, "Invalid target_utilization_rate");
         assert!(self.max_utilization_rate.0 >= BIG_DIVISOR, "Invalid max_utilization_rate");
@@ -140,7 +141,7 @@ mod tests {
     fn test_config() -> AssetConfig {
         AssetConfig {
             reserve_ratio: 2500,
-            prot_ratio: 0,
+            beneficiaries: HashMap::new(),
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
