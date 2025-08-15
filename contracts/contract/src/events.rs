@@ -568,12 +568,13 @@ pub mod emit {
         );
     }
 
-    pub fn remove_beneficiary(token_id: &AccountId, account_id: &AccountId) {
+    pub fn remove_beneficiary(token_id: &AccountId, account_id: &AccountId, bps: u32) {
         log_event(
             "remove_beneficiary",
             json!({
                 "token_id": token_id,
                 "account_id": account_id,
+                "bps": bps,
             }),
         );
     }

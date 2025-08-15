@@ -290,6 +290,10 @@ impl Contract {
         self.last_staking_token_prices.clone()
     }
 
+    pub fn get_last_prices(&self) -> HashMap<TokenId, Price>{
+        self.last_prices.clone()
+    }
+
     pub fn batch_views(
         &self, 
         account_id: Option<AccountId>, 

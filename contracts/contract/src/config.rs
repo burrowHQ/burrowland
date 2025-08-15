@@ -304,9 +304,9 @@ impl Contract {
         assert_one_yocto();
         self.assert_owner_or_guardians();
         let mut asset = self.internal_unwrap_asset(&token_id);
-        assert!(asset.config.beneficiaries.remove(&account_id).is_some(), "{} not exist", account_id);
+        let bps = asset.config.beneficiaries.remove(&account_id).expect(format!("{} not exist", account_id).as_str());
         self.internal_set_asset(&token_id, asset);
-        events::emit::remove_beneficiary(&token_id, &account_id);
+        events::emit::remove_beneficiary(&token_id, &account_id, bps);
     }
 
     /// Enable or disable oracle
