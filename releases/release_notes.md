@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.15.4
+```bash=
+# codehash: 3W5uBh9An4BWVECZ1RMWpDnRLCnmTVa7cqtrFGgWf396
+```
+- Change proto_fee to beneficiaries mode
+
 Version 0.15.3
 ```bash=
 # codehash: JBqBMa5rzqt468gpeDrTnyZbwCWzKtFF4SHq92mFNwrs

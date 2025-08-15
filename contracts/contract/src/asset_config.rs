@@ -90,6 +90,7 @@ pub struct AssetConfig {
 impl AssetConfig {
     pub fn assert_valid(&self) {
         assert!(self.reserve_ratio <= MAX_RATIO);
+        assert!(self.beneficiaries.len() <= MAX_BENEFICIARIES);
         let total_ratio: u32 = self.beneficiaries.values().sum();
         assert!(total_ratio <= MAX_RATIO);
         assert!(self.target_utilization < MAX_POS);

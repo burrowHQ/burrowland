@@ -361,7 +361,7 @@ mod unit_env {
                 booster_token_id(),
                 AssetConfig {
                     reserve_ratio: 2500,
-                    prot_ratio: 0,
+                    beneficiaries: HashMap::new(),
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000008319516250272147),
                     max_utilization_rate: U128(1000000000039724853136740579),
@@ -384,7 +384,7 @@ mod unit_env {
                 neth_token_id(),
                 AssetConfig {
                     reserve_ratio: 2500,
-                    prot_ratio: 0,
+                    beneficiaries: HashMap::new(),
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000001547125956667610),
                     max_utilization_rate: U128(1000000000039724853136740579),
@@ -407,7 +407,7 @@ mod unit_env {
                 ndai_token_id(),
                 AssetConfig {
                     reserve_ratio: 2500,
-                    prot_ratio: 0,
+                    beneficiaries: HashMap::new(),
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000002440418605283556),
                     max_utilization_rate: U128(1000000000039724853136740579),
@@ -430,7 +430,7 @@ mod unit_env {
                 nusdt_token_id(),
                 AssetConfig {
                     reserve_ratio: 2500,
-                    prot_ratio: 0,
+                    beneficiaries: HashMap::new(),
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000002440418605283556),
                     max_utilization_rate: U128(1000000000039724853136740579),
@@ -453,7 +453,7 @@ mod unit_env {
                 nusdc_token_id(),
                 AssetConfig {
                     reserve_ratio: 2500,
-                    prot_ratio: 0,
+                    beneficiaries: HashMap::new(),
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000002440418605283556),
                     max_utilization_rate: U128(1000000000039724853136740579),
@@ -476,7 +476,7 @@ mod unit_env {
                 wnear_token_id(),
                 AssetConfig {
                     reserve_ratio: 2500,
-                    prot_ratio: 0,
+                    beneficiaries: HashMap::new(),
                     target_utilization: 8000,
                     target_utilization_rate: U128(1000000000003593629036885046),
                     max_utilization_rate: U128(1000000000039724853136740579),
@@ -879,67 +879,6 @@ mod basic {
             expected_borrow_amount as f64
         );
         assert_eq!(account.borrowed[0].token_id, ndai_token_id());
-    }
-
-    #[test]
-    #[ignore]
-    fn test_withdraw_prot_fee_reserved() {
-        let mut test_env = init_unit_env();
-        let amount = d(100, 18);
-        test_env.deposit(ndai_token_id(), alice(), amount);
-        let supply_amount = d(100, 24);
-        test_env.supply_to_collateral(wnear_token_id(), alice(), supply_amount);
-        let borrow_amount = d(200, 18);
-        test_env.borrow(alice(), ndai_token_id(), borrow_amount, unit_price_data(0, Some(100000), None));
-        test_env.skip_time_to_by_ms(MS_PER_YEAR);
-        let asset_view_old = test_env.get_asset(ndai_token_id());
-        assert_eq!(asset_view_old.prot_fee, 0);
-        let mut new_config = asset_view_old.config;
-        new_config.prot_ratio = 10000;
-        testing_env!(test_env.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
-        test_env.contract.update_asset(ndai_token_id(), new_config.clone());
-        
-        test_env.skip_time_to_by_ms(MS_PER_YEAR * 2);
-        
-        let asset = test_env.get_asset(ndai_token_id());
-        assert_eq!(asset_view_old.reserved, asset.reserved);
-        testing_env!(test_env.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
-        test_env.contract.claim_prot_fee(ndai_token_id(), Some(10000.into()));
-        let asset_after_decrease_prot_fee = test_env.get_asset(ndai_token_id());
-        assert_eq!(asset.prot_fee - 10000, asset_after_decrease_prot_fee.prot_fee);
-        assert_eq!(asset.supplied.balance + 10000, asset_after_decrease_prot_fee.supplied.balance);
-        assert_eq!(asset.supplied.shares.0 + asset.supplied.amount_to_shares(10000, false).0, 
-            asset_after_decrease_prot_fee.supplied.shares.0);
-        testing_env!(test_env.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
-        test_env.contract.decrease_reserved(ndai_token_id(), Some(10000.into()));
-        let asset_after_decrease_reserved = test_env.get_asset(ndai_token_id());
-        assert_eq!(asset_after_decrease_prot_fee.reserved - 10000, asset_after_decrease_reserved.reserved);
-        assert_eq!(asset_after_decrease_prot_fee.supplied.balance + 10000, asset_after_decrease_reserved.supplied.balance);
-        assert_eq!(asset_after_decrease_prot_fee.supplied.shares.0 + asset.supplied.amount_to_shares(10000, false).0, 
-            asset_after_decrease_reserved.supplied.shares.0);
-        let account_before_increase_reserved = test_env.contract.get_account(owner_id()).unwrap();
-        let asset_before_increase_reserved = test_env.get_asset(ndai_token_id());
-        let (shares, amount) =
-            asset_amount_to_shares(
-                &asset_before_increase_reserved.supplied, 
-            account_before_increase_reserved.supplied[0].shares, 
-            &AssetAmount{
-                token_id: ndai_token_id(),
-                amount: Some(500.into()),
-                max_amount: None
-            }, 
-            false);
-        test_env.contract.increase_reserved(AssetAmount{
-                token_id: ndai_token_id(),
-                amount: Some(500.into()),
-                max_amount: None
-            });
-        let asset_after_increase_reserved = test_env.get_asset(ndai_token_id());
-        assert_eq!(asset_before_increase_reserved.reserved + amount, asset_after_increase_reserved.reserved);
-        assert_eq!(asset_before_increase_reserved.supplied.shares.0 - shares.0, asset_after_increase_reserved.supplied.shares.0);
-        assert_eq!(asset_before_increase_reserved.supplied.balance - amount, asset_after_increase_reserved.supplied.balance);
-        let account_after_increase_reserved = test_env.contract.get_account(owner_id()).unwrap();
-        assert_eq!(account_before_increase_reserved.supplied[0].shares.0 - shares.0, account_after_increase_reserved.supplied[0].shares.0);
     }
 
 }
@@ -2497,7 +2436,7 @@ mod farms {
         testing_env!(test_env.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
         test_env.contract.update_asset(wnear_token_id(), AssetConfig {
             reserve_ratio: 2500,
-            prot_ratio: 0,
+            beneficiaries: HashMap::new(),
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046.into(),
             max_utilization_rate: 1000000000039724853136740579.into(),

@@ -47,7 +47,7 @@ async fn test_pyth() -> Result<()> {
 
         check!(burrowland_contract.add_asset(&root, &token_id, AssetConfig{
             reserve_ratio: 2500,
-            prot_ratio: 0,
+            beneficiaries: HashMap::new(),
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
@@ -254,7 +254,7 @@ async fn test_position_liquidate_with_pyth() -> Result<()> {
 
         check!(burrowland_contract.add_asset(&root, &token_id, AssetConfig{
             reserve_ratio: 2500,
-            prot_ratio: 0,
+            beneficiaries: HashMap::new(),
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
@@ -470,7 +470,7 @@ async fn test_position_liquidate_with_pyth_and_default_price() -> Result<()> {
 
         check!(burrowland_contract.add_asset(&root, &token_id, AssetConfig{
             reserve_ratio: 2500,
-            prot_ratio: 0,
+            beneficiaries: HashMap::new(),
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
@@ -842,7 +842,7 @@ async fn test_position_force_close() -> Result<()> {
 
         check!(burrowland_contract.add_asset(&root, &token_id, AssetConfig{
             reserve_ratio: 2500,
-            prot_ratio: 0,
+            beneficiaries: HashMap::new(),
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
@@ -1306,7 +1306,7 @@ async fn test_position_batch_actions() -> Result<()> {
 
         check!(burrowland_contract.add_asset(&root, &token_id, AssetConfig{
             reserve_ratio: 2500,
-            prot_ratio: 0,
+            beneficiaries: HashMap::new(),
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),
@@ -1454,7 +1454,7 @@ async fn test_position_batch_actions_with_default_prices() -> Result<()> {
 
         check!(burrowland_contract.add_asset(&root, &token_id, AssetConfig{
             reserve_ratio: 2500,
-            prot_ratio: 0,
+            beneficiaries: HashMap::new(),
             target_utilization: 8000,
             target_utilization_rate: 1000000000003593629036885046u128.into(),
             max_utilization_rate: 1000000000039724853136740579u128.into(),

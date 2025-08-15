@@ -288,10 +288,10 @@ impl Contract {
         assert_one_yocto();
         self.assert_owner_or_guardians();
         let mut asset = self.internal_unwrap_asset(&token_id);
-        asset.config.beneficiaries.insert(account_id, bps);
+        let old_bps = asset.config.beneficiaries.insert(account_id.clone(), bps);
         asset.config.assert_valid();
         self.internal_set_asset(&token_id, asset);
-        // TODO: add event
+        events::emit::upsert_beneficiary(&token_id, &account_id, old_bps, bps);
     }
 
     /// Remove a beneficiary from a given asset.
@@ -304,9 +304,9 @@ impl Contract {
         assert_one_yocto();
         self.assert_owner_or_guardians();
         let mut asset = self.internal_unwrap_asset(&token_id);
-        asset.config.beneficiaries.remove(&account_id);
+        assert!(asset.config.beneficiaries.remove(&account_id).is_some(), "{} not exist", account_id);
         self.internal_set_asset(&token_id, asset);
-        // TODO: add event
+        events::emit::remove_beneficiary(&token_id, &account_id);
     }
 
     /// Enable or disable oracle
@@ -506,7 +506,7 @@ impl Contract {
             asset.beneficiary_fees.remove(&beneficiary);
             let ft_amount = stdd_amount / 10u128.pow(asset.config.extra_decimals as u32);
             self.internal_set_asset(&token_id, asset);
-            // TODO: add event
+            events::emit::withdraw_beneficiary_fee_started(&beneficiary, stdd_amount, &token_id);
             self.internal_beneficiary_withdraw(&beneficiary, &token_id, stdd_amount, ft_amount).into()
         } else {
             PromiseOrValue::Value(false)

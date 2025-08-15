@@ -591,17 +591,19 @@ impl Burrowland {
             .await
     }
 
-    pub async fn update_asset_prot_ratio(
+    pub async fn upsert_beneficiary(
         &self,
         caller: &Account,
-        token_id: &AccountId,
-        prot_ratio: u32
+        token_id: &AccountId, 
+        account_id: &AccountId, 
+        bps: u32
     ) -> Result<ExecutionFinalResult> {
         caller
-            .call(self.0.id(), "update_asset_prot_ratio")
+            .call(self.0.id(), "upsert_beneficiary")
             .args_json(json!({
                 "token_id": token_id,
-                "prot_ratio": prot_ratio
+                "account_id": account_id,
+                "bps": bps,
             }))
             .deposit(NearToken::from_yoctonear(1))
             .max_gas()
@@ -912,7 +914,7 @@ impl Burrowland {
         let asset_config = match token_id.to_string().as_str() {
             "booster.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000008319516250272147),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -931,7 +933,7 @@ impl Burrowland {
             },
             "linear.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -950,7 +952,7 @@ impl Burrowland {
             },
             "stnear.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -969,7 +971,7 @@ impl Burrowland {
             },
             "nearx.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -988,7 +990,7 @@ impl Burrowland {
             },
             "wrap.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -1007,7 +1009,7 @@ impl Burrowland {
             },
             "aurora.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -1026,7 +1028,7 @@ impl Burrowland {
             },
             "eth.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -1045,7 +1047,7 @@ impl Burrowland {
             },
             "neth.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000001547125956667610),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -1064,7 +1066,7 @@ impl Burrowland {
             },
             "ndai.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000002440418605283556),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -1083,7 +1085,7 @@ impl Burrowland {
             },
             "nusdt.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000002440418605283556),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -1102,7 +1104,7 @@ impl Burrowland {
             },
             "nusdc.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000002440418605283556),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -1135,7 +1137,7 @@ impl Burrowland {
         let asset_config = match token_id.to_string().as_str() {
             "linear.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -1154,7 +1156,7 @@ impl Burrowland {
             },
             "stnear.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),
@@ -1173,7 +1175,7 @@ impl Burrowland {
             },
             "nearx.test.near" => AssetConfig {
                 reserve_ratio: 2500,
-                prot_ratio: 0,
+                beneficiaries: HashMap::new(),
                 target_utilization: 8000,
                 target_utilization_rate: U128(1000000000003593629036885046),
                 max_utilization_rate: U128(1000000000039724853136740579),

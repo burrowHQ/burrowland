@@ -232,11 +232,9 @@ impl ExtSelf for Contract {
             let old_amount = asset.beneficiary_fees.get(&account_id).unwrap_or(&U128(0)).0;
             asset.beneficiary_fees.insert(account_id.clone(), U128(old_amount + amount.0));
             self.internal_set_asset(&token_id, asset);
-            // TODO: change event
-            events::emit::withdraw_failed(&account_id, amount.0, &token_id);
+            events::emit::withdraw_beneficiary_fee_failed(&account_id, amount.0, &token_id);
         } else {
-            // TODO: change event
-            events::emit::withdraw_succeeded(&account_id, amount.0, &token_id);
+            events::emit::withdraw_beneficiary_fee_succeeded(&account_id, amount.0, &token_id);
         }
         promise_success
     }
