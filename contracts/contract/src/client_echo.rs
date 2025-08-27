@@ -38,14 +38,18 @@ impl Contract {
     }
 
     pub fn get_client_echo_sender_whitelist(&self) -> Vec<String> {
-        let sender_whitelist = internal_get_client_echo_sender_whitelist();
-        sender_whitelist.iter().collect()
+        if env::storage_has_key(CLIENT_ECHO_SENDER_WHITELIST.as_bytes()) {
+            let sender_whitelist = internal_get_client_echo_sender_whitelist();
+            sender_whitelist.iter().collect()
+        } else {
+            vec![]
+        }
     }
 }
 
 pub fn internal_get_client_echo_sender_whitelist() -> UnorderedSet<String> {
     let content =
-        env::storage_read(CLIENT_ECHO_SENDER_WHITELIST.as_bytes()).expect("Empty storage");
+        env::storage_read(CLIENT_ECHO_SENDER_WHITELIST.as_bytes()).expect("Empty storage(CLIENT_ECHO_SENDER_WHITELIST)");
     UnorderedSet::try_from_slice(&content)
         .expect("deserialize client echo sender whitelist failed.")
 }
