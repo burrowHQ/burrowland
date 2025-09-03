@@ -501,10 +501,10 @@ impl Contract {
         let mut asset = self.internal_unwrap_asset(&token_id);
 
         let stdd_amount = asset.beneficiary_fees.get(&beneficiary).unwrap_or(&U128(0)).0;
+        let ft_amount = stdd_amount / 10u128.pow(asset.config.extra_decimals as u32);
         
-        if stdd_amount > 0 {
+        if ft_amount > 0 {
             asset.beneficiary_fees.remove(&beneficiary);
-            let ft_amount = stdd_amount / 10u128.pow(asset.config.extra_decimals as u32);
             self.internal_set_asset(&token_id, asset);
             events::emit::withdraw_beneficiary_fee_started(&beneficiary, stdd_amount, &token_id);
             self.internal_beneficiary_withdraw(&beneficiary, &token_id, stdd_amount, ft_amount).into()
