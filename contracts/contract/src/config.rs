@@ -219,7 +219,7 @@ impl Contract {
             assert!(
                 asset.borrowed.balance == 0 && asset.supplied.balance == 0 && 
                 asset.margin_debt.balance == 0 && asset.margin_pending_debt == 0 && asset.margin_position == 0 &&
-                asset.prot_fee == 0 && asset.reserved == 0,
+                asset.prot_fee == 0 && asset.reserved == 0 && asset.beneficiary_fees.is_empty(),
                 "Can't change extra decimals if any of the balances are not 0"
             );
         }
