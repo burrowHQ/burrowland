@@ -2,7 +2,7 @@
 
 Version 0.15.4
 ```bash=
-# codehash: 27qNZeozgm95wTpMNzzZ2giEp6RSUGo1CuskLUfGBeus
+# codehash: DpTT8vDrt6bAtafd61kzwFUKSc9NRGnSe42FPHRSnvGR
 ```
 - Change proto_fee to beneficiaries mode
 
