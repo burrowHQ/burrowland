@@ -1,3 +1,5 @@
+use near_sdk::PromiseOrValue;
+
 use crate::*;
 
 pub const MIN_BOOSTER_MULTIPLIER: u32 = 10000;
@@ -217,7 +219,7 @@ impl Contract {
             assert!(
                 asset.borrowed.balance == 0 && asset.supplied.balance == 0 && 
                 asset.margin_debt.balance == 0 && asset.margin_pending_debt == 0 && asset.margin_position == 0 &&
-                asset.prot_fee == 0 && asset.reserved == 0,
+                asset.prot_fee == 0 && asset.reserved == 0 && asset.beneficiary_fees.is_empty(),
                 "Can't change extra decimals if any of the balances are not 0"
             );
         }
@@ -275,19 +277,36 @@ impl Contract {
         self.internal_set_asset(&token_id, asset);
     }
 
-    /// Updates the prot_ratio for the asset with the a given token_id.
-    /// - Panics if the prot_ratio is invalid.
+
+    /// Update or insert a beneficiary to a given asset.
+    /// - Panics if the beneficiaries is invalid after upsert.
     /// - Panics if an asset with the given token_id doesn't exist.
     /// - Requires one yoctoNEAR.
     /// - Requires to be called by the contract owner or guardians.
     #[payable]
-    pub fn update_asset_prot_ratio(&mut self, token_id: AccountId, prot_ratio: u32) {
+    pub fn upsert_beneficiary(&mut self, token_id: AccountId, account_id: AccountId, bps: u32) {
         assert_one_yocto();
         self.assert_owner_or_guardians();
-        assert!(prot_ratio <= MAX_RATIO);
         let mut asset = self.internal_unwrap_asset(&token_id);
-        asset.config.prot_ratio = prot_ratio;
+        let old_bps = asset.config.beneficiaries.insert(account_id.clone(), bps);
+        asset.config.assert_valid();
         self.internal_set_asset(&token_id, asset);
+        events::emit::upsert_beneficiary(&token_id, &account_id, old_bps, bps);
+    }
+
+    /// Remove a beneficiary from a given asset.
+    /// - Panics if an asset with the given token_id doesn't exist.
+    /// - Requires one yoctoNEAR.
+    /// - Requires to be called by the contract owner or guardians.
+    /// Note: removing a beneficiary doesn't affect his currently collected fee.
+    #[payable]
+    pub fn remove_beneficiary(&mut self, token_id: AccountId, account_id: AccountId) {
+        assert_one_yocto();
+        self.assert_owner_or_guardians();
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        let bps = asset.config.beneficiaries.remove(&account_id).expect(format!("{} not exist", account_id).as_str());
+        self.internal_set_asset(&token_id, asset);
+        events::emit::remove_beneficiary(&token_id, &account_id, bps);
     }
 
     /// Enable or disable oracle
@@ -471,6 +490,26 @@ impl Contract {
             self.deposit_to_owner(&token_id, stdd_amount);
 
             events::emit::claim_prot_fee(&self.internal_config().owner_id, stdd_amount, &token_id);
+        }
+    }
+
+    /// Only beneficiary himself can withdraw
+    #[payable]
+    pub fn withdraw_beneficiary_fee(&mut self, token_id: AccountId) -> PromiseOrValue<bool> {
+        assert_one_yocto();
+        let beneficiary = env::predecessor_account_id();
+        let mut asset = self.internal_unwrap_asset(&token_id);
+
+        let stdd_amount = asset.beneficiary_fees.get(&beneficiary).unwrap_or(&U128(0)).0;
+        let ft_amount = stdd_amount / 10u128.pow(asset.config.extra_decimals as u32);
+        
+        if ft_amount > 0 {
+            asset.beneficiary_fees.remove(&beneficiary);
+            self.internal_set_asset(&token_id, asset);
+            events::emit::withdraw_beneficiary_fee_started(&beneficiary, stdd_amount, &token_id);
+            self.internal_beneficiary_withdraw(&beneficiary, &token_id, stdd_amount, ft_amount).into()
+        } else {
+            PromiseOrValue::Value(false)
         }
     }
 

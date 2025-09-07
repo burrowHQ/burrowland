@@ -131,6 +131,24 @@ impl FungibleTokenReceiver for Contract {
 }
 
 impl Contract {
+    pub fn internal_beneficiary_withdraw(
+        &mut self, 
+        account_id: &AccountId, 
+        token_id: &TokenId, 
+        amount: Balance, 
+        ft_amount: Balance,
+    ) -> Promise {
+        ext_ft_core::ext(token_id.clone())
+            .with_attached_deposit(ONE_YOCTO)
+            .with_static_gas(GAS_FOR_FT_TRANSFER)
+            .ft_transfer(account_id.clone(), ft_amount.into(), None)
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
+                    .after_beneficiary_withdraw(account_id.clone(), token_id.clone(), amount.into())
+            )
+    }
+
     pub fn internal_ft_transfer(
         &mut self,
         account_id: &AccountId,
@@ -180,6 +198,8 @@ impl Contract {
 #[allow(unused)]
 #[ext_contract(ext_self)]
 trait ExtSelf {
+    fn after_beneficiary_withdraw(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
+        -> bool;
     fn after_ft_transfer(&mut self, account_id: AccountId, token_id: TokenId, amount: U128)
         -> bool;
     fn after_ft_transfer_call(
@@ -199,6 +219,26 @@ trait ExtSelf {
 
 #[near_bindgen]
 impl ExtSelf for Contract {
+    #[private]
+    fn after_beneficiary_withdraw(
+        &mut self,
+        account_id: AccountId,
+        token_id: TokenId,
+        amount: U128,
+    ) -> bool {
+        let promise_success = is_promise_success();
+        if !promise_success {
+            let mut asset = self.internal_unwrap_asset(&token_id);
+            let old_amount = asset.beneficiary_fees.get(&account_id).unwrap_or(&U128(0)).0;
+            asset.beneficiary_fees.insert(account_id.clone(), U128(old_amount + amount.0));
+            self.internal_set_asset(&token_id, asset);
+            events::emit::withdraw_beneficiary_fee_failed(&account_id, amount.0, &token_id);
+        } else {
+            events::emit::withdraw_beneficiary_fee_succeeded(&account_id, amount.0, &token_id);
+        }
+        promise_success
+    }
+
     #[private]
     fn after_ft_transfer(
         &mut self,

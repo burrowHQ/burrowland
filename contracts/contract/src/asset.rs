@@ -28,10 +28,12 @@ pub struct Asset {
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
     pub reserved: Balance,
-    /// The amount belongs to the protocol. This amount can also be borrowed and affects
+    /// Obsolete: The amount belongs to the protocol. This amount can also be borrowed and affects
     /// borrowing rate.
     #[serde(with = "u128_dec_format")]
     pub prot_fee: Balance,
+    /// the amounts belongs to each benficiaries, can not be borrowed, can not affect borrowing rate.
+    pub beneficiary_fees: HashMap<AccountId, U128>,
     /// The accumulated holding margin position interests till self.last_update_timestamp.
     #[serde(with = "u128_dec_format")]
     pub unit_acc_hp_interest: Balance,
@@ -56,6 +58,7 @@ pub enum VAsset {
     V2(AssetV2),
     V3(AssetV3),
     V4(AssetV4),
+    V5(AssetV5),
     Current(Asset),
 }
 
@@ -67,6 +70,7 @@ impl From<VAsset> for Asset {
             VAsset::V2(v) => v.into(),
             VAsset::V3(v) => v.into(),
             VAsset::V4(v) => v.into(),
+            VAsset::V5(v) => v.into(),
             VAsset::Current(c) => c,
         }
     }
@@ -88,6 +92,7 @@ impl Asset {
             margin_position: 0,
             reserved: 0,
             prot_fee: 0,
+            beneficiary_fees: HashMap::new(),
             unit_acc_hp_interest: 0,
             last_update_timestamp: timestamp,
             config,
@@ -137,6 +142,24 @@ impl Asset {
         BigDecimal::from(supply_interest_borrow_part + supply_interest_margin_debt_part).div_u128(self.supplied.balance)
     }
 
+    /// return total distributed amount
+    fn distribute_beneficiaries(&mut self, reward: u128) -> u128 {
+        let mut fees: HashMap<AccountId, u128> = HashMap::new();
+        let mut total_fee = 0_u128;
+        for (beneficiary, rate) in self.config.beneficiaries.iter() {
+            fees.insert(beneficiary.clone(), ratio(reward, *rate));
+        }
+        for (beneficiary, amount) in fees.iter() {
+            total_fee += *amount;
+            if let Some(fee) = self.beneficiary_fees.get_mut(beneficiary) {
+                *fee = U128(fee.0 + *amount);
+            } else {
+                self.beneficiary_fees.insert(beneficiary.clone(), U128(*amount));
+            }
+        }
+        total_fee
+    }
+
     // n = 31536000000 ms in a year (365 days)
     //
     // Compute `r` from `X`. `X` is desired APY
@@ -157,16 +180,13 @@ impl Asset {
         let reserved = ratio(interest, self.config.reserve_ratio);
         if self.supplied.shares.0 > 0 {
             self.supplied.balance += interest - reserved;
-
-            let prot_fee = ratio(reserved, self.config.prot_ratio);
+            let prot_fee = self.distribute_beneficiaries(reserved);
             self.reserved += reserved - prot_fee;
-            self.prot_fee += prot_fee;
             normal_fee_detail.reserved = reserved - prot_fee;
             normal_fee_detail.prot_fee = prot_fee;
         } else {
-            let prot_fee = ratio(interest, self.config.prot_ratio);
+            let prot_fee = self.distribute_beneficiaries(interest);
             self.reserved += interest - prot_fee;
-            self.prot_fee += prot_fee;
             normal_fee_detail.reserved = interest - prot_fee;
             normal_fee_detail.prot_fee = prot_fee;
         }
@@ -183,16 +203,13 @@ impl Asset {
         let reserved = ratio(interest, self.config.reserve_ratio);
         if self.supplied.shares.0 > 0 {
             self.supplied.balance += interest - reserved;
-
-            let prot_fee = ratio(reserved, self.config.prot_ratio);
+            let prot_fee = self.distribute_beneficiaries(reserved);
             self.reserved += reserved - prot_fee;
-            self.prot_fee += prot_fee;
             margin_fee_detail.reserved = reserved - prot_fee;
             margin_fee_detail.prot_fee = prot_fee;
         } else {
-            let prot_fee = ratio(interest, self.config.prot_ratio);
+            let prot_fee = self.distribute_beneficiaries(interest);
             self.reserved += interest - prot_fee;
-            self.prot_fee += prot_fee;
             margin_fee_detail.reserved = interest - prot_fee;
             margin_fee_detail.prot_fee = prot_fee;
         }

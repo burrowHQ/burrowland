@@ -128,8 +128,9 @@ impl Contract {
             }
             
             if let Some(extra_call) = token_pyth_info.extra_call.as_ref() {
-                if !promises_flags.contains(extra_call) {
-                    promises_flags.push(extra_call.clone());
+                let extra_call_flag = get_extra_call_flag(token_id.as_str(), extra_call);
+                if !promises_flags.contains(&extra_call_flag) {
+                    promises_flags.push(extra_call_flag.clone());
                     promises.push(Promise::new(token_id.clone())
                         .function_call(extra_call.clone(), vec![], 0, GAS_FOR_GET_PRICE));
                 }
@@ -188,9 +189,10 @@ impl Contract {
                 assert!(pyth_price.publish_time > 0 && sec_to_nano(pyth_price.publish_time as u32 + config.pyth_price_valid_duration_sec) >= env::block_timestamp(), "Pyth {} publish_time is too stale", price_identifier);
                 let mut token_price = pyth_price_to_price_oracle_price(self.get_pyth_info_by_token(&token_id), &pyth_price);
                 if let Some(extra_call) = token_pyth_info.extra_call.as_ref() {
-                    let extra_call_bytes = all_cross_call_results.get(extra_call).expect(format!("Missing {} extra_call cross_call_result", price_identifier).as_str());
-                    let extra_call_amount = serde_json::from_slice::<U128>(&extra_call_bytes).expect(format!("{} extra_call not U128", extra_call).as_str()).0;
-                    self.update_staking_token_price_record(&token_id, extra_call_amount, format!("The {} {} return value is out of the valid range", token_id, extra_call));
+                    let extra_call_flag = get_extra_call_flag(token_id.as_str(), extra_call);
+                    let extra_call_bytes = all_cross_call_results.get(&extra_call_flag).expect(format!("Missing {} extra_call cross_call_result", price_identifier).as_str());
+                    let extra_call_amount = serde_json::from_slice::<U128>(&extra_call_bytes).expect(format!("{} extra_call not U128", extra_call_flag).as_str()).0;
+                    self.update_staking_token_price_record(&token_id, extra_call_amount, format!("The {} {} return value is out of the valid range", token_id, extra_call_flag));
                     token_price.multiplier = u128_ratio(token_price.multiplier, extra_call_amount, ONE_NEAR);
                 }
                 all_prices.prices.insert(token_id, token_price);
@@ -223,4 +225,8 @@ pub fn pyth_price_to_price_oracle_price(token_info: &TokenPythInfo, pyth_price: 
         multiplier: (multiplier * BigDecimal::from(10u128.pow(token_info.fraction_digits as u32))).round_down_u128(),
         decimals: token_info.decimals + token_info.fraction_digits
     }
+}
+
+fn get_extra_call_flag(token_id: &str, extra_call: &str) -> String {
+    format!("{token_id}|{extra_call}")
 }

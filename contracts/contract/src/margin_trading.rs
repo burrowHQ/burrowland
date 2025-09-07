@@ -420,7 +420,6 @@ impl Contract {
             asset_debt.unit_acc_hp_interest - mt.uahpi_at_open,
             UNIT,
         );
-        mt.uahpi_at_open = asset_debt.unit_acc_hp_interest;
         
         let repay_cap = u128_ratio(mt.debt_cap, amount, debt_amount + hp_fee);
 

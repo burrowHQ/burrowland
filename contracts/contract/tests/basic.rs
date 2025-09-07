@@ -113,13 +113,12 @@ async fn test_withdraw_prot_fee_reserved_failed() -> Result<()> {
     check!(burrowland_contract.borrow(&alice, &oracle_contract, price_data(current_timestamp, Some(100000)), ndai_token_contract.0.id(), borrow_amount));
 
     let asset = burrowland_contract.get_asset(ndai_token_contract.0.id()).await?;
-    let mut new_asset_config = asset.config;
-    new_asset_config.prot_ratio = 10000;
+    let new_asset_config = asset.config;
     check!(burrowland_contract.update_asset(&root, ndai_token_contract.0.id(), new_asset_config));
     worker.fast_forward(1000).await?;
 
     let asset = burrowland_contract.get_asset(ndai_token_contract.0.id()).await?;
-    check!(burrowland_contract.claim_prot_fee(&root, ndai_token_contract.0.id(), Some((asset.prot_fee * 2).into())), "Asset prot_fee balance not enough!");
+    check!(burrowland_contract.claim_prot_fee(&root, ndai_token_contract.0.id(), Some(100.into())), "Asset prot_fee balance not enough!");
     check!(burrowland_contract.decrease_reserved(&root, ndai_token_contract.0.id(), Some((asset.reserved * 2).into())), "Asset reserved balance not enough!");
 
     check!(burrowland_contract.extend_guardians(&root, vec![alice.id()]));
@@ -141,7 +140,7 @@ async fn test_modify_config() -> Result<()> {
     let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
     check!(burrowland_contract.add_asset(&root, &token_id, AssetConfig{
         reserve_ratio: 2500,
-        prot_ratio: 0,
+        beneficiaries: HashMap::new(),
         target_utilization: 8000,
         target_utilization_rate: 1000000000003593629036885046u128.into(),
         max_utilization_rate: 1000000000039724853136740579u128.into(),
@@ -160,9 +159,9 @@ async fn test_modify_config() -> Result<()> {
     }));
 
     let asset = burrowland_contract.get_asset(&token_id).await?;
-    assert_eq!(asset.config.prot_ratio, 0);
+    assert!(asset.config.beneficiaries.is_empty());
 
-    check!(burrowland_contract.update_asset_prot_ratio(&alice, &token_id, 100), "Not allowed");
+    check!(burrowland_contract.upsert_beneficiary(&alice, &token_id, root.id(), 100), "Not allowed");
     check!(burrowland_contract.enable_asset_capacity(&alice, &token_id, Some(true), None, None, None), "Not an owner");
     check!(burrowland_contract.disable_asset_capacity(&alice, &token_id, Some(false), None, None, None), "Not allowed");
     check!(burrowland_contract.update_asset_net_tvl_multiplier(&alice, &token_id, 200), "Not an owner");
@@ -171,12 +170,12 @@ async fn test_modify_config() -> Result<()> {
     check!(burrowland_contract.remove_guardians(&alice, vec![alice.id()]), "Not an owner");
     check!(burrowland_contract.extend_guardians(&root, vec![alice.id()]));
 
-    check!(burrowland_contract.update_asset_prot_ratio(&alice, &token_id, 100));
+    check!(burrowland_contract.upsert_beneficiary(&alice, &token_id, root.id(), 100));
     check!(burrowland_contract.update_asset_net_tvl_multiplier(&root, &token_id, 200));
     check!(burrowland_contract.disable_asset_capacity(&alice, &token_id, Some(false), Some(false), Some(false), None));
     check!(burrowland_contract.enable_asset_capacity(&root, &token_id, None, None, None, Some(true)));
     let asset = burrowland_contract.get_asset(&token_id).await?;
-    assert_eq!(asset.config.prot_ratio, 100);
+    assert_eq!(asset.config.beneficiaries, HashMap::from([("test.near".parse().unwrap(), 100)]));
     assert_eq!(asset.config.net_tvl_multiplier, 200);
     assert_eq!(asset.config.can_deposit, false);
     assert_eq!(asset.config.can_withdraw, false);

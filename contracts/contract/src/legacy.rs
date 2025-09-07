@@ -310,7 +310,7 @@ impl From<AssetConfigV0> for AssetConfig {
         } = a;
         Self {
             reserve_ratio,
-            prot_ratio: 0,
+            beneficiaries: HashMap::new(),
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
@@ -362,6 +362,7 @@ impl From<AssetV0> for Asset {
             margin_position: 0,
             reserved,
             prot_fee: 0,
+            beneficiary_fees: HashMap::new(),
             unit_acc_hp_interest: 0,
             last_update_timestamp,
             config: config.into(),
@@ -431,7 +432,7 @@ impl From<AssetConfigV1> for AssetConfig {
         } = a;
         Self {
             reserve_ratio,
-            prot_ratio: 0,
+            beneficiaries: HashMap::new(),
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
@@ -483,6 +484,7 @@ impl From<AssetV1> for Asset {
             margin_position: 0,
             reserved,
             prot_fee: 0,
+            beneficiary_fees: HashMap::new(),
             unit_acc_hp_interest: 0,
             last_update_timestamp,
             config: config.into(),
@@ -544,7 +546,7 @@ impl From<AssetConfigV2> for AssetConfig {
     fn from(a: AssetConfigV2) -> Self {
         let AssetConfigV2 {
             reserve_ratio,
-            prot_ratio,
+            prot_ratio: _,
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
@@ -558,7 +560,7 @@ impl From<AssetConfigV2> for AssetConfig {
         } = a;
         Self {
             reserve_ratio,
-            prot_ratio,
+            beneficiaries: HashMap::new(),
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
@@ -614,6 +616,7 @@ impl From<AssetV2> for Asset {
             margin_position: 0,
             reserved,
             prot_fee,
+            beneficiary_fees: HashMap::new(),
             unit_acc_hp_interest: 0,
             last_update_timestamp,
             config: config.into(),
@@ -681,7 +684,7 @@ impl From<AssetConfigV3> for AssetConfig {
     fn from(a: AssetConfigV3) -> Self {
         let AssetConfigV3 {
             reserve_ratio,
-            prot_ratio,
+            prot_ratio: _,
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
@@ -698,7 +701,7 @@ impl From<AssetConfigV3> for AssetConfig {
         } = a;
         Self {
             reserve_ratio,
-            prot_ratio,
+            beneficiaries: HashMap::new(),
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
@@ -754,6 +757,7 @@ impl From<AssetV3> for Asset {
             margin_position: 0,
             reserved,
             prot_fee,
+            beneficiary_fees: HashMap::new(),
             unit_acc_hp_interest: 0,
             last_update_timestamp,
             config: config.into(),
@@ -823,7 +827,7 @@ impl From<AssetConfigV4> for AssetConfig {
     fn from(a: AssetConfigV4) -> Self {
         let AssetConfigV4 {
             reserve_ratio,
-            prot_ratio,
+            prot_ratio: _,
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
@@ -841,7 +845,7 @@ impl From<AssetConfigV4> for AssetConfig {
         } = a;
         Self {
             reserve_ratio,
-            prot_ratio,
+            beneficiaries: HashMap::new(),
             target_utilization,
             target_utilization_rate,
             max_utilization_rate,
@@ -909,10 +913,123 @@ impl From<AssetV4> for Asset {
             margin_position,
             reserved,
             prot_fee,
+            beneficiary_fees: HashMap::new(),
             unit_acc_hp_interest,
             last_update_timestamp,
             config: config.into(),
             lostfound_shares: 0,
+            pending_fee_events: None,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AssetConfigV5 {
+    pub reserve_ratio: u32,
+    pub prot_ratio: u32,
+    pub target_utilization: u32,
+    pub target_utilization_rate: LowU128,
+    pub max_utilization_rate: LowU128,
+    pub holding_position_fee_rate: LowU128,
+    pub volatility_ratio: u32,
+    pub extra_decimals: u8,
+    pub can_deposit: bool,
+    pub can_withdraw: bool,
+    pub can_use_as_collateral: bool,
+    pub can_borrow: bool,
+    pub net_tvl_multiplier: u32,
+    pub max_change_rate: Option<u32>,
+    pub supplied_limit: Option<U128>,
+    pub borrowed_limit: Option<U128>,
+    pub min_borrowed_amount: Option<U128>,
+}
+
+impl From<AssetConfigV5> for AssetConfig {
+    fn from(a: AssetConfigV5) -> Self {
+        let AssetConfigV5 {
+            reserve_ratio,
+            prot_ratio: _,
+            target_utilization,
+            target_utilization_rate,
+            max_utilization_rate,
+            holding_position_fee_rate,
+            volatility_ratio,
+            extra_decimals,
+            can_deposit,
+            can_withdraw,
+            can_use_as_collateral,
+            can_borrow,
+            net_tvl_multiplier,
+            max_change_rate,
+            supplied_limit,
+            borrowed_limit,
+            min_borrowed_amount,
+        } = a;
+        Self {
+            reserve_ratio,
+            beneficiaries: HashMap::new(),
+            target_utilization,
+            target_utilization_rate,
+            max_utilization_rate,
+            holding_position_fee_rate,
+            volatility_ratio,
+            extra_decimals,
+            can_deposit,
+            can_withdraw,
+            can_use_as_collateral,
+            can_borrow,
+            net_tvl_multiplier,
+            max_change_rate,
+            supplied_limit,
+            borrowed_limit,
+            min_borrowed_amount,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct AssetV5 {
+    pub supplied: Pool,
+    pub borrowed: Pool,
+    pub margin_debt: Pool,
+    pub margin_pending_debt: Balance,
+    pub margin_position: Balance,
+    pub reserved: Balance,
+    pub prot_fee: Balance,
+    pub unit_acc_hp_interest: Balance,
+    pub last_update_timestamp: Timestamp,
+    pub config: AssetConfigV5,
+    pub lostfound_shares: Balance,
+}
+
+impl From<AssetV5> for Asset {
+    fn from(a: AssetV5) -> Self {
+        let AssetV5 {
+            supplied,
+            borrowed,
+            margin_debt,
+            margin_pending_debt,
+            margin_position,
+            reserved,
+            prot_fee,
+            unit_acc_hp_interest,
+            last_update_timestamp,
+            config,
+            lostfound_shares,
+        } = a;
+        Self {
+            supplied,
+            borrowed,
+            margin_debt,
+            margin_pending_debt,
+            margin_position,
+            reserved,
+            prot_fee,
+            beneficiary_fees: HashMap::new(),
+            unit_acc_hp_interest,
+            last_update_timestamp,
+            config: config.into(),
+            lostfound_shares,
             pending_fee_events: None,
         }
     }

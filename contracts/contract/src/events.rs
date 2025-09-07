@@ -555,4 +555,60 @@ pub mod emit {
             }),
         );
     }
+
+    pub fn upsert_beneficiary(token_id: &AccountId, account_id: &AccountId, old_bps: Option<u32>, new_bps: u32) {
+        log_event(
+            "upsert_beneficiary",
+            json!({
+                "token_id": token_id,
+                "account_id": account_id,
+                "old_bps": old_bps,
+                "new_bps": new_bps,
+            }),
+        );
+    }
+
+    pub fn remove_beneficiary(token_id: &AccountId, account_id: &AccountId, bps: u32) {
+        log_event(
+            "remove_beneficiary",
+            json!({
+                "token_id": token_id,
+                "account_id": account_id,
+                "bps": bps,
+            }),
+        );
+    }
+
+    pub fn withdraw_beneficiary_fee_started(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_beneficiary_fee_started",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn withdraw_beneficiary_fee_failed(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_beneficiary_fee_failed",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
+
+    pub fn withdraw_beneficiary_fee_succeeded(account_id: &AccountId, amount: Balance, token_id: &TokenId) {
+        log_event(
+            "withdraw_beneficiary_fee_succeeded",
+            AccountAmountToken {
+                account_id: &account_id,
+                amount,
+                token_id: &token_id,
+            },
+        );
+    }
 }
