@@ -3,7 +3,7 @@ mod workspace_env;
 use crate::workspace_env::*;
 
 const PREVIOUS_VERSION: &'static str = "0.15.3";
-const LATEST_VERSION: &'static str = "0.15.4";
+const LATEST_VERSION: &'static str = "0.15.5";
 
 #[tokio::test]
 async fn test_upgrade() -> Result<()> {

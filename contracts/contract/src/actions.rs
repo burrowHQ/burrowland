@@ -800,6 +800,10 @@ impl Contract {
     pub fn execute(&mut self, actions: Vec<Action>) {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
+
+        // Set reliable liquidator context if caller is in whitelist
+        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&account_id.to_string());
+
         let mut account = self.internal_unwrap_account(&account_id);
         self.internal_execute(&account_id, &mut account, actions, Prices::new());
         self.internal_set_account(&account_id, account);

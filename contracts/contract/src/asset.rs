@@ -283,12 +283,20 @@ impl Contract {
         })
     }
 
-    pub fn internal_set_asset(&mut self, token_id: &TokenId, mut asset: Asset) {
+    pub fn internal_set_asset(&mut self, token_id: &TokenId, asset: Asset) {
+        if self.is_reliable_liquidator_context {
+            self.internal_set_asset_without_asset_basic_check(token_id, asset);
+        } else {
+            self.internal_set_asset_with_basic_check(token_id, asset);
+        }
+    }
+
+    pub fn internal_set_asset_with_basic_check(&mut self, token_id: &TokenId, asset: Asset) {
         assert!(asset.supplied.shares.0 == 0 ||
             asset.supplied.shares.0 >= MIN_RESERVE_SHARES, "Asset {} supply shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
-        assert!(asset.borrowed.shares.0 == 0 || 
+        assert!(asset.borrowed.shares.0 == 0 ||
             asset.borrowed.shares.0 >= MIN_RESERVE_SHARES, "Asset {} borrow shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
-        assert!(asset.margin_debt.shares.0 == 0 || 
+        assert!(asset.margin_debt.shares.0 == 0 ||
             asset.margin_debt.shares.0 >= MIN_RESERVE_SHARES, "Asset {} margin_debt shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
         if let Some(supplied_limit) = asset.config.supplied_limit {
             assert!(asset.supplied.balance <= supplied_limit.0, "Asset {} supply balance cannot be greater than {}", token_id, supplied_limit.0);
@@ -296,33 +304,25 @@ impl Contract {
         if let Some(borrowed_limit) = asset.config.borrowed_limit {
             assert!(asset.borrowed.balance + asset.margin_debt.balance + asset.margin_pending_debt <= borrowed_limit.0, "Asset {} borrow balance cannot be greater than {}", token_id, borrowed_limit.0);
         }
-        assert!(
-            asset.borrowed.shares.0 > 0 || asset.borrowed.balance == 0,
-            "Borrowed invariant broken"
-        );
-        if asset.supplied.shares.0 == 0 && asset.supplied.balance > 0 {
-            asset.reserved += asset.supplied.balance;
-            asset.supplied.balance = 0;
-        }
-        asset.supplied.assert_invariant();
-        asset.borrowed.assert_invariant();
-        asset.send_pending_fee_events();
-        ASSETS
-            .lock()
-            .unwrap()
-            .insert(token_id.clone(), Some(asset.clone()));
-        self.assets.insert(token_id, &asset.into());
+
+        // Common save logic
+        self.internal_save_asset_common(token_id, asset);
     }
 
-    pub fn internal_set_asset_without_asset_basic_check(&mut self, token_id: &TokenId, mut asset: Asset) {
-        if asset.supplied.shares.0 == 0 && asset.supplied.balance > 0 {
-            asset.reserved += asset.supplied.balance;
-            asset.supplied.balance = 0;
-        }
+    pub fn internal_set_asset_without_asset_basic_check(&mut self, token_id: &TokenId, asset: Asset) {
+        // Common save logic only
+        self.internal_save_asset_common(token_id, asset);
+    }
+
+    fn internal_save_asset_common(&mut self, token_id: &TokenId, mut asset: Asset) {
         assert!(
             asset.borrowed.shares.0 > 0 || asset.borrowed.balance == 0,
             "Borrowed invariant broken"
         );
+        if asset.supplied.shares.0 == 0 && asset.supplied.balance > 0 {
+            asset.reserved += asset.supplied.balance;
+            asset.supplied.balance = 0;
+        }
         asset.supplied.assert_invariant();
         asset.borrowed.assert_invariant();
         asset.send_pending_fee_events();
