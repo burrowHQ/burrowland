@@ -34,6 +34,7 @@ mod actions_pyth;
 mod protocol_debts;
 mod storage_keys;
 mod client_echo;
+mod reliable_liquidator;
 mod booster_tokens;
 
 pub use crate::account::*;
@@ -68,7 +69,10 @@ pub use crate::pyth::*;
 pub use crate::protocol_debts::*;
 pub use crate::storage_keys::*;
 pub use crate::client_echo::*;
+pub use crate::reliable_liquidator::*;
 pub use crate::booster_tokens::*;
+#[cfg(test)]
+pub use crate::unit_env::*;
 
 use common::*;
 
@@ -122,7 +126,11 @@ pub struct Contract {
     pub last_staking_token_prices: HashMap<TokenId, U128>,
     pub margin_accounts: UnorderedMap<AccountId, VMarginAccount>,
     pub margin_config: LazyOption<MarginConfig>,
-    pub accumulated_margin_position_num: u64
+    pub accumulated_margin_position_num: u64,
+    /// Tracks if current execution is by a reliable liquidator
+    /// This field is not persisted to storage and always starts as false
+    #[borsh_skip]
+    pub is_reliable_liquidator_context: bool
 }
 
 #[near_bindgen]
@@ -160,6 +168,7 @@ impl Contract {
                 max_position_action_wait_sec: 3600,
             })),
             accumulated_margin_position_num: 0,
+            is_reliable_liquidator_context: false,
         }
     }
 

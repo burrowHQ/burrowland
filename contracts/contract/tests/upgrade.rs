@@ -2,8 +2,8 @@ mod workspace_env;
 
 use crate::workspace_env::*;
 
-const PREVIOUS_VERSION: &'static str = "0.15.3";
-const LATEST_VERSION: &'static str = "0.15.4";
+const PREVIOUS_VERSION: &'static str = "0.15.4";
+const LATEST_VERSION: &'static str = "0.15.5";
 
 #[tokio::test]
 async fn test_upgrade() -> Result<()> {
@@ -20,7 +20,7 @@ async fn test_upgrade() -> Result<()> {
             "token_id": token_id,
             "asset_config":  {
                 "reserve_ratio": 2500,
-                "prot_ratio": 0,
+                "beneficiaries": {},
                 "target_utilization": 8000,
                 "target_utilization_rate": U128(1000000000003593629036885046),
                 "max_utilization_rate": U128(1000000000039724853136740579),

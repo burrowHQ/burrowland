@@ -42,6 +42,7 @@ impl Contract {
         );
 
         let account_id = env::predecessor_account_id();
+
         require!(
             !self.blacklist_of_farmers.contains(&account_id),
             "Blacklisted account"
@@ -136,6 +137,7 @@ impl Contract {
         assert_one_yocto();
 
         let account_id = env::predecessor_account_id();
+
         let mut account = self.internal_unwrap_account(&account_id);
 
         let timestamp = env::block_timestamp();

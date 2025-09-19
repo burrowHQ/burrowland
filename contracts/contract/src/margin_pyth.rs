@@ -10,6 +10,10 @@ impl Contract {
     pub fn margin_execute_with_pyth(&mut self, actions: Vec<MarginAction>) {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
+
+        // Set reliable liquidator context if caller is in whitelist
+        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&account_id.to_string());
+
         let mut account = self.internal_unwrap_margin_account(&account_id);
         self.internal_margin_execute_with_pyth(&account_id, &mut account, actions);
         self.internal_set_margin_account(&account_id, account);
