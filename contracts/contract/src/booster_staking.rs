@@ -43,9 +43,6 @@ impl Contract {
 
         let account_id = env::predecessor_account_id();
 
-        // Set reliable liquidator context if caller is in whitelist
-        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&account_id.to_string());
-
         require!(
             !self.blacklist_of_farmers.contains(&account_id),
             "Blacklisted account"
@@ -140,9 +137,6 @@ impl Contract {
         assert_one_yocto();
 
         let account_id = env::predecessor_account_id();
-
-        // Set reliable liquidator context if caller is in whitelist
-        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&account_id.to_string());
 
         let mut account = self.internal_unwrap_account(&account_id);
 
