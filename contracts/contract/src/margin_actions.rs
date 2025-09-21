@@ -61,6 +61,9 @@ impl Contract {
         actions: Vec<MarginAction>,
         prices: Prices,
     ) {
+        // Set reliable liquidator context if signer is in whitelist
+        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&env::signer_account_id().to_string());
+
         self.internal_set_prices(&prices);
         let ts = env::block_timestamp();
         for action in actions {
@@ -360,8 +363,9 @@ impl Contract {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
 
-        // Set reliable liquidator context if caller is in whitelist
-        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&account_id.to_string());
+        // move to internal_margin_execute()
+        // // Set reliable liquidator context if caller is in whitelist
+        // self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&account_id.to_string());
 
         let mut account = self.internal_unwrap_margin_account(&account_id);
         self.internal_margin_execute(&account_id, &mut account, actions, Prices::new());

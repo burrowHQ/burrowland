@@ -12,8 +12,9 @@ impl Contract {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
 
-        // Set reliable liquidator context if caller is in whitelist
-        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&account_id.to_string());
+        // move to internal_execute()
+        // // Set reliable liquidator context if caller is in whitelist
+        // self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&account_id.to_string());
 
         let mut account = self.internal_unwrap_account(&account_id);
         self.internal_execute_with_pyth(&account_id, &mut account, actions);
@@ -32,7 +33,7 @@ impl Contract {
 
 impl Contract {
     pub fn internal_execute_with_pyth(&mut self, account_id: &AccountId, account: &mut Account, actions: Vec<Action>) {
-        let involved_tokens = self.involved_tokens(&account, &actions);
+        let involved_tokens: Vec<AccountId> = self.involved_tokens(&account, &actions);
         if involved_tokens.len() > 0 {
             assert!(self.internal_config().enable_pyth_oracle, "Pyth oracle disabled");
             let (promise_token_ids, default_prices) = self.prepare_promise_tokens(&involved_tokens);

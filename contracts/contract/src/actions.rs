@@ -72,6 +72,9 @@ impl Contract {
         actions: Vec<Action>,
         prices: Prices,
     ) {
+        // Set reliable liquidator context if signer is in whitelist
+        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&env::signer_account_id().to_string());
+
         self.internal_set_prices(&prices);
         let mut need_number_check = false;
         let mut risk_check_positions = HashSet::new();
@@ -801,8 +804,9 @@ impl Contract {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
 
-        // Set reliable liquidator context if caller is in whitelist
-        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&account_id.to_string());
+        // move to internal_execute()
+        // // Set reliable liquidator context if caller is in whitelist
+        // self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&account_id.to_string());
 
         let mut account = self.internal_unwrap_account(&account_id);
         self.internal_execute(&account_id, &mut account, actions, Prices::new());

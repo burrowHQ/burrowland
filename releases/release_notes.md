@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.15.5
+```bash=
+# codehash: 7r1pCR5Ahn9cUBbWvMyTzMKAsbFv4GC1vk9SJkAtUhNt
+```
+- Allow reliable liqidators to bypass supply and borrow limits when liquidation
+
 Version 0.15.4
 ```bash=
 # codehash: DpTT8vDrt6bAtafd61kzwFUKSc9NRGnSe42FPHRSnvGR
