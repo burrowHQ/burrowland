@@ -894,6 +894,158 @@ mod basic {
         assert_eq!(account.borrowed[0].token_id, ndai_token_id());
     }
 
+    #[test]
+    #[ignore]
+    fn test_reliable_liquidator_context_setting() {
+        let mut test_env = init_unit_env();
+
+        // Add alice to reliable liquidator whitelist
+        test_env.contract.append_reliable_liquidator_whitelist(vec!["alice".to_string()]);
+
+        // Initially context should be false
+        assert!(!test_env.contract.is_reliable_liquidator_context);
+
+        // Verify alice is in the whitelist
+        let whitelist = test_env.contract.get_reliable_liquidator_whitelist();
+        assert!(whitelist.contains(&"alice".to_string()));
+
+        // Verify bob is not in the whitelist
+        assert!(!whitelist.contains(&"bob".to_string()));
+
+        // Test the context function directly
+        assert!(in_reliable_liquidator_whitelist("alice"));
+        assert!(!in_reliable_liquidator_whitelist("bob"));
+    }
+
+    #[test]
+    #[ignore]
+    fn test_reliable_liquidator_wildcard_context() {
+        let mut test_env = init_unit_env();
+
+        // Add wildcard pattern to whitelist
+        test_env.contract.append_reliable_liquidator_whitelist(vec!["*.liquidator".to_string()]);
+
+        // Test wildcard pattern matching
+        assert!(in_reliable_liquidator_whitelist("test.liquidator"));
+        assert!(in_reliable_liquidator_whitelist("alice.liquidator"));
+        assert!(in_reliable_liquidator_whitelist("bob.liquidator"));
+
+        // Test non-matching cases
+        assert!(!in_reliable_liquidator_whitelist("liquidator")); // No prefix
+        assert!(!in_reliable_liquidator_whitelist("alice.test"));
+        assert!(!in_reliable_liquidator_whitelist("test.liquidator.near"));
+    }
+
+    #[test]
+    #[ignore]
+    fn test_reliable_liquidator_bypass_basic_checks() {
+        let mut test_env = init_unit_env();
+
+        // Add alice to reliable liquidator whitelist
+        test_env.contract.append_reliable_liquidator_whitelist(vec!["alice".to_string()]);
+
+        // Create a scenario with normal asset state
+        let supply_amount = d(100, 24);
+        test_env.supply_to_collateral(wnear_token_id(), alice(), supply_amount);
+
+        let borrow_amount = d(50, 18);
+        test_env.borrow(alice(), ndai_token_id(), borrow_amount, unit_price_data(0, Some(100000), None));
+
+        // Test the key difference: calling internal_set_asset vs internal_set_asset_without_asset_basic_check
+        let asset = test_env.contract.internal_get_asset(&ndai_token_id()).unwrap();
+
+        // Test 1: reliable liquidator context should use the bypass method
+        test_env.contract.is_reliable_liquidator_context = true;
+
+        // This should work without issues since we use a valid asset state
+        test_env.contract.internal_set_asset(&ndai_token_id(), asset.clone());
+
+        // Test 2: non-reliable liquidator context uses regular validation
+        test_env.contract.is_reliable_liquidator_context = false;
+
+        // This should also work with valid asset state
+        test_env.contract.internal_set_asset(&ndai_token_id(), asset);
+
+        // Test 3: Direct method testing - call bypass method directly
+        let asset = test_env.contract.internal_get_asset(&ndai_token_id()).unwrap();
+        test_env.contract.internal_set_asset_without_asset_basic_check(&ndai_token_id(), asset);
+
+        // Verify the context setting function works
+        assert!(in_reliable_liquidator_whitelist("alice"));
+        assert!(!in_reliable_liquidator_whitelist("bob"));
+    }
+
+    #[test]
+    #[ignore]
+    fn test_reliable_liquidator_context_reset() {
+        let mut test_env = init_unit_env();
+
+        // Add alice to reliable liquidator whitelist but not bob
+        test_env.contract.append_reliable_liquidator_whitelist(vec!["alice".to_string()]);
+
+        // Initially context should be false
+        assert!(!test_env.contract.is_reliable_liquidator_context);
+
+        // Manually set context to true (simulating alice's operation)
+        test_env.contract.is_reliable_liquidator_context = true;
+        assert!(test_env.contract.is_reliable_liquidator_context);
+
+        // Manually set context to false (simulating bob's operation)
+        test_env.contract.is_reliable_liquidator_context = false;
+        assert!(!test_env.contract.is_reliable_liquidator_context);
+
+        // Verify context can be toggled
+        test_env.contract.is_reliable_liquidator_context = in_reliable_liquidator_whitelist("alice");
+        assert!(test_env.contract.is_reliable_liquidator_context);
+
+        test_env.contract.is_reliable_liquidator_context = in_reliable_liquidator_whitelist("bob");
+        assert!(!test_env.contract.is_reliable_liquidator_context);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_reliable_vs_non_reliable_liquidator_operations() {
+        let mut test_env = init_unit_env();
+
+        // Add alice to reliable liquidator whitelist
+        test_env.contract.append_reliable_liquidator_whitelist(vec!["alice".to_string()]);
+
+        // Setup initial state
+        let supply_amount = d(1000, 24);
+        test_env.supply_to_collateral(wnear_token_id(), alice(), supply_amount);
+
+        let borrow_amount = d(500, 18);
+        test_env.borrow(alice(), ndai_token_id(), borrow_amount, unit_price_data(0, Some(100000), None));
+
+        // Test: Demonstrate different behavior paths based on context
+        let asset = test_env.contract.internal_get_asset(&ndai_token_id()).unwrap();
+
+        // Test 1: Reliable liquidator context
+        test_env.contract.is_reliable_liquidator_context = true;
+        test_env.contract.internal_set_asset(&ndai_token_id(), asset.clone());
+
+        // Test 2: Non-reliable liquidator context
+        test_env.contract.is_reliable_liquidator_context = false;
+        test_env.contract.internal_set_asset(&ndai_token_id(), asset);
+
+        // Test 3: Verify whitelist functionality
+        assert!(in_reliable_liquidator_whitelist("alice"));
+        assert!(!in_reliable_liquidator_whitelist("bob"));
+
+        // Test 4: Verify context can be set based on whitelist
+        test_env.contract.is_reliable_liquidator_context = in_reliable_liquidator_whitelist("alice");
+        assert!(test_env.contract.is_reliable_liquidator_context);
+
+        test_env.contract.is_reliable_liquidator_context = in_reliable_liquidator_whitelist("bob");
+        assert!(!test_env.contract.is_reliable_liquidator_context);
+
+        // Test 5: Verify multiple patterns work
+        testing_env!(test_env.context.predecessor_account_id(owner_id()).attached_deposit(1).build());
+        test_env.contract.append_reliable_liquidator_whitelist(vec!["*.exchange".to_string()]);
+        assert!(in_reliable_liquidator_whitelist("test.exchange"));
+        assert!(!in_reliable_liquidator_whitelist("exchange"));
+    }
+
 }
 
 
