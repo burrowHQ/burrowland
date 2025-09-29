@@ -32,6 +32,9 @@ impl FungibleTokenReceiver for Contract {
         amount: U128,
         msg: String,
     ) -> PromiseOrValue<U128> {
+        // Set reliable liquidator context if sender is in whitelist
+        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&sender_id.to_string());
+
         let token_id = env::predecessor_account_id();
         let mut asset = self.internal_unwrap_asset(&token_id);
         assert!(

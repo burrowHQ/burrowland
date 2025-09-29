@@ -8,3 +8,6 @@ neardev
 .DS_Store
 .vscode
 res/*
+
+CLAUDE.md
+CLAUDE.local.md

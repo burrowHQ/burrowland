@@ -61,6 +61,9 @@ impl Contract {
         actions: Vec<MarginAction>,
         prices: Prices,
     ) {
+        // Set reliable liquidator context if signer is in whitelist
+        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&env::signer_account_id().to_string());
+
         self.internal_set_prices(&prices);
         let ts = env::block_timestamp();
         for action in actions {

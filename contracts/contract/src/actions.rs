@@ -72,6 +72,9 @@ impl Contract {
         actions: Vec<Action>,
         prices: Prices,
     ) {
+        // Set reliable liquidator context if signer is in whitelist
+        self.is_reliable_liquidator_context = in_reliable_liquidator_whitelist(&env::signer_account_id().to_string());
+
         self.internal_set_prices(&prices);
         let mut need_number_check = false;
         let mut risk_check_positions = HashSet::new();
