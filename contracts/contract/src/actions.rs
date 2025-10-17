@@ -443,7 +443,7 @@ impl Contract {
         if !self.is_reliable_liquidator_context {
             if let Some(borrowed_limit) = asset.config.borrowed_limit {
                 assert!(
-                    asset.borrowed.balance + amount <= borrowed_limit.0, 
+                    asset.borrowed.balance + asset.margin_debt.balance + asset.margin_pending_debt + amount <= borrowed_limit.0, 
                     "Asset {} has hit borrow limit, new borrow is not allowed", &asset_amount.token_id
                 );
             }

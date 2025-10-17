@@ -305,7 +305,7 @@ impl Contract {
             }
             if let Some(borrowed_limit) = asset_d.config.borrowed_limit {
                 assert!(  // TODO: check if this token_d_amount in inner demical precision?
-                    asset_d.borrowed.balance + token_d_amount <= borrowed_limit.0, 
+                    asset_d.borrowed.balance + asset_d.margin_debt.balance + asset_d.margin_pending_debt + token_d_amount <= borrowed_limit.0, 
                     "Asset {} has hit borrow limit, use it as debt for new margin position is not allowed", token_d_id
                 );
             }
