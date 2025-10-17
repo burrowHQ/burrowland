@@ -2,6 +2,7 @@ mod account;
 mod account_asset;
 mod account_farm;
 mod account_view;
+mod actions_only;
 mod actions;
 mod asset;
 mod asset_config;

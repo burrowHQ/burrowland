@@ -370,9 +370,18 @@ impl Contract {
         let asset = self.internal_unwrap_asset(&asset_amount.token_id);
         assert!(
             asset.config.can_use_as_collateral,
-            "Thi asset can't be used as a collateral"
+            "This asset can't be used as a collateral"
         );
-
+        // check if supply limit has hit, then need panic here
+        if !self.is_reliable_liquidator_context {
+            if let Some(supplied_limit) = asset.config.supplied_limit {
+                assert!(
+                    asset.supplied.balance <= supplied_limit.0, 
+                    "Asset {} has hit supply limit, increasing collateral is not allowed", &asset_amount.token_id
+                );
+            }
+        }
+        
         let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
 
         let (shares, amount) =
@@ -429,6 +438,16 @@ impl Contract {
             available_amount,
             &asset_amount.token_id
         );
+
+        // check if borrow limit has hit, then need panic here
+        if !self.is_reliable_liquidator_context {
+            if let Some(borrowed_limit) = asset.config.borrowed_limit {
+                assert!(
+                    asset.borrowed.balance + amount <= borrowed_limit.0, 
+                    "Asset {} has hit borrow limit, new borrow is not allowed", &asset_amount.token_id
+                );
+            }
+        }
 
         let supplied_shares: Shares = asset.supplied.amount_to_shares(amount, false);
 

@@ -231,6 +231,15 @@ impl Contract {
         let asset_id = mt.token_c_id.clone();
         let asset = self.internal_unwrap_asset(&mt.token_c_id);
         assert!(asset.config.can_use_as_collateral, "This asset can't be used as a collateral");
+        // check if supply limit has hit, then need panic here
+        if !self.is_reliable_liquidator_context {
+            if let Some(supplied_limit) = asset.config.supplied_limit {
+                assert!(
+                    asset.supplied.balance <= supplied_limit.0, 
+                    "Asset {} has hit supply limit, increase margin collateral is not allowed", &asset_id
+                );
+            }
+        }
         let shares = asset.supplied.amount_to_shares(amount, false);
         let actual_amount = asset.supplied.shares_to_amount(shares, false);
         account.withdraw_supply_shares(&mt.token_c_id, &shares);

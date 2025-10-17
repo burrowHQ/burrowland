@@ -18,6 +18,8 @@ pub enum TokenReceiverMsg {
     MarginExecute { actions: Vec<MarginAction> },
     MarginExecuteWithPyth { actions: Vec<MarginAction> },
     SwapReference { swap_ref: SwapReference },
+    OnlyIncreaseCollateral,
+    OnlyRepay,
 }
 
 #[near_bindgen]
@@ -114,6 +116,14 @@ impl FungibleTokenReceiver for Contract {
                         let event = self.on_decrease_trade_return(account, amount, &swap_ref);
                         events::emit::margin_decrease_succeeded(&swap_ref.op, event);
                     }
+                    return PromiseOrValue::Value(U128(0));
+                }
+                TokenReceiverMsg::OnlyIncreaseCollateral => {
+                    self.internal_only_increase_collateral(&sender_id, &token_id, amount);
+                    return PromiseOrValue::Value(U128(0));
+                }
+                TokenReceiverMsg::OnlyRepay => {
+                    self.internal_only_repay(&sender_id, &token_id, amount);
                     return PromiseOrValue::Value(U128(0));
                 }
             }
