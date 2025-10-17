@@ -88,7 +88,7 @@ impl Contract {
                     if account.supplied.get(&asset_amount.token_id).is_some() {
                         let (amount, ft_amount) = self.internal_withdraw(account, &asset_amount);
                         if ft_amount > 0 {
-                            self.internal_ft_transfer(account_id, &asset_amount.token_id, amount, ft_amount, false);
+                            self.internal_ft_transfer(account_id, &asset_amount.token_id, amount, ft_amount, false, account_id);
                             events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
                         } else {
                             events::emit::withdraw_succeeded(&account_id, amount, &asset_amount.token_id);
@@ -832,17 +832,18 @@ impl Contract {
     /// A simple withdraw interface that return a Promise (actual do transfer) or false (nothing transferred),
     /// and the final return value in promise indicate success (with true value) or failure (with false value).
     #[payable]
-    pub fn simple_withdraw(&mut self, asset_amount: AssetAmount) -> PromiseOrValue<bool> {
+    pub fn simple_withdraw(&mut self, asset_amount: AssetAmount, recipient_id: Option<AccountId>) -> PromiseOrValue<bool> {
         assert_one_yocto();
         let mut ret = PromiseOrValue::Value(false);
         let account_id = env::predecessor_account_id();
+        let recipient_id = recipient_id.unwrap_or(account_id.clone());
         let mut account = self.internal_unwrap_account(&account_id);
 
         assert!(!asset_amount.token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
         if account.supplied.get(&asset_amount.token_id).is_some() {
             let (amount, ft_amount) = self.internal_withdraw(&mut account, &asset_amount);
             if ft_amount > 0 {
-                let promise = self.internal_ft_transfer(&account_id, &asset_amount.token_id, amount, ft_amount, false);
+                let promise = self.internal_ft_transfer(&account_id, &asset_amount.token_id, amount, ft_amount, false, &recipient_id);
                 ret = PromiseOrValue::Promise(promise);
                 events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
             } else {

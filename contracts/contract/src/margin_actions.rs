@@ -206,7 +206,7 @@ impl Contract {
                             amount.map(|a| a.into()),
                         );
                         if ft_amount > 0 {
-                            self.internal_ft_transfer(account_id, &token_id, amount, ft_amount, true);
+                            self.internal_ft_transfer(account_id, &token_id, amount, ft_amount, true, account_id);
                             events::emit::margin_asset_withdraw_started(&account_id, amount, &token_id);
                         } else {
                             events::emit::margin_asset_withdraw_succeeded(&account_id, amount, &token_id);
