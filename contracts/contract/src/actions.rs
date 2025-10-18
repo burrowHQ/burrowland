@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use near_sdk::PromiseOrValue;
+
 use crate::*;
 
 #[derive(Deserialize, Serialize)]
@@ -86,7 +88,7 @@ impl Contract {
                     if account.supplied.get(&asset_amount.token_id).is_some() {
                         let (amount, ft_amount) = self.internal_withdraw(account, &asset_amount);
                         if ft_amount > 0 {
-                            self.internal_ft_transfer(account_id, &asset_amount.token_id, amount, ft_amount, false);
+                            self.internal_ft_transfer(account_id, &asset_amount.token_id, amount, ft_amount, false, account_id);
                             events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
                         } else {
                             events::emit::withdraw_succeeded(&account_id, amount, &asset_amount.token_id);
@@ -370,9 +372,18 @@ impl Contract {
         let asset = self.internal_unwrap_asset(&asset_amount.token_id);
         assert!(
             asset.config.can_use_as_collateral,
-            "Thi asset can't be used as a collateral"
+            "This asset can't be used as a collateral"
         );
-
+        // check if supply limit has hit, then need panic here
+        if !self.is_reliable_liquidator_context {
+            if let Some(supplied_limit) = asset.config.supplied_limit {
+                assert!(
+                    asset.supplied.balance <= supplied_limit.0, 
+                    "Asset {} has hit supply limit, increasing collateral is not allowed", &asset_amount.token_id
+                );
+            }
+        }
+        
         let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
 
         let (shares, amount) =
@@ -429,6 +440,16 @@ impl Contract {
             available_amount,
             &asset_amount.token_id
         );
+
+        // check if borrow limit has hit, then need panic here
+        if !self.is_reliable_liquidator_context {
+            if let Some(borrowed_limit) = asset.config.borrowed_limit {
+                assert!(
+                    asset.borrowed.balance + asset.margin_debt.balance + asset.margin_pending_debt + amount <= borrowed_limit.0, 
+                    "Asset {} has hit borrow limit, new borrow is not allowed", &asset_amount.token_id
+                );
+            }
+        }
 
         let supplied_shares: Shares = asset.supplied.amount_to_shares(amount, false);
 
@@ -806,5 +827,31 @@ impl Contract {
         let mut account = self.internal_unwrap_account(&account_id);
         self.internal_execute(&account_id, &mut account, actions, Prices::new());
         self.internal_set_account(&account_id, account);
+    }
+
+    /// A simple withdraw interface that return a Promise (actual do transfer) or false (nothing transferred),
+    /// and the final return value in promise indicate success (with true value) or failure (with false value).
+    #[payable]
+    pub fn simple_withdraw(&mut self, asset_amount: AssetAmount, recipient_id: Option<AccountId>) -> PromiseOrValue<bool> {
+        assert_one_yocto();
+        let mut ret = PromiseOrValue::Value(false);
+        let account_id = env::predecessor_account_id();
+        let recipient_id = recipient_id.unwrap_or(account_id.clone());
+        let mut account = self.internal_unwrap_account(&account_id);
+
+        assert!(!asset_amount.token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
+        if account.supplied.get(&asset_amount.token_id).is_some() {
+            let (amount, ft_amount) = self.internal_withdraw(&mut account, &asset_amount);
+            if ft_amount > 0 {
+                let promise = self.internal_ft_transfer(&account_id, &asset_amount.token_id, amount, ft_amount, false, &recipient_id);
+                ret = PromiseOrValue::Promise(promise);
+                events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
+            } else {
+                events::emit::withdraw_succeeded(&account_id, amount, &asset_amount.token_id);
+            }
+        }
+        self.internal_account_apply_affected_farms(&mut account);
+        self.internal_set_account(&account_id, account);
+        ret
     }
 }

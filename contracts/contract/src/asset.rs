@@ -298,12 +298,6 @@ impl Contract {
             asset.borrowed.shares.0 >= MIN_RESERVE_SHARES, "Asset {} borrow shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
         assert!(asset.margin_debt.shares.0 == 0 ||
             asset.margin_debt.shares.0 >= MIN_RESERVE_SHARES, "Asset {} margin_debt shares cannot be less than {}", token_id, MIN_RESERVE_SHARES);
-        if let Some(supplied_limit) = asset.config.supplied_limit {
-            assert!(asset.supplied.balance <= supplied_limit.0, "Asset {} supply balance cannot be greater than {}", token_id, supplied_limit.0);
-        }
-        if let Some(borrowed_limit) = asset.config.borrowed_limit {
-            assert!(asset.borrowed.balance + asset.margin_debt.balance + asset.margin_pending_debt <= borrowed_limit.0, "Asset {} borrow balance cannot be greater than {}", token_id, borrowed_limit.0);
-        }
 
         // Common save logic
         self.internal_save_asset_common(token_id, asset);
