@@ -1,7 +1,5 @@
 use std::collections::HashSet;
 
-use near_sdk::PromiseOrValue;
-
 use crate::*;
 
 #[derive(Deserialize, Serialize)]
@@ -832,26 +830,31 @@ impl Contract {
     /// A simple withdraw interface that return a Promise (actual do transfer) or false (nothing transferred),
     /// and the final return value in promise indicate success (with true value) or failure (with false value).
     #[payable]
-    pub fn simple_withdraw(&mut self, asset_amount: AssetAmount, recipient_id: Option<AccountId>) -> PromiseOrValue<bool> {
+    pub fn simple_withdraw(&mut self, token_id: AccountId, amount_with_inner_decimal: U128, recipient_id: Option<AccountId>) -> Promise {
         assert_one_yocto();
-        let mut ret = PromiseOrValue::Value(false);
+        
         let account_id = env::predecessor_account_id();
         let recipient_id = recipient_id.unwrap_or(account_id.clone());
         let mut account = self.internal_unwrap_account(&account_id);
 
-        assert!(!asset_amount.token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
-        if account.supplied.get(&asset_amount.token_id).is_some() {
+        assert!(!token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
+        if account.supplied.get(&token_id).is_some() {
+            let asset_amount = AssetAmount { 
+                token_id, 
+                amount: Some(amount_with_inner_decimal), 
+                max_amount: None 
+            };
             let (amount, ft_amount) = self.internal_withdraw(&mut account, &asset_amount);
-            if ft_amount > 0 {
-                let promise = self.internal_ft_transfer(&account_id, &asset_amount.token_id, amount, ft_amount, false, &recipient_id);
-                ret = PromiseOrValue::Promise(promise);
-                events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
-            } else {
-                events::emit::withdraw_succeeded(&account_id, amount, &asset_amount.token_id);
-            }
+            assert_eq!(amount, amount_with_inner_decimal.0, "Not enough balance in user's supply");
+            assert!(ft_amount > 0, "Withdraw amount can't be 0");
+
+            let promise = self.internal_ft_transfer(&account_id, &asset_amount.token_id, amount, ft_amount, false, &recipient_id);
+            events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
+            self.internal_account_apply_affected_farms(&mut account);
+            self.internal_set_account(&account_id, account);
+            promise
+        } else {
+            env::panic_str("Not enough balance in user's supply");
         }
-        self.internal_account_apply_affected_farms(&mut account);
-        self.internal_set_account(&account_id, account);
-        ret
     }
 }
