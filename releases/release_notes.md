@@ -2,7 +2,7 @@
 
 Version 0.15.6
 ```bash=
-# codehash: wTGB4Mfb31Y2LeYdjx3TjsnP11v5FUjb4oAsiqfg7gh
+# codehash: 4SJrRUK5mVJGNie3qGpnyBUPr6QwrHxZgR1RpeLJtgrK
 ```
 - introduce simple_withdraw interface.
 - introduce only_increase_collateral and only_repay action message.
