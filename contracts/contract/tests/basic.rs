@@ -184,3 +184,193 @@ async fn test_modify_config() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_simple_withdraw_supply() -> Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let root = worker.root_account()?;
+
+    let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
+
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
+    check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
+    check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
+
+    let alice = create_account(&root, "alice", None).await;
+    check!(burrowland_contract.storage_deposit(&alice));
+    check!(wrap_token_contract.ft_storage_deposit(alice.id()));
+
+    let amount = d(100, 24);
+    check!(wrap_token_contract.ft_mint(&root, &alice, amount));
+    check!(burrowland_contract.deposit(&wrap_token_contract, &alice, amount));
+
+    let account_before = burrowland_contract.get_account(&alice).await?.unwrap();
+    assert_eq!(account_before.supplied[0].balance, amount);
+
+    // Withdraw from supply
+    let withdraw_amount = d(30, 24);
+    let result = burrowland_contract.simple_withdraw(&alice, wrap_token_contract.0.id(), withdraw_amount, None).await;
+    if let Err(e) = &result {
+        eprintln!("Error: {:?}", e);
+    }
+    assert!(result.is_ok(), "simple_withdraw failed");
+    let outcome = result?;
+    eprintln!("Outcome: {:?}", outcome);
+    assert!(outcome.is_success(), "simple_withdraw transaction failed");
+
+    let account_after = burrowland_contract.get_account(&alice).await?.unwrap();
+    println!("{:?}", account_after);
+    assert_eq!(account_after.supplied[0].balance, d(70, 24)); // Exact: 100 - 30
+    assert!(account_after.collateral.is_empty());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_simple_withdraw_multiple_times() -> Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let root = worker.root_account()?;
+
+    let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
+
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
+    check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
+    check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
+
+    let alice = create_account(&root, "alice", None).await;
+    check!(burrowland_contract.storage_deposit(&alice));
+    check!(wrap_token_contract.ft_storage_deposit(alice.id()));
+
+    let supply_amount = d(100, 24);
+
+    check!(wrap_token_contract.ft_mint(&root, &alice, supply_amount));
+
+    // Deposit 100 as supply
+    check!(burrowland_contract.deposit(&wrap_token_contract, &alice, supply_amount));
+
+    let account_before = burrowland_contract.get_account(&alice).await?.unwrap();
+    assert_eq!(account_before.supplied[0].balance, supply_amount);
+
+    // First withdrawal: 30
+    let withdraw_amount1 = d(30, 24);
+    let result = burrowland_contract.simple_withdraw(&alice, wrap_token_contract.0.id(), withdraw_amount1, None).await;
+    assert!(result.is_ok(), "first simple_withdraw failed");
+    let outcome = result?;
+    assert!(outcome.is_success(), "first simple_withdraw transaction failed");
+
+    let account_mid = burrowland_contract.get_account(&alice).await?.unwrap();
+    assert_eq!(account_mid.supplied[0].balance, d(70, 24)); // Exact: 100 - 30
+
+    // Second withdrawal: 20
+    let withdraw_amount2 = d(20, 24);
+    let result2 = burrowland_contract.simple_withdraw(&alice, wrap_token_contract.0.id(), withdraw_amount2, None).await;
+    assert!(result2.is_ok(), "second simple_withdraw failed");
+    let outcome2 = result2?;
+    assert!(outcome2.is_success(), "second simple_withdraw transaction failed");
+
+    let account_after = burrowland_contract.get_account(&alice).await?.unwrap();
+    assert_eq!(account_after.supplied[0].balance, d(50, 24)); // Exact: 100 - 30 - 20
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_simple_withdraw_collateral() -> Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let root = worker.root_account()?;
+
+    let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
+
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
+    check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
+    check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
+
+    let alice = create_account(&root, "alice", None).await;
+    check!(burrowland_contract.storage_deposit(&alice));
+    check!(wrap_token_contract.ft_storage_deposit(alice.id()));
+
+    let amount = d(100, 24);
+    check!(wrap_token_contract.ft_mint(&root, &alice, amount));
+
+    // Supply to collateral (no regular supply)
+    check!(burrowland_contract.supply_to_collateral(&wrap_token_contract, &alice, amount));
+
+    let account_before = burrowland_contract.get_account(&alice).await?.unwrap();
+    assert!(account_before.supplied.is_empty());
+    assert_eq!(account_before.collateral[0].balance, amount);
+
+    // Add Pyth token info (with default price) and enable Pyth oracle for simple_withdraw from collateral
+    // Price of 1 NEAR = $1 (multiplier=1, decimals=0)
+    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, Some(Price{
+        multiplier: 1,
+        decimals: 0
+    })));
+    check!(burrowland_contract.enable_oracle(&root, false, true));
+
+    // Withdraw from collateral
+    let withdraw_amount = d(30, 24);
+    let result = burrowland_contract.simple_withdraw(&alice, wrap_token_contract.0.id(), withdraw_amount, None).await;
+    assert!(result.is_ok(), "simple_withdraw from collateral failed");
+    let outcome = result?;
+    assert!(outcome.is_success(), "simple_withdraw from collateral transaction failed");
+
+    let account_after = burrowland_contract.get_account(&alice).await?.unwrap();
+    assert!(account_after.supplied.is_empty());
+    assert_eq!(account_after.collateral[0].balance, d(70, 24)); // Exact: 100 - 30
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_simple_withdraw_supply_and_collateral() -> Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let root = worker.root_account()?;
+
+    let wrap_token_contract = deploy_mock_ft(&root, "wrap", 24).await?;
+
+    let burrowland_contract = deploy_burrowland_with_price_oracle(&root).await?;
+    check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
+    check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
+
+    let alice = create_account(&root, "alice", None).await;
+    check!(burrowland_contract.storage_deposit(&alice));
+    check!(wrap_token_contract.ft_storage_deposit(alice.id()));
+
+    let supply_amount = d(10, 24);
+    let collateral_amount = d(100, 24);
+
+    check!(wrap_token_contract.ft_mint(&root, &alice, supply_amount + collateral_amount));
+
+    // Supply 100 as collateral first
+    check!(burrowland_contract.supply_to_collateral(&wrap_token_contract, &alice, collateral_amount));
+
+    // Then deposit 10 as supply
+    check!(burrowland_contract.deposit(&wrap_token_contract, &alice, supply_amount));
+
+    let account_before = burrowland_contract.get_account(&alice).await?.unwrap();
+    assert_eq!(account_before.supplied[0].balance, supply_amount);
+    assert_eq!(account_before.collateral[0].balance, collateral_amount);
+
+    // Add Pyth token info (with default price) and enable Pyth oracle for simple_withdraw from collateral
+    // Price of 1 NEAR = $1 (multiplier=1, decimals=0)
+    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, Some(Price{
+        multiplier: 1,
+        decimals: 0
+    })));
+    check!(burrowland_contract.enable_oracle(&root, false, true));
+
+    // Withdraw 50: should take all 10 from supply and 40 from collateral
+    // Before: 10 supply, 100 collateral
+    // After: 0 supply, 60 collateral
+    let withdraw_amount = d(50, 24);
+    let result = burrowland_contract.simple_withdraw(&alice, wrap_token_contract.0.id(), withdraw_amount, None).await;
+    assert!(result.is_ok(), "simple_withdraw failed");
+    let outcome = result?;
+    assert!(outcome.is_success(), "simple_withdraw transaction failed");
+
+    let account_after = burrowland_contract.get_account(&alice).await?.unwrap();
+    assert!(account_after.supplied.is_empty()); // All 10 from supply withdrawn
+    assert_eq!(account_after.collateral[0].balance, d(60, 24)); // 100 - 40 = 60
+
+    Ok(())
+}

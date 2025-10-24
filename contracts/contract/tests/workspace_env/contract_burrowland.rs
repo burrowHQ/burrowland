@@ -1511,7 +1511,7 @@ impl Burrowland {
         swap_indication: SwapIndication,
     ) -> Result<ExecutionFinalResult> {
         self.margin_execute_with_pyth(caller, vec![
-            MarginAction::ForceCloseMTPosition { 
+            MarginAction::ForceCloseMTPosition {
                 pos_owner_id: near_sdk::AccountId::new_unchecked(pos_owner_id.to_string()),
                 pos_id: pos_id.clone(),
                 token_p_amount: token_p_amount.into(),
@@ -1519,6 +1519,26 @@ impl Burrowland {
                 swap_indication: swap_indication,
             }
         ]).await
+    }
+
+    pub async fn simple_withdraw(
+        &self,
+        caller: &Account,
+        token_id: &AccountId,
+        amount: u128,
+        recipient_id: Option<&AccountId>,
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "simple_withdraw")
+            .args_json(json!({
+                "token_id": token_id,
+                "amount_with_inner_decimal": U128(amount),
+                "recipient_id": recipient_id,
+            }))
+            .max_gas()
+            .deposit(NearToken::from_yoctonear(1))
+            .transact()
+            .await
     }
 
     pub async fn margin_trading_increase_collateral_by_ft_transfer_call(
