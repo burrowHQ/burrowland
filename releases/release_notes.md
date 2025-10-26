@@ -1,5 +1,13 @@
 # Release Notes
 
+Version 0.15.6
+```bash=
+# codehash: 4SJrRUK5mVJGNie3qGpnyBUPr6QwrHxZgR1RpeLJtgrK
+```
+- introduce simple_withdraw interface.
+- introduce only_increase_collateral and only_repay action message.
+- put supply and borrow limits to specific actions.
+
 Version 0.15.5
 ```bash=
 # codehash: ExiAUneSUzkcKkBtbQtYcvt74RHWZeykRB8E9MgHE3wx

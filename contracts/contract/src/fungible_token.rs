@@ -18,6 +18,8 @@ pub enum TokenReceiverMsg {
     MarginExecute { actions: Vec<MarginAction> },
     MarginExecuteWithPyth { actions: Vec<MarginAction> },
     SwapReference { swap_ref: SwapReference },
+    OnlyIncreaseCollateral,
+    OnlyRepay,
 }
 
 #[near_bindgen]
@@ -116,6 +118,14 @@ impl FungibleTokenReceiver for Contract {
                     }
                     return PromiseOrValue::Value(U128(0));
                 }
+                TokenReceiverMsg::OnlyIncreaseCollateral => {
+                    self.internal_only_increase_collateral(&sender_id, &token_id, amount);
+                    return PromiseOrValue::Value(U128(0));
+                }
+                TokenReceiverMsg::OnlyRepay => {
+                    self.internal_only_repay(&sender_id, &token_id, amount);
+                    return PromiseOrValue::Value(U128(0));
+                }
             }
         };
 
@@ -159,11 +169,12 @@ impl Contract {
         amount: Balance,
         ft_amount: Balance,
         is_margin_asset: bool,
+        recipient_id: &AccountId,
     ) -> Promise {
         ext_ft_core::ext(token_id.clone())
             .with_attached_deposit(ONE_YOCTO)
             .with_static_gas(GAS_FOR_FT_TRANSFER)
-            .ft_transfer(account_id.clone(), ft_amount.into(), None)
+            .ft_transfer(recipient_id.clone(), ft_amount.into(), None)
             .then(
                 if is_margin_asset {
                     Self::ext(env::current_account_id())

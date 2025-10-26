@@ -86,7 +86,7 @@ impl Contract {
                     if account.supplied.get(&asset_amount.token_id).is_some() {
                         let (amount, ft_amount) = self.internal_withdraw(account, &asset_amount);
                         if ft_amount > 0 {
-                            self.internal_ft_transfer(account_id, &asset_amount.token_id, amount, ft_amount, false);
+                            self.internal_ft_transfer(account_id, &asset_amount.token_id, amount, ft_amount, false, account_id);
                             events::emit::withdraw_started(&account_id, amount, &asset_amount.token_id);
                         } else {
                             events::emit::withdraw_succeeded(&account_id, amount, &asset_amount.token_id);
@@ -370,9 +370,18 @@ impl Contract {
         let asset = self.internal_unwrap_asset(&asset_amount.token_id);
         assert!(
             asset.config.can_use_as_collateral,
-            "Thi asset can't be used as a collateral"
+            "This asset can't be used as a collateral"
         );
-
+        // check if supply limit has hit, then need panic here
+        if !self.is_reliable_liquidator_context {
+            if let Some(supplied_limit) = asset.config.supplied_limit {
+                assert!(
+                    asset.supplied.balance <= supplied_limit.0, 
+                    "Asset {} has hit supply limit, increasing collateral is not allowed", &asset_amount.token_id
+                );
+            }
+        }
+        
         let mut account_asset = account.internal_unwrap_asset(&asset_amount.token_id);
 
         let (shares, amount) =
@@ -429,6 +438,16 @@ impl Contract {
             available_amount,
             &asset_amount.token_id
         );
+
+        // check if borrow limit has hit, then need panic here
+        if !self.is_reliable_liquidator_context {
+            if let Some(borrowed_limit) = asset.config.borrowed_limit {
+                assert!(
+                    asset.borrowed.balance + asset.margin_debt.balance + asset.margin_pending_debt + amount <= borrowed_limit.0, 
+                    "Asset {} has hit borrow limit, new borrow is not allowed", &asset_amount.token_id
+                );
+            }
+        }
 
         let supplied_shares: Shares = asset.supplied.amount_to_shares(amount, false);
 
@@ -806,5 +825,165 @@ impl Contract {
         let mut account = self.internal_unwrap_account(&account_id);
         self.internal_execute(&account_id, &mut account, actions, Prices::new());
         self.internal_set_account(&account_id, account);
+    }
+
+    /// withdraw given amount of given token to caller or given recipient.
+    /// If enough amount in supply then use it, or try to decrease collateral to match the amount.
+    /// return a Promise, and its final return value: true for success, false for failure.
+    #[payable]
+    pub fn simple_withdraw(&mut self, token_id: AccountId, amount_with_inner_decimal: U128, recipient_id: Option<AccountId>) -> Promise {
+        assert_one_yocto();
+        
+        let account_id = env::predecessor_account_id();
+        let recipient_id = recipient_id.unwrap_or(account_id.clone());
+        let mut account = self.internal_unwrap_account(&account_id);
+
+        assert!(!token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
+
+        // check if has enough token in user's supply
+        let mut gap = amount_with_inner_decimal.0;
+        if let Some(shares) = account.supplied.get(&token_id) {
+            let asset = self.internal_unwrap_asset(&token_id);
+            let amount = asset.supplied.shares_to_amount(shares.clone(), false);
+            gap = gap.saturating_sub(amount);
+        }
+
+        if gap > 0 {
+            // try use collateral asset
+            if let Some(pyth_promise) = self.internal_decrease_collateral_for_gap(&account_id, &mut account, &token_id, amount_with_inner_decimal.0, gap, &recipient_id) {
+                return pyth_promise;
+            }
+        } 
+
+        // finally withdraw from supply
+        let promise = self.internal_simple_withdraw(&account_id, &mut account, &token_id, amount_with_inner_decimal.0, &recipient_id);
+        self.internal_set_account(&account_id, account);
+        promise     
+    }
+
+    #[private]
+    pub fn callback_simple_withdraw_with_pyth(
+        &mut self, 
+        account_id: AccountId, 
+        involved_tokens: Vec<TokenId>, 
+        all_promise_flags: Vec<String>, 
+        token_id: AccountId,
+        total_amount: U128,
+        gap_amount: U128,
+        recipient_id: AccountId, 
+        default_prices: HashMap<TokenId, Price>,
+    ) -> Promise {
+        assert!(env::promise_results_count() == all_promise_flags.len() as u64, "Invalid promise count");
+        let all_prices = self.generate_all_prices(involved_tokens, all_promise_flags, default_prices);
+        let mut account = self.internal_unwrap_account(&account_id);
+        
+        self.internal_simple_decrease_collateral(&account_id, &mut account, &token_id, gap_amount.0, all_prices);
+        let promise = self.internal_simple_withdraw(&account_id, &mut account, &token_id, total_amount.0, &recipient_id);
+        self.internal_set_account(&account_id, account);
+        promise
+    }
+}
+
+impl Contract {
+    pub fn internal_simple_decrease_collateral(
+        &mut self, 
+        account_id: &AccountId, 
+        account: &mut Account, 
+        token_id: &AccountId,
+        amount: Balance, 
+        prices: Prices) {
+        let position = REGULAR_POSITION.to_string();
+        let mut account_asset =
+            account.internal_get_asset_or_default(token_id);
+        let amount = self.internal_decrease_collateral(
+            &position,
+            &mut account_asset,
+            account,
+            &AssetAmount { 
+                token_id: token_id.clone(), 
+                amount: Some(amount.into()), 
+                max_amount: None 
+            },
+        );
+        account.internal_set_asset(token_id, account_asset);
+        events::emit::decrease_collateral(&account_id, amount, token_id, &position);
+        assert!(self.compute_max_discount(&position, account, &prices) == BigDecimal::zero());
+    }
+
+    pub fn internal_simple_withdraw(
+        &mut self, 
+        account_id: &AccountId, 
+        account: &mut Account, 
+        token_id: &AccountId,
+        amount: Balance,
+        recipient_id: &AccountId, 
+    ) -> Promise {
+        let (amount, ft_amount) = self.internal_withdraw(
+            account, 
+            &AssetAmount { 
+                token_id: token_id.clone(), 
+                amount: Some(amount.into()), 
+                max_amount: None 
+            },
+        );
+        assert!(ft_amount > 0, "Withdraw amount can't be 0");
+        let promise = self.internal_ft_transfer(&account_id, token_id, amount, ft_amount, false, &recipient_id);
+        events::emit::withdraw_started(&account_id, amount, token_id);
+        self.internal_account_apply_affected_farms(account);
+        promise
+    }
+
+    pub fn internal_decrease_collateral_for_gap(
+        &mut self, 
+        account_id: &AccountId, 
+        account: &mut Account,
+        token_id: &AccountId,
+        total_amount: u128,
+        gap_amount: u128,
+        recipient_id: &AccountId, 
+    ) -> Option<Promise> {
+        let actions = vec![Action::DecreaseCollateral(AssetAmount { 
+            token_id: token_id.clone(), 
+            amount: Some(gap_amount.into()), 
+            max_amount: None 
+        })];
+        let involved_tokens: Vec<AccountId> = self.involved_tokens(&account, &actions);
+        if involved_tokens.len() > 0 {
+            assert!(self.internal_config().enable_pyth_oracle, "Pyth oracle disabled");
+            let (promise_token_ids, default_prices) = self.prepare_promise_tokens(&involved_tokens);
+            if promise_token_ids.len() > 0 {
+                let (all_promise_flags, promise) = self.generate_flags_and_promise(&promise_token_ids);
+                let callback_gas = env::prepaid_gas() - (GAS_FOR_GET_PRICE) * all_promise_flags.len() as u64 - GAS_FOR_BUFFER;
+                Some(promise.then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(callback_gas)
+                        .callback_simple_withdraw_with_pyth(
+                            account_id.clone(), 
+                            involved_tokens, 
+                            all_promise_flags, 
+                            token_id.clone(),
+                            total_amount.into(),
+                            gap_amount.into(),
+                            recipient_id.clone(),
+                            default_prices)
+                ))
+            } else {
+                self.internal_simple_decrease_collateral(
+                    account_id, 
+                    account, 
+                    token_id,
+                    gap_amount,
+                    Prices::from_prices(default_prices));
+                None
+            }
+        } else {
+            self.internal_simple_decrease_collateral(
+                account_id, 
+                account, 
+                token_id,
+                gap_amount,
+                Prices::new());
+            None
+        }
     }
 }

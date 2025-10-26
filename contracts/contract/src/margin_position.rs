@@ -295,6 +295,22 @@ impl Contract {
         let mut asset_d = self.internal_unwrap_asset(token_d_id);
         assert!(asset_d.config.can_borrow, "This asset can't be used borrowed");
 
+        // check if supply and borrow limit has hit, then need panic here
+        if !self.is_reliable_liquidator_context {
+            if let Some(supplied_limit) = asset_c.config.supplied_limit {
+                assert!(
+                    asset_c.supplied.balance <= supplied_limit.0, 
+                    "Asset {} has hit supply limit, use it as collateral for new margin position is not allowed", token_c_id
+                );
+            }
+            if let Some(borrowed_limit) = asset_d.config.borrowed_limit {
+                assert!(  // TODO: check if this token_d_amount in inner demical precision?
+                    asset_d.borrowed.balance + asset_d.margin_debt.balance + asset_d.margin_pending_debt + token_d_amount <= borrowed_limit.0, 
+                    "Asset {} has hit borrow limit, use it as debt for new margin position is not allowed", token_d_id
+                );
+            }
+        }
+
         let (base_token_amount, total_base_token_amount) = if pd.get_base_token_id() == token_d_id {
             (token_d_amount, asset_d.margin_debt.balance + asset_d.margin_pending_debt + token_d_amount)
         } else {
