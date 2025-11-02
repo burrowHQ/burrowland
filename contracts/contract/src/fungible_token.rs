@@ -195,7 +195,7 @@ impl Contract {
         amount: Balance,
         ft_amount: Balance,
         client_echo: String,
-    ) {
+    ) -> Promise {
         ext_ft_core::ext(token_id.clone())
             .with_attached_deposit(ONE_YOCTO)
             .with_static_gas(Gas::ONE_TERA * 30)
@@ -205,7 +205,7 @@ impl Contract {
                     .with_static_gas(Gas::ONE_TERA * 15)
                     .with_unused_gas_weight(0)
                     .after_ft_transfer_call(account_id.clone(), token_id.clone(), ft_amount.into(), amount.into())
-            );
+            )
     }
 }
 

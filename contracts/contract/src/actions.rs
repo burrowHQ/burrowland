@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use near_sdk::PromiseOrValue;
+
 use crate::*;
 
 #[derive(Deserialize, Serialize)]
@@ -856,9 +858,36 @@ impl Contract {
         } 
 
         // finally withdraw from supply
-        let promise = self.internal_simple_withdraw(&account_id, &mut account, &token_id, amount_with_inner_decimal.0, &recipient_id);
+        let promise = self.internal_simple_withdraw(&account_id, &mut account, &token_id, amount_with_inner_decimal.0, &recipient_id, None);
         self.internal_set_account(&account_id, account);
         promise     
+    }
+
+    #[payable]
+    pub fn claim_withdraw(&mut self, token_id: AccountId, client_echo: String) -> PromiseOrValue<bool> {
+        assert_one_yocto();
+
+        let mut ret = PromiseOrValue::Value(true);
+        let account_id = env::predecessor_account_id();
+        assert!(in_client_echo_sender_whitelist(account_id.as_str()), "Unauthorized client echo sender: {}", account_id);
+        assert!(!token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
+
+        let mut account = self.internal_unwrap_account(&account_id);
+        account
+            .affected_farms
+            .extend(account.get_all_potential_farms());
+        let all_rewards = self.internal_account_apply_affected_farms(&mut account);
+
+        // check if withdraw token has been claimed
+        if let Some(amount) =  all_rewards.get(&token_id) {
+            if *amount > 0 {
+                // withdraw from supply
+                let promise = self.internal_simple_withdraw(&account_id, &mut account, &token_id, *amount, &account_id, Some(client_echo));
+                ret = PromiseOrValue::Promise(promise);
+            }
+        }
+        self.internal_set_account(&account_id, account);
+        ret
     }
 
     #[private]
@@ -878,7 +907,7 @@ impl Contract {
         let mut account = self.internal_unwrap_account(&account_id);
         
         self.internal_simple_decrease_collateral(&account_id, &mut account, &token_id, gap_amount.0, all_prices);
-        let promise = self.internal_simple_withdraw(&account_id, &mut account, &token_id, total_amount.0, &recipient_id);
+        let promise = self.internal_simple_withdraw(&account_id, &mut account, &token_id, total_amount.0, &recipient_id, None);
         self.internal_set_account(&account_id, account);
         promise
     }
@@ -917,6 +946,7 @@ impl Contract {
         token_id: &AccountId,
         amount: Balance,
         recipient_id: &AccountId, 
+        client_echo: Option<String>,
     ) -> Promise {
         let (amount, ft_amount) = self.internal_withdraw(
             account, 
@@ -927,7 +957,12 @@ impl Contract {
             },
         );
         assert!(ft_amount > 0, "Withdraw amount can't be 0");
-        let promise = self.internal_ft_transfer(&account_id, token_id, amount, ft_amount, false, &recipient_id);
+        let promise = if let Some(client_echo) = client_echo {
+            self.internal_ft_transfer_call(account_id, &token_id, amount, ft_amount, client_echo)                    
+        } else {
+            self.internal_ft_transfer(&account_id, token_id, amount, ft_amount, false, &recipient_id)
+        };
+        
         events::emit::withdraw_started(&account_id, amount, token_id);
         self.internal_account_apply_affected_farms(account);
         promise
