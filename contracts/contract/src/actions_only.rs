@@ -29,6 +29,7 @@ impl Contract {
         
         // 3. on account level, supply (excluding collateral) untouched but position changed
         let mut account = self.internal_unwrap_account(account_id);
+        assert!(!account.is_locked, "Account is locked!");
         // account_asset untouched cause no pure supply change, but farms affected
         account.add_affected_farm(FarmId::Supplied(token_id.clone()));
         account.add_affected_farm(FarmId::TokenNetBalance(token_id.clone()));
@@ -58,6 +59,7 @@ impl Contract {
         amount: Balance,  // inner decimal precision
     ) {
         let mut account = self.internal_unwrap_account(&account_id);
+        assert!(!account.is_locked, "Account is locked!");
         let mut asset = self.internal_unwrap_asset(token_id);
 
         // 1. repay

@@ -837,6 +837,7 @@ impl Contract {
         let account_id = env::predecessor_account_id();
         let recipient_id = recipient_id.unwrap_or(account_id.clone());
         let mut account = self.internal_unwrap_account(&account_id);
+        assert!(!account.is_locked, "Account is locked!");
 
         assert!(!token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
 
@@ -876,6 +877,7 @@ impl Contract {
         assert!(env::promise_results_count() == all_promise_flags.len() as u64, "Invalid promise count");
         let all_prices = self.generate_all_prices(involved_tokens, all_promise_flags, default_prices);
         let mut account = self.internal_unwrap_account(&account_id);
+        assert!(!account.is_locked, "Account is locked!");
         
         self.internal_simple_decrease_collateral(&account_id, &mut account, &token_id, gap_amount.0, all_prices);
         let promise = self.internal_simple_withdraw(&account_id, &mut account, &token_id, total_amount.0, &recipient_id);
