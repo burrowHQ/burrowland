@@ -950,41 +950,32 @@ impl Contract {
             max_amount: None 
         })];
         let involved_tokens: Vec<AccountId> = self.involved_tokens(&account, &actions);
-        if involved_tokens.len() > 0 {
-            assert!(self.internal_config().enable_pyth_oracle, "Pyth oracle disabled");
-            let (promise_token_ids, default_prices) = self.prepare_promise_tokens(&involved_tokens);
-            if promise_token_ids.len() > 0 {
-                let (all_promise_flags, promise) = self.generate_flags_and_promise(&promise_token_ids);
-                let callback_gas = env::prepaid_gas() - (GAS_FOR_GET_PRICE) * all_promise_flags.len() as u64 - GAS_FOR_BUFFER;
-                Some(promise.then(
-                    Self::ext(env::current_account_id())
-                        .with_static_gas(callback_gas)
-                        .callback_simple_withdraw_with_pyth(
-                            account_id.clone(), 
-                            involved_tokens, 
-                            all_promise_flags, 
-                            token_id.clone(),
-                            total_amount.into(),
-                            gap_amount.into(),
-                            recipient_id.clone(),
-                            default_prices)
-                ))
-            } else {
-                self.internal_simple_decrease_collateral(
-                    account_id, 
-                    account, 
-                    token_id,
-                    gap_amount,
-                    Prices::from_prices(default_prices));
-                None
-            }
+        assert!(involved_tokens.len() > 0, "No collateral available");
+        assert!(self.internal_config().enable_pyth_oracle, "Pyth oracle disabled");
+        let (promise_token_ids, default_prices) = self.prepare_promise_tokens(&involved_tokens);
+        if promise_token_ids.len() > 0 {
+            let (all_promise_flags, promise) = self.generate_flags_and_promise(&promise_token_ids);
+            let callback_gas = env::prepaid_gas() - (GAS_FOR_GET_PRICE) * all_promise_flags.len() as u64 - GAS_FOR_BUFFER;
+            Some(promise.then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(callback_gas)
+                    .callback_simple_withdraw_with_pyth(
+                        account_id.clone(), 
+                        involved_tokens, 
+                        all_promise_flags, 
+                        token_id.clone(),
+                        total_amount.into(),
+                        gap_amount.into(),
+                        recipient_id.clone(),
+                        default_prices)
+            ))
         } else {
             self.internal_simple_decrease_collateral(
                 account_id, 
                 account, 
                 token_id,
                 gap_amount,
-                Prices::new());
+                Prices::from_prices(default_prices));
             None
         }
     }
