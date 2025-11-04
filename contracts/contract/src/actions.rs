@@ -863,13 +863,19 @@ impl Contract {
         promise     
     }
 
+    /// claim user's all possible farm rewards and then withdraw the reward of the given token, 
+    /// support client_echo mode.
+    /// return a PromiseOrValue, if Value returned, means only claim finished but nothing to withdraw,
+    /// if Promise returned, means the withdrawal is in progress.
     #[payable]
-    pub fn claim_withdraw(&mut self, token_id: AccountId, client_echo: String) -> PromiseOrValue<bool> {
+    pub fn claim_withdraw(&mut self, token_id: AccountId, client_echo: Option<String>) -> PromiseOrValue<bool> {
         assert_one_yocto();
 
         let mut ret = PromiseOrValue::Value(true);
         let account_id = env::predecessor_account_id();
-        assert!(in_client_echo_sender_whitelist(account_id.as_str()), "Unauthorized client echo sender: {}", account_id);
+        if client_echo.is_some() {
+            assert!(in_client_echo_sender_whitelist(account_id.as_str()), "Unauthorized client echo sender: {}", account_id);
+        }
         assert!(!token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
 
         let mut account = self.internal_unwrap_account(&account_id);
@@ -881,8 +887,9 @@ impl Contract {
         // check if withdraw token has been claimed
         if let Some(amount) =  all_rewards.get(&token_id) {
             if *amount > 0 {
-                // withdraw from supply
-                let promise = self.internal_simple_withdraw(&account_id, &mut account, &token_id, *amount, &account_id, Some(client_echo));
+                // reset affected_farms before withdraw, as withdraw has its own affected farms.
+                account.affected_farms.clear();
+                let promise = self.internal_simple_withdraw(&account_id, &mut account, &token_id, *amount, &account_id, client_echo);
                 ret = PromiseOrValue::Promise(promise);
             }
         }
