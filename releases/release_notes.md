@@ -1,5 +1,11 @@
 # Release Notes
 
+Version 0.15.7
+```bash=
+# codehash: AKVULfNaRdvNd9cU46Yhr6tYwb7wSpgQLBody9bS8Hnz
+```
+- introduce claim_withdraw interface.
+
 Version 0.15.6
 ```bash=
 # codehash: EnnVzP25zGsWqM48GfsDsgczkqijZ8swnwCT7zBM7SjF

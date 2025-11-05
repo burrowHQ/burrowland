@@ -880,6 +880,7 @@ impl Contract {
         assert!(!token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
 
         let mut account = self.internal_unwrap_account(&account_id);
+        assert!(!account.is_locked, "Account is locked!");
         account
             .affected_farms
             .extend(account.get_all_potential_farms());
