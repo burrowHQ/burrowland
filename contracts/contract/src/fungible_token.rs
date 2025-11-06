@@ -158,6 +158,7 @@ impl Contract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
+                    .with_unused_gas_weight(0)
                     .after_beneficiary_withdraw(account_id.clone(), token_id.clone(), amount.into())
             )
     }
