@@ -5,7 +5,7 @@ use near_sdk::json_types::U128;
 use near_sdk::{is_promise_success, serde_json, PromiseOrValue};
 
 const GAS_FOR_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
-const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 15);
+const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
 
 #[derive(Deserialize, Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]

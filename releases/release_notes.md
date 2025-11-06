@@ -2,9 +2,10 @@
 
 Version 0.15.7
 ```bash=
-# codehash: AKVULfNaRdvNd9cU46Yhr6tYwb7wSpgQLBody9bS8Hnz
+# codehash: 7RSjg6ESZ44rDtTnV5mg7RmcdDtSBCGsofotHfcXVRBE
 ```
 - introduce claim_withdraw interface.
+- reduce GAS_FOR_AFTER_FT_TRANSFER to 10T.
 
 Version 0.15.6
 ```bash=
