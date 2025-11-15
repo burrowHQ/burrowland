@@ -4,6 +4,8 @@ use crate::*;
 
 /// set static gas consumption for quering pyth
 pub const GAS_FOR_GET_PRICE: Gas = Gas(3 * Gas::ONE_TERA.0);
+/// set static gas consumption for extra call
+pub const GAS_FOR_EXTRA_CALL: Gas = Gas(4 * Gas::ONE_TERA.0);
 /// set MAX PROMISE numbers in case out of gas
 pub const GET_PRICE_PROMISES_LIMIT: usize = 20;
 
@@ -131,7 +133,7 @@ impl Contract {
                 if !promises_flags.contains(&extra_call_flag) {
                     promises_flags.push(extra_call_flag.clone());
                     promises.push(Promise::new(token_id.clone())
-                        .function_call_weight(extra_call.clone(), vec![], 0, GAS_FOR_GET_PRICE, GasWeight(0)));
+                        .function_call_weight(extra_call.clone(), vec![], 0, GAS_FOR_EXTRA_CALL, GasWeight(0)));
                 }
             }
         }
