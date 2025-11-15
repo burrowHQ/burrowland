@@ -217,12 +217,12 @@ impl Contract {
         (account_farm, new_rewards, inactive_rewards)
     }
 
-    pub fn internal_account_apply_affected_farms(&mut self, account: &mut Account) {
+    pub fn internal_account_apply_affected_farms(&mut self, account: &mut Account) -> HashMap<TokenId, Balance> {
+        let mut all_rewards: HashMap<TokenId, Balance> = HashMap::new();
         if account.affected_farms.is_empty() {
-            return;
+            return all_rewards;
         }
         account.add_affected_farm(FarmId::NetTvl);
-        let mut all_rewards: HashMap<TokenId, Balance> = HashMap::new();
         let mut farms = vec![];
         let mut farms_ids: Vec<_> = account.affected_farms.iter().cloned().collect();
         while let Some(farm_id) = farms_ids.pop() {
@@ -284,6 +284,7 @@ impl Contract {
                 account.farms.remove(&farm_id);
             }
         }
+        all_rewards
     }
 }
 
