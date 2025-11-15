@@ -1,5 +1,12 @@
 # Release Notes
 
+Version 0.15.7
+```bash=
+# codehash: 612fhaDpuo1Wg9JvAHnupUNpB2wgSgKADw3vAL1ipTm4
+```
+- improve pyth related gas.
+- reduce GAS_FOR_AFTER_FT_TRANSFER to 10T.
+
 Version 0.15.6
 ```bash=
 # codehash: EnnVzP25zGsWqM48GfsDsgczkqijZ8swnwCT7zBM7SjF
