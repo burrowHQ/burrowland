@@ -1,11 +1,11 @@
-use near_sdk::{serde_json, require, PromiseResult};
+use near_sdk::{GasWeight, PromiseResult, require, serde_json};
 
 use crate::*;
 
 /// set static gas consumption for quering pyth
-pub const GAS_FOR_GET_PRICE: Gas = Gas(5 * Gas::ONE_TERA.0);
-/// set static gas consumption for generating promises
-pub const GAS_FOR_BUFFER: Gas = Gas(40 * Gas::ONE_TERA.0);
+pub const GAS_FOR_GET_PRICE: Gas = Gas(3 * Gas::ONE_TERA.0);
+/// set static gas consumption for extra call
+pub const GAS_FOR_EXTRA_CALL: Gas = Gas(4 * Gas::ONE_TERA.0);
 /// set MAX PROMISE numbers in case out of gas
 pub const GET_PRICE_PROMISES_LIMIT: usize = 20;
 
@@ -124,6 +124,7 @@ impl Contract {
                 promises_flags.push(price_identifier.to_string());
                 promises.push(ext_pyth::ext(pyth_oracle_account_id.clone())
                     .with_static_gas(GAS_FOR_GET_PRICE)
+                    .with_unused_gas_weight(0)
                     .get_price_no_older_than(price_identifier, config.pyth_price_valid_duration_sec as u64));
             }
             
@@ -132,7 +133,7 @@ impl Contract {
                 if !promises_flags.contains(&extra_call_flag) {
                     promises_flags.push(extra_call_flag.clone());
                     promises.push(Promise::new(token_id.clone())
-                        .function_call(extra_call.clone(), vec![], 0, GAS_FOR_GET_PRICE));
+                        .function_call_weight(extra_call.clone(), vec![], 0, GAS_FOR_EXTRA_CALL, GasWeight(0)));
                 }
             }
         }

@@ -5,7 +5,7 @@ use near_sdk::json_types::U128;
 use near_sdk::{is_promise_success, serde_json, PromiseOrValue};
 
 const GAS_FOR_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
-const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 20);
+const GAS_FOR_AFTER_FT_TRANSFER: Gas = Gas(Gas::ONE_TERA.0 * 10);
 
 #[derive(Deserialize, Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
@@ -158,6 +158,7 @@ impl Contract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
+                    .with_unused_gas_weight(0)
                     .after_beneficiary_withdraw(account_id.clone(), token_id.clone(), amount.into())
             )
     }
@@ -179,10 +180,12 @@ impl Contract {
                 if is_margin_asset {
                     Self::ext(env::current_account_id())
                         .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
+                        .with_unused_gas_weight(0)
                         .after_margin_asset_ft_transfer(account_id.clone(), token_id.clone(), amount.into())
                 } else {
                     Self::ext(env::current_account_id())
                         .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
+                        .with_unused_gas_weight(0)
                         .after_ft_transfer(account_id.clone(), token_id.clone(), amount.into())
                 }
             )
@@ -202,7 +205,7 @@ impl Contract {
             .ft_transfer_call(account_id.clone(), ft_amount.into(), None, client_echo)
             .then(
                 Self::ext(env::current_account_id())
-                    .with_static_gas(Gas::ONE_TERA * 15)
+                    .with_static_gas(GAS_FOR_AFTER_FT_TRANSFER)
                     .with_unused_gas_weight(0)
                     .after_ft_transfer_call(account_id.clone(), token_id.clone(), ft_amount.into(), amount.into())
             );
