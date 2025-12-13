@@ -102,9 +102,11 @@ impl FungibleTokenReceiver for Contract {
                     let mut account = self.internal_unwrap_margin_account(&swap_ref.account_id);
                     let action_ts = account.position_latest_actions.remove(&swap_ref.pos_id).expect("There is no action for the position").0;
                     if sender_id == config.owner_id {
+                        // only owner can resume blocked magin actions pending for a while
                         require!(env::block_timestamp() - action_ts >= sec_to_nano(self.internal_margin_config().max_position_action_wait_sec), "Please wait for the position action");
                     } else {
-                        require!(sender_id == config.ref_exchange_id || sender_id == config.dcl_id.expect("Missing dcl id"), "Not allow");
+                        // only accept message from registered dexes
+                        require!(self.internal_margin_config().registered_dexes.contains_key(&sender_id), "Not allow");
                     }
                     if swap_ref.op == "open" {
                         self.on_open_trade_return(account, amount, &swap_ref);
