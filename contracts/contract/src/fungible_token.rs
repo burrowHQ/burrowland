@@ -20,6 +20,7 @@ pub enum TokenReceiverMsg {
     SwapReference { swap_ref: SwapReference },
     OnlyIncreaseCollateral,
     OnlyRepay,
+    ClientEchoDeposit { client_echo: String },
 }
 
 #[near_bindgen]
@@ -126,6 +127,29 @@ impl FungibleTokenReceiver for Contract {
                     self.internal_only_repay(&sender_id, &token_id, amount);
                     return PromiseOrValue::Value(U128(0));
                 }
+                TokenReceiverMsg::ClientEchoDeposit { client_echo } => {
+                    assert!(in_client_echo_sender_whitelist(sender_id.as_str()), "Unauthorized client echo sender: {}", sender_id);
+                    let mut account = self.internal_unwrap_account(&sender_id);
+                    let supplied_shares = self.internal_deposit(&mut account, &token_id, amount);
+                    events::emit::deposit(&sender_id, amount, &token_id);
+                    self.internal_account_apply_affected_farms(&mut account);
+                    self.internal_set_account(&sender_id, account);
+                    Promise::new(sender_id.clone())
+                        .function_call_weight(
+                            "on_burrowland_supply_client_echo".to_string(),
+                            serde_json::json!({
+                                "token_id": token_id,
+                                "supplied_shares": supplied_shares,
+                                "msg": client_echo,
+                            })
+                            .to_string()
+                            .into_bytes(),
+                            0,
+                            Gas(Gas::ONE_TERA.0 * 20),
+                            Default::default()
+                        );
+                    return PromiseOrValue::Value(U128(0));
+                }
             }
         };
 
@@ -225,7 +249,7 @@ trait ExtSelf {
         token_id: TokenId,
         ft_amount: U128,
         amount: U128,
-    );
+    ) -> Option<(U128, U128)>;
     fn after_margin_asset_ft_transfer(
         &mut self,
         account_id: AccountId,
@@ -282,7 +306,7 @@ impl ExtSelf for Contract {
         token_id: TokenId,
         ft_amount: U128,
         amount: U128,
-    ) {
+    ) -> Option<(U128, U128)> {
         let remain_ft_amount = match promise_result_as_success() {
             Some(result_bytes) => {
                 let used_amount = serde_json::from_slice::<U128>(&result_bytes).unwrap();
@@ -292,10 +316,11 @@ impl ExtSelf for Contract {
         };
         if remain_ft_amount == 0 {
             events::emit::withdraw_succeeded(&account_id, amount.0, &token_id);
+            None
         } else {
             let remain_amount = u128_ratio(amount.0, remain_ft_amount, ft_amount.0);
             let mut account = self.internal_unwrap_account(&account_id);
-            self.internal_deposit_without_asset_basic_check(&mut account, &token_id, remain_amount);
+            let redeposit_shares = self.internal_deposit_without_asset_basic_check(&mut account, &token_id, remain_amount);
             self.internal_set_account(&account_id, account);
             if remain_ft_amount == ft_amount.0 {
                 events::emit::withdraw_failed(&account_id, amount.0, &token_id);
@@ -303,6 +328,7 @@ impl ExtSelf for Contract {
                 events::emit::withdraw_failed(&account_id, remain_amount, &token_id);
                 events::emit::withdraw_succeeded(&account_id, amount.0 - remain_amount, &token_id);
             }
+            Some((U128(remain_amount), redeposit_shares))
         }
     }
 
