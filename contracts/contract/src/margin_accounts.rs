@@ -1,6 +1,17 @@
 use crate::*;
 use events::emit::LostfoundSupplyShares;
 
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
+pub struct MarginStop {
+    /// profit rate to collateral in BPS
+    pub stop_profit: Option<u32>,
+    /// loss rate to collateral in BPS
+    pub stop_loss: Option<u32>,
+    pub service_token_id: TokenId,
+    pub service_token_amount: U128,
+}
+
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct MarginAccount {
     /// A copy of an account ID. Saves one storage_read when iterating on accounts.
@@ -12,6 +23,8 @@ pub struct MarginAccount {
     pub margin_positions: UnorderedMap<PosId, MarginTradingPosition>,
     // Record the timestamp of the position initiating the swap action.
     pub position_latest_actions: HashMap<PosId, U64>,
+    // margin stops
+    pub stops: HashMap<PosId, MarginStop>,
 
     /// Tracks changes in storage usage by persistent collections in this account.
     #[borsh_skip]
@@ -21,6 +34,7 @@ pub struct MarginAccount {
 #[derive(BorshSerialize, BorshDeserialize)]
 pub enum VMarginAccount {
     V0(MarginAccountV0),
+    V1(MarginAccountV1),
     Current(MarginAccount),
 }
 
@@ -34,6 +48,7 @@ impl From<VMarginAccount> for MarginAccount {
     fn from(c: VMarginAccount) -> Self {
         match c {
             VMarginAccount::V0(c) => c.into(),
+            VMarginAccount::V1(c) => c.into(),
             VMarginAccount::Current(c) => c,
         }
     }
@@ -48,6 +63,7 @@ impl MarginAccount {
                 account_id: account_id.clone()
             }),
             position_latest_actions: HashMap::new(),
+            stops: HashMap::new(),
             storage_tracker: Default::default(),
         }
     }
@@ -126,6 +142,25 @@ impl Contract {
             self.margin_accounts.insert(account_id, &old_margin_account.into());
             // Store the shares in asset.lostfound_shares.
             margin_account_token_shares_to_lostfound(account_id, asset_debt, asset_position, margin_account_updates);
+        }
+    }
+
+    /// true if set is OK, false if set encountered storage problem and account unchanged
+    pub(crate) fn try_to_set_margin_account(&mut self, account_id: &AccountId, mut account: MarginAccount) -> bool {
+        let old_margin_account = self.internal_unwrap_margin_account(account_id);
+        let mut storage = self.internal_unwrap_storage(account_id);
+        storage
+            .storage_tracker
+            .consume(&mut account.storage_tracker);
+        storage.storage_tracker.start();
+        self.margin_accounts.insert(account_id, &account.into());
+        storage.storage_tracker.stop();
+        if !self.internal_set_storage_without_panic(account_id, storage) {
+            // Rollback the state.
+            self.margin_accounts.insert(account_id, &old_margin_account.into());
+            false
+        } else {
+            true
         }
     }
 }

@@ -611,4 +611,21 @@ pub mod emit {
             },
         );
     }
+
+    pub fn set_stop(
+        account_id: &AccountId,
+        stop_profit: &Option<u32>,
+        stop_loss: &Option<u32>,
+        position: &String
+    ) {
+        log_event(
+            "set_stop",
+            json!({
+                "account_id": account_id,
+                "stop_profit": stop_profit,
+                "stop_loss": stop_loss,
+                "position": position,
+            }),
+        );
+    }
 }

@@ -52,7 +52,7 @@ impl Contract {
                 MarginAction::DecreaseCollateral { pos_id, amount: _ } => {
                     Some(pos_id)
                 }
-                MarginAction::OpenPosition { token_c_id: _, token_c_amount: _, token_d_id, token_d_amount: _, token_p_id, min_token_p_amount: _, swap_indication: _ } => {
+                MarginAction::OpenPosition { token_c_id: _, token_c_amount: _, token_d_id, token_d_amount: _, token_p_id, min_token_p_amount: _, swap_indication: _, stop_profit: _, stop_loss: _, } => {
                     tokens.insert(token_p_id.clone());
                     tokens.insert(token_d_id.clone());
                     None

@@ -251,6 +251,43 @@ impl From<MarginAccountV0> for MarginAccount {
             supplied, 
             margin_positions,
             position_latest_actions: HashMap::new(),
+            stops: HashMap::new(),
+            storage_tracker,
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct MarginAccountV1 {
+    /// A copy of an account ID. Saves one storage_read when iterating on accounts.
+    pub account_id: AccountId,
+    /// A list of assets that are supplied by the account (but not used a collateral).
+    /// It's not returned for account pagination.
+    pub supplied: HashMap<TokenId, Shares>,
+    // margin trading related
+    pub margin_positions: UnorderedMap<PosId, MarginTradingPosition>,
+    // Record the timestamp of the position initiating the swap action.
+    pub position_latest_actions: HashMap<PosId, U64>,
+    /// Tracks changes in storage usage by persistent collections in this account.
+    #[borsh_skip]
+    pub storage_tracker: StorageTracker,
+}
+
+impl From<MarginAccountV1> for MarginAccount {
+    fn from(a: MarginAccountV1) -> Self {
+        let MarginAccountV1 { 
+            account_id, 
+            supplied, 
+            margin_positions,
+            position_latest_actions,
+            storage_tracker,
+        } = a;
+        Self {
+            account_id, 
+            supplied, 
+            margin_positions,
+            position_latest_actions,
+            stops: HashMap::new(),
             storage_tracker,
         }
     }

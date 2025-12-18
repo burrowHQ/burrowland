@@ -141,6 +141,40 @@ impl Contract {
         }
     }
 
+    /// check if the position meets stop-loss or stop-win currently.
+    /// estimate value of position tokens and debt tokens, including holding position fee.
+    /// deduct slippage from selling position tokens.
+    pub(crate) fn is_stop_active(
+        &self,
+        mt: &MarginTradingPosition,
+        prices: &Prices,
+        stop: &MarginStop,
+        slippage: u32,
+    ) -> bool {
+        let value_position = self.get_mtp_position_value(mt, prices);
+        let value_debt = self.get_mtp_debt_value(mt, prices);
+        let value_collateral = self.get_mtp_collateral_value(mt, prices);
+        let total_hp_fee = self.get_mtp_hp_fee_value(mt, prices);
+
+        if let Some(stop_loss) = stop.stop_loss {
+            // target remain collateral: value_collateral.mul_ratio(stop_loss)
+            // current remain: (value_position + value_collateral).mul_ratio(10000-slippage) - (value_debt + total_hp_fee)
+            if (value_position + value_collateral).mul_ratio(10000 - slippage) < value_collateral.mul_ratio(stop_loss) + value_debt + total_hp_fee {
+                return true;
+            }
+        }
+
+        if let Some(stop_profit) = stop.stop_profit {
+            // target gross profit: value_collateral.mul_ratio(stop_profit)
+            // current remain: (value_position + value_collateral).mul_ratio(10000-slippage) - (value_debt + total_hp_fee)
+            if (value_position + value_collateral).mul_ratio(10000 - slippage) > value_collateral.mul_ratio(stop_profit) + value_debt + total_hp_fee {
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub(crate) fn is_mt_liquidatable(
         &self,
         mt: &MarginTradingPosition,
@@ -277,6 +311,8 @@ impl Contract {
         min_token_p_amount: Balance,
         swap_indication: &SwapIndication,
         prices: &Prices,
+        stop_profit: &Option<u32>, 
+        stop_loss: &Option<u32>,
     ) -> EventDataMarginOpen {
         let margin_config = self.internal_margin_config();
         let pd = PositionDirection::new(token_c_id, token_d_id, token_p_id);
@@ -400,6 +436,20 @@ impl Contract {
             token_p_id.clone(),
         );
 
+        // process stop service 
+        let mut margin_stop = None;
+        if stop_profit.is_some() || stop_loss.is_some() {
+            if let Some(mssf) = read_mssf_from_storage() {
+                let (amount, _) = self.internal_margin_withdraw_supply(account, &mssf.token_id, Some(mssf.amount.into()));
+                margin_stop = Some(MarginStop {
+                    stop_profit: *stop_profit,
+                    stop_loss: *stop_loss,
+                    service_token_id: mssf.token_id.clone(),
+                    service_token_amount: amount.into(),
+                });
+            }
+        }
+
         // passes all check, start to open
         let event = EventDataMarginOpen {
             account_id: account.account_id.clone(),
@@ -420,6 +470,9 @@ impl Contract {
         account.margin_positions.insert(&pos_id, &mt);
         account.storage_tracker.stop();
         account.position_latest_actions.insert(pos_id.clone(), ts.into());
+        if let Some(margin_stop) = margin_stop {
+            account.stops.insert(pos_id.clone(), margin_stop);
+        }
         // step 4: call dex to trade and wait for callback
         // organize swap action
         let swap_ref = SwapReference {
@@ -527,7 +580,7 @@ impl Contract {
             "min_debt_amount is too low"
         );
 
-        if op == "close" || op == "liquidate" {
+        if op == "close" || op == "liquidate" || op == "stop" {
             //   ensure all debt would be repaid
             //   and take holding-position fee into account
             if min_token_d_amount < total_debt_amount + hp_fee {
@@ -549,6 +602,13 @@ impl Contract {
             assert!(
                 self.is_mt_liquidatable(&mt, prices, mbtl.min_safety_buffer),
                 "Margin position is not liquidatable"
+            );
+        } else if op == "stop" {
+            let margin_stop = account.stops.get(pos_id);
+            assert!(margin_stop.is_some(), "Margin position has no stop settings");
+            assert!(
+                self.is_stop_active(&mt, prices, margin_stop.unwrap(), 0),
+                "Margin position is not stopable yet"
             );
         } else if op == "forceclose" {
             assert!(
@@ -736,6 +796,55 @@ impl Contract {
             &claim_token_p_shares,
         );
     }
+
+    pub(crate) fn process_set_stop(
+        &mut self,
+        account: &mut MarginAccount,
+        pos_id: &String,
+        stop_profit: Option<u32>,
+        stop_loss: Option<u32>,
+    ) {
+        let mt = account
+            .margin_positions
+            .get(pos_id)
+            .expect("Position not exist");
+        assert!(
+            !mt.is_locking,
+            "Position is currently waiting for a trading result."
+        );
+        if let Some(margin_stop) = account.stops.remove(pos_id) {
+            if stop_profit.is_none() && stop_loss.is_none() {
+                // remove stop, refund fee back to user
+                self.internal_margin_deposit(account, &margin_stop.service_token_id, margin_stop.service_token_amount.0);
+
+            } else {
+                // update stop
+                let margin_stop = MarginStop {
+                    stop_profit,
+                    stop_loss,
+                    service_token_id: margin_stop.service_token_id.clone(),
+                    service_token_amount: margin_stop.service_token_amount,
+                };
+                account.stops.insert(pos_id.clone(), margin_stop);
+            }
+
+        } else {
+            // add stop
+            assert!(stop_profit.is_some() || stop_loss.is_some(), "No margin stop exists for this position");
+            if let Some(mssf) = read_mssf_from_storage() {
+                let (amount, _) = self.internal_margin_withdraw_supply(account, &mssf.token_id, Some(mssf.amount.into()));
+                let margin_stop = MarginStop {
+                    stop_profit,
+                    stop_loss,
+                    service_token_id: mssf.token_id.clone(),
+                    service_token_amount: amount.into(),
+                };
+                account.stops.insert(pos_id.clone(), margin_stop);
+            } else {
+                env::panic_str("Margin stop service fee policy is not set.");
+            }
+        }
+    }
 }
 
 #[near_bindgen]
@@ -770,6 +879,10 @@ impl Contract {
                 account.storage_tracker.start();
                 account.margin_positions.remove(&pos_id);
                 account.storage_tracker.stop();
+                // Remove pos_id from stop and refund to user's supply if necessary
+                if let Some(margin_stop) = account.stops.remove(&pos_id) {
+                    self.internal_margin_deposit(&mut account, &margin_stop.service_token_id, margin_stop.service_token_amount.into());
+                }
                 events::emit::margin_open_failed(&account_id, &pos_id);
                 
             } else if op == "decrease" {

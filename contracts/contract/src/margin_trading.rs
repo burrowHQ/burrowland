@@ -1,4 +1,4 @@
-use crate::{*, events::emit::{EventDataMarginOpenResult,EventDataMarginDecreaseResult}};
+use crate::{*, events::emit::{EventDataMarginOpenResult,EventDataMarginDecreaseResult,LostfoundSupplyShares}};
 use near_sdk::serde_json;
 
 /// clients use this to indicate how to trading
@@ -409,6 +409,9 @@ impl Contract {
         let mut asset_position = self.internal_unwrap_asset(&mt.token_p_id);
         let (mut benefit_m_shares, mut benefit_d_shares, mut benefit_p_shares) =
             (0_u128, 0_u128, 0_u128);
+        let mut ssf_token_id: Option<TokenId> = None;
+        let mut ssf_token_amount: Option<Balance> = None;
+
 
         // figure out actual repay amount and shares
         // figure out how many debt_cap been repaid, and charge corresponding holding-position fee from repayment.
@@ -551,6 +554,14 @@ impl Contract {
             account.storage_tracker.start();
             account.margin_positions.remove(&sr.pos_id);
             account.storage_tracker.stop();
+
+            // As the position is about to close, stop service fee need to be removed and settled.
+            // Here, only remove and record stop service fee token_id and amount for later settlement.
+            if let Some(margin_stop) = account.stops.remove(&sr.pos_id) {
+                ssf_token_id = Some(margin_stop.service_token_id);
+                ssf_token_amount = Some(margin_stop.service_token_amount.0);
+            }
+
         } else {
             if sr.op != "decrease" {
                 env::log_str(&format!(
@@ -562,6 +573,12 @@ impl Contract {
             }
         }
 
+        // save all updates on the margin account so far, 
+        // as there won't be any additional storage cost, no panic would happen.
+        self.internal_set_margin_account(&account_id, account);
+
+        // re-fetch user's margin account for possible benefits distribution
+        let mut account = self.internal_unwrap_margin_account(&account_id);
         // distribute benefits
         let mut account_updates = None;
         if benefit_d_shares > 0 || benefit_m_shares > 0 || benefit_p_shares > 0 {
@@ -648,8 +665,11 @@ impl Contract {
             }
         }
 
+
         if let Some(account_updates) = account_updates{
             events::emit::margin_benefits(&account_id, &account_updates);
+            // contribute benefits to user's margin supply, may increase storage usage,
+            // if encounter storage problem, the benefit tokens will go to lostfound and user's margin account remain unchanged.
             self.internal_set_margin_account_without_panic(
                 &account_id,
                 account,
@@ -657,12 +677,48 @@ impl Contract {
                 &mut asset_position,
                 account_updates
             );
-        } else {
-            self.internal_set_margin_account(&account_id, account);
-        }
+        } 
 
         self.internal_set_asset_without_asset_basic_check(&mt.token_d_id, asset_debt);
         self.internal_set_asset_without_asset_basic_check(&mt.token_p_id, asset_position);
+
+        // handle service fee receiver account and service fee asset 
+        // if sr.op == "stop" then send stop service fee to sr.liquidator_id's supply
+        // else send stop service fee to owner's supply
+        if let Some(ssf_token_id) = ssf_token_id {
+            let mut asset_ssf = self.internal_unwrap_asset(&ssf_token_id);
+
+            // figure out recipient
+            let ssf_recipient = if sr.op == "stop" {
+                sr.liquidator_id.clone().unwrap_or(account_id.clone())
+            } else {
+                account_id.clone()
+            };
+            let mut ssf_account = 
+            if let Some(account) = self.internal_get_margin_account(&ssf_recipient) {
+                account
+            } else {
+                self.internal_unwrap_margin_account(&account_id)
+            };
+            let final_ssf_recipient = ssf_account.account_id.clone();
+
+            let amount = ssf_token_amount.unwrap();
+            let shares: Shares = asset_ssf.supplied.amount_to_shares(amount, false);
+            ssf_account.deposit_supply_shares(&ssf_token_id, &shares);
+            asset_ssf.supplied.deposit(shares, amount);
+            
+            if !self.try_to_set_margin_account(&final_ssf_recipient, ssf_account) {
+                // move shares to lostfound
+                asset_ssf.lostfound_shares += shares.0;
+                events::emit::lostfound_supply_shares(LostfoundSupplyShares {
+                    account_id: final_ssf_recipient.clone(),
+                    shares: HashMap::from([
+                        (ssf_token_id.clone(), shares),  
+                    ])
+                });
+            }
+            self.internal_set_asset_without_asset_basic_check(&ssf_token_id, asset_ssf);
+        }
 
         event
     }
