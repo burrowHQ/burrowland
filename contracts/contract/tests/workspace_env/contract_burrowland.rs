@@ -1284,7 +1284,9 @@ impl Burrowland {
                     token_d_amount, 
                     token_p_id: near_sdk::AccountId::new_unchecked(token_p_id.to_string()), 
                     min_token_p_amount, 
-                    swap_indication 
+                    swap_indication,
+                    stop_profit: None,
+                    stop_loss: None, 
                 }
             ],
         }).await
@@ -1309,7 +1311,9 @@ impl Burrowland {
                 token_d_amount, 
                 token_p_id: near_sdk::AccountId::new_unchecked(token_p_id.to_string()), 
                 min_token_p_amount, 
-                swap_indication 
+                swap_indication,
+                stop_profit: None,
+                stop_loss: None, 
             }
         ]).await
     }

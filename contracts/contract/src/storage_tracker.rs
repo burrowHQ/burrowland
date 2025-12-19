@@ -45,7 +45,7 @@ impl StorageTracker {
     pub fn consume(&mut self, other: &mut StorageTracker) {
         self.bytes_added += other.bytes_added;
         other.bytes_added = 0;
-        self.bytes_released = other.bytes_released;
+        self.bytes_released += other.bytes_released;
         other.bytes_released = 0;
         assert!(
             other.initial_storage_usage.is_none(),

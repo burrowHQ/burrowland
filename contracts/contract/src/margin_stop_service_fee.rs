@@ -5,7 +5,7 @@ use crate::*;
 #[serde(crate = "near_sdk::serde")]
 pub struct MarginStopServiceFee {
     pub token_id: AccountId,
-    pub amount: U128,
+    pub amount: U128,  // burrow inner decimals
 }
 
 pub fn read_mssf_from_storage(

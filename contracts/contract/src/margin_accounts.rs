@@ -2,6 +2,7 @@ use crate::*;
 use events::emit::LostfoundSupplyShares;
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Clone)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
 #[serde(crate = "near_sdk::serde")]
 pub struct MarginStop {
     /// profit rate to collateral in BPS
@@ -145,13 +146,15 @@ impl Contract {
         }
     }
 
-    /// true if set is OK, false if set encountered storage problem and account unchanged
+    /// Set margin account state in case there is no changes on nested persistent collections.
+    /// true if set is OK, false if set encountered storage problem and account state is unchanged
     pub(crate) fn try_to_set_margin_account(&mut self, account_id: &AccountId, mut account: MarginAccount) -> bool {
         let old_margin_account = self.internal_unwrap_margin_account(account_id);
         let mut storage = self.internal_unwrap_storage(account_id);
-        storage
-            .storage_tracker
-            .consume(&mut account.storage_tracker);
+        if !account.storage_tracker.is_empty() {
+            // the inner storage should NOT be touched, otherwise the rollback would cause state inconsistency
+            return false
+        }
         storage.storage_tracker.start();
         self.margin_accounts.insert(account_id, &account.into());
         storage.storage_tracker.stop();
