@@ -145,7 +145,7 @@ impl FungibleTokenReceiver for Contract {
                             .to_string()
                             .into_bytes(),
                             0,
-                            Gas(Gas::ONE_TERA.0 * 20),
+                            Gas(Gas::ONE_TERA.0 * 50),
                             Default::default()
                         );
                     return PromiseOrValue::Value(U128(0));
