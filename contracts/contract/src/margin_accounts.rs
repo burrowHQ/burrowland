@@ -174,6 +174,7 @@ pub struct MarginAccountDetailedView {
     pub supplied: Vec<AssetView>,
     pub margin_positions: HashMap<PosId, MarginTradingPositionView>,
     pub position_latest_actions: HashMap<PosId, U64>,
+    pub stops: HashMap<PosId, MarginStop>,
 }
 
 #[derive(Serialize)]
@@ -215,6 +216,7 @@ impl Contract {
                 .map(|(pos_id, mtp)| (pos_id, self.margin_trading_position_into_view(mtp)))
                 .collect(),
             position_latest_actions: account.position_latest_actions.clone(),
+            stops: account.stops.clone(),
         }
     }
 

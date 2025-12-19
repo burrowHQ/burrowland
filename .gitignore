@@ -13,3 +13,5 @@ CLAUDE.md
 CLAUDE.local.md
 AGENTS.md
 TODO_*.md
+docs/audit_*
+docs/refactor_*
