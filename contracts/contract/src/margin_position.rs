@@ -436,9 +436,11 @@ impl Contract {
             token_p_id.clone(),
         );
 
-        // process stop service 
+        // process stop service
         let mut margin_stop = None;
         if stop_profit.is_some() || stop_loss.is_some() {
+            // Validate stop settings before processing
+            validate_stop_settings(stop_profit, stop_loss);
             if let Some(mssf) = read_mssf_from_storage() {
                 let (amount, _) = self.internal_margin_withdraw_supply(account, &mssf.token_id, Some(mssf.amount.into()));
                 margin_stop = Some(MarginStop {
@@ -447,6 +449,8 @@ impl Contract {
                     service_token_id: mssf.token_id.clone(),
                     service_token_amount: amount.into(),
                 });
+            } else {
+                env::panic_str("Margin stop service fee policy is not set.");
             }
         }
 
@@ -812,6 +816,8 @@ impl Contract {
             !mt.is_locking,
             "Position is currently waiting for a trading result."
         );
+        // Validate stop settings before processing
+        validate_stop_settings(&stop_profit, &stop_loss);
         if let Some(margin_stop) = account.stops.remove(pos_id) {
             if stop_profit.is_none() && stop_loss.is_none() {
                 // remove stop, refund fee back to user
@@ -911,4 +917,29 @@ impl Contract {
             self.internal_set_margin_account(&account_id, account);
         }
     }
+}
+
+/// Validates stop-loss and stop-profit BPS values.
+/// - stop_loss must be between 1 and 9999 BPS (0.01% - 99.99%)
+/// - stop_profit must be greater than 10000 BPS (> 100%)
+/// - If both are set, stop_loss must be less than stop_profit
+fn validate_stop_settings(stop_profit: &Option<u32>, stop_loss: &Option<u32>) {
+    if let Some(sl) = stop_loss {
+        assert!(
+            *sl > 0 && *sl < 10000,
+            "Stop loss must be between 1 and 9999 BPS (0.01%-99.99%)"
+        );
+    }
+    if let Some(sp) = stop_profit {
+        assert!(
+            *sp > 10000,
+            "Stop profit must be greater than 10000 BPS (>100%)"
+        );
+    }
+    // if let (Some(sl), Some(sp)) = (stop_loss, stop_profit) {
+    //     assert!(
+    //         sl < sp,
+    //         "Stop loss must be less than stop profit"
+    //     );
+    // }
 }

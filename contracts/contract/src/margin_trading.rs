@@ -293,6 +293,102 @@ impl SwapReference {
     }
 }
 
+/// Operation types for margin position decrease
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub enum DecreaseOperation {
+    /// User voluntarily decreasing position
+    Decrease,
+    /// User closing entire position
+    Close,
+    /// Liquidator closing unhealthy position
+    Liquidate,
+    /// Force closing underwater position
+    ForceClose,
+    /// Keeper executing stop order
+    Stop,
+}
+
+impl DecreaseOperation {
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "decrease" => Self::Decrease,
+            "close" => Self::Close,
+            "liquidate" => Self::Liquidate,
+            "forceclose" => Self::ForceClose,
+            "stop" => Self::Stop,
+            _ => env::panic_str(&format!("Unknown decrease operation: {}", s)),
+        }
+    }
+
+    /// Returns true if this operation should fully close the position
+    pub fn is_full_close(&self) -> bool {
+        matches!(self, Self::Close | Self::Liquidate | Self::ForceClose | Self::Stop)
+    }
+
+    /// Returns true if remaining debt should be repaid from collateral
+    pub fn should_repay_from_collateral(&self) -> bool {
+        self.is_full_close()
+    }
+
+    /// Returns true if protocol reserve can cover bad debt
+    pub fn can_use_protocol_reserve(&self) -> bool {
+        matches!(self, Self::ForceClose)
+    }
+
+    /// Returns true if benefits go to protocol owner instead of position owner
+    pub fn benefits_to_protocol_owner(&self) -> bool {
+        matches!(self, Self::Liquidate | Self::ForceClose)
+    }
+}
+
+/// Result of debt repayment calculation
+pub struct DebtRepaymentResult {
+    /// Amount of debt token repaid
+    pub repay_amount: Balance,
+    /// Shares of debt repaid
+    pub repay_shares: Shares,
+    /// Amount left over after full debt repayment
+    pub leftover_amount: Balance,
+    /// Holding position fee paid from this repayment
+    pub holding_fee_paid: Balance,
+    /// Remaining debt cap after this repayment
+    pub remaining_debt_cap: Balance,
+}
+
+/// Accumulated benefits from position settlement
+#[derive(Default)]
+pub struct SettlementBenefits {
+    /// Collateral token shares (benefit_m_shares)
+    pub collateral_shares: u128,
+    /// Debt token shares from leftover (benefit_d_shares)
+    pub debt_token_shares: u128,
+    /// Position token shares (benefit_p_shares)
+    pub position_token_shares: u128,
+}
+
+impl SettlementBenefits {
+    pub fn has_any(&self) -> bool {
+        self.collateral_shares > 0
+            || self.debt_token_shares > 0
+            || self.position_token_shares > 0
+    }
+
+    pub fn to_margin_updates(&self, position: &MarginTradingPosition) -> MarginAccountUpdates {
+        MarginAccountUpdates {
+            token_c_update: (position.token_c_id.clone(), self.collateral_shares),
+            token_d_update: (position.token_d_id.clone(), self.debt_token_shares),
+            token_p_update: (position.token_p_id.clone(), self.position_token_shares),
+        }
+    }
+}
+
+/// Stop service fee info extracted during settlement
+pub struct StopServiceFeeInfo {
+    pub token_id: TokenId,
+    pub amount: Balance,
+}
+
 impl Contract {
     pub(crate) fn parse_swap_indication(&self, swap_indication: &SwapIndication) -> SwapDetail {
         let margin_config = self.internal_margin_config();
@@ -397,6 +493,208 @@ impl Contract {
         self.internal_set_margin_account(&account_id, account);
     }
 
+    /// Calculates debt repayment amounts including holding position fee
+    ///
+    /// Returns a DebtRepaymentResult containing:
+    /// - repay_amount: actual amount of debt being repaid
+    /// - repay_shares: shares of debt being repaid
+    /// - leftover_amount: amount left after full debt repayment
+    /// - holding_fee_paid: holding position fee deducted
+    /// - remaining_debt_cap: debt cap remaining after repayment
+    fn calculate_debt_repayment(
+        &self,
+        position: &MarginTradingPosition,
+        asset_debt: &Asset,
+        swap_amount: Balance,
+    ) -> DebtRepaymentResult {
+        let debt_amount = asset_debt
+            .margin_debt
+            .shares_to_amount(position.token_d_shares, true);
+
+        let holding_fee = u128_ratio(
+            position.debt_cap,
+            asset_debt.unit_acc_hp_interest - position.uahpi_at_open,
+            UNIT,
+        );
+
+        let repay_cap = u128_ratio(position.debt_cap, swap_amount, debt_amount + holding_fee);
+
+        if repay_cap >= position.debt_cap {
+            // Full repayment: can pay all debt + holding fee
+            DebtRepaymentResult {
+                repay_amount: debt_amount,
+                repay_shares: position.token_d_shares,
+                leftover_amount: swap_amount - debt_amount - holding_fee,
+                holding_fee_paid: holding_fee,
+                remaining_debt_cap: 0,
+            }
+        } else {
+            // Partial repayment: proportional holding fee
+            let proportional_fee = u128_ratio(holding_fee, repay_cap, position.debt_cap);
+            let repay_amount = swap_amount - proportional_fee;
+            DebtRepaymentResult {
+                repay_amount,
+                repay_shares: asset_debt
+                    .margin_debt
+                    .amount_to_shares(repay_amount, false),
+                leftover_amount: 0,
+                holding_fee_paid: proportional_fee,
+                remaining_debt_cap: position.debt_cap - repay_cap,
+            }
+        }
+    }
+
+    /// Attempts to repay remaining debt using collateral (when token_c == token_d)
+    ///
+    /// Returns (debt_shares_repaid, collateral_shares_used, amount_repaid)
+    fn repay_debt_from_collateral(
+        &self,
+        position: &MarginTradingPosition,
+        asset_debt: &Asset,
+    ) -> (Shares, Shares, Balance) {
+        // Only applicable when collateral and debt are same token and there's remaining debt
+        if position.token_d_shares.0 == 0 || position.token_d_id != position.token_c_id {
+            return (U128(0), U128(0), 0);
+        }
+
+        let remaining_debt = asset_debt
+            .margin_debt
+            .shares_to_amount(position.token_d_shares, true);
+
+        let collateral_shares_needed = asset_debt
+            .supplied
+            .amount_to_shares(remaining_debt, true);
+
+        if collateral_shares_needed <= position.token_c_shares {
+            // Can repay all remaining debt
+            (position.token_d_shares, collateral_shares_needed, remaining_debt)
+        } else {
+            // Use all collateral for partial repayment
+            let collateral_amount = asset_debt
+                .supplied
+                .shares_to_amount(position.token_c_shares, false);
+            let debt_shares = asset_debt
+                .margin_debt
+                .amount_to_shares(collateral_amount, false);
+            (debt_shares, position.token_c_shares, collateral_amount)
+        }
+    }
+
+    /// Covers remaining debt using protocol reserve (for forceclose operations)
+    fn cover_debt_from_protocol_reserve(
+        &mut self,
+        position: &mut MarginTradingPosition,
+        asset_debt: &mut Asset,
+    ) {
+        if position.token_d_shares.0 == 0 {
+            return;
+        }
+
+        let remaining_debt = asset_debt
+            .margin_debt
+            .shares_to_amount(position.token_d_shares, true);
+
+        if asset_debt.reserved >= remaining_debt {
+            asset_debt.reserved -= remaining_debt;
+        } else {
+            let uncovered_debt = remaining_debt - asset_debt.reserved;
+            asset_debt.reserved = 0;
+            let mut protocol_debts = read_protocol_debts_from_storage();
+            protocol_debts
+                .entry(position.token_d_id.clone())
+                .and_modify(|v| *v += uncovered_debt)
+                .or_insert(uncovered_debt);
+            write_protocol_debts_to_storage(protocol_debts);
+            events::emit::new_protocol_debts(&position.token_d_id, uncovered_debt);
+        }
+
+        events::emit::forceclose_protocol_loss(&position.token_d_id, remaining_debt);
+        asset_debt
+            .margin_debt
+            .withdraw(position.token_d_shares, remaining_debt);
+        position.token_d_shares.0 = 0;
+    }
+
+    /// Settles a closed position: converts remaining assets to benefits
+    ///
+    /// Returns optional StopServiceFeeInfo if stop order was attached
+    fn settle_closed_position(
+        &mut self,
+        account: &mut MarginAccount,
+        position: &MarginTradingPosition,
+        asset_position: &mut Asset,
+        pos_id: &String,
+        benefits: &mut SettlementBenefits,
+    ) -> Option<StopServiceFeeInfo> {
+        // Collateral becomes benefit
+        if position.token_c_shares.0 > 0 {
+            benefits.collateral_shares = position.token_c_shares.0;
+        }
+
+        // Position token becomes supply shares benefit
+        if position.token_p_amount > 0 {
+            let position_shares = asset_position
+                .supplied
+                .amount_to_shares(position.token_p_amount, false);
+            asset_position
+                .supplied
+                .deposit(position_shares, position.token_p_amount);
+            asset_position.margin_position -= position.token_p_amount;
+            benefits.position_token_shares = position_shares.0;
+        }
+
+        // Remove margin position from storage
+        account.storage_tracker.start();
+        account.margin_positions.remove(pos_id);
+        account.storage_tracker.stop();
+
+        // Extract stop service fee if present
+        account.stops.remove(pos_id).map(|margin_stop| StopServiceFeeInfo {
+            token_id: margin_stop.service_token_id,
+            amount: margin_stop.service_token_amount.0,
+        })
+    }
+
+    /// Settles stop service fee to appropriate recipient
+    fn settle_stop_service_fee(
+        &mut self,
+        fee_info: StopServiceFeeInfo,
+        operation: DecreaseOperation,
+        position_owner_id: &AccountId,
+        keeper_id: Option<&AccountId>,
+    ) {
+        let mut asset = self.internal_unwrap_asset(&fee_info.token_id);
+
+        // Determine recipient: keeper for stop operation, owner otherwise
+        let recipient_id = if operation == DecreaseOperation::Stop {
+            keeper_id.unwrap_or(position_owner_id)
+        } else {
+            position_owner_id
+        };
+
+        // Get recipient account or fallback to owner's account
+        let mut recipient_account = self
+            .internal_get_margin_account(recipient_id)
+            .unwrap_or_else(|| self.internal_unwrap_margin_account(position_owner_id));
+
+        let final_recipient = recipient_account.account_id.clone();
+        let shares = asset.supplied.amount_to_shares(fee_info.amount, false);
+
+        recipient_account.deposit_supply_shares(&fee_info.token_id, &shares);
+        asset.supplied.deposit(shares, fee_info.amount);
+
+        if !self.try_to_set_margin_account(&final_recipient, recipient_account) {
+            // Fallback to lostfound
+            asset.lostfound_shares += shares.0;
+            events::emit::lostfound_supply_shares(LostfoundSupplyShares {
+                account_id: final_recipient,
+                shares: HashMap::from([(fee_info.token_id.clone(), shares)]),
+            });
+        }
+
+        self.internal_set_asset_without_asset_basic_check(&fee_info.token_id, asset);
+    }
+
     pub(crate) fn on_decrease_trade_return(
         &mut self,
         mut account: MarginAccount,
@@ -404,320 +702,200 @@ impl Contract {
         sr: &SwapReference,
     ) -> EventDataMarginDecreaseResult {
         let account_id = account.account_id.clone();
-        let mut mt = account.margin_positions.get(&sr.pos_id).unwrap().clone();
-        let mut asset_debt = self.internal_unwrap_asset(&mt.token_d_id);
-        let mut asset_position = self.internal_unwrap_asset(&mt.token_p_id);
-        let (mut benefit_m_shares, mut benefit_d_shares, mut benefit_p_shares) =
-            (0_u128, 0_u128, 0_u128);
-        let mut ssf_token_id: Option<TokenId> = None;
-        let mut ssf_token_amount: Option<Balance> = None;
+        let operation = DecreaseOperation::from_str(&sr.op);
+        let mut position = account.margin_positions.get(&sr.pos_id).unwrap().clone();
+        let mut asset_debt = self.internal_unwrap_asset(&position.token_d_id);
+        let mut asset_position = self.internal_unwrap_asset(&position.token_p_id);
+        let mut benefits = SettlementBenefits::default();
 
+        // === Section 1: Calculate and apply debt repayment ===
+        let repayment = self.calculate_debt_repayment(&position, &asset_debt, amount);
 
-        // figure out actual repay amount and shares
-        // figure out how many debt_cap been repaid, and charge corresponding holding-position fee from repayment.
-        let debt_amount = asset_debt
-            .margin_debt
-            .shares_to_amount(mt.token_d_shares, true);
-        let hp_fee = u128_ratio(
-            mt.debt_cap,
-            asset_debt.unit_acc_hp_interest - mt.uahpi_at_open,
-            UNIT,
-        );
-        
-        let repay_cap = u128_ratio(mt.debt_cap, amount, debt_amount + hp_fee);
+        // Apply debt repayment to asset and position
+        asset_debt.margin_debt.withdraw(repayment.repay_shares, repayment.repay_amount);
+        position.token_d_shares.0 -= repayment.repay_shares.0;
+        position.debt_cap = repayment.remaining_debt_cap;
+        asset_debt.prot_fee += repayment.holding_fee_paid;
 
-        let (repay_amount, repay_shares, left_amount, repay_hp_fee) = if repay_cap >= mt.debt_cap {
-            (debt_amount, mt.token_d_shares, amount - debt_amount - hp_fee, hp_fee)
-        } else {
-            let repay_hp_fee = u128_ratio(hp_fee, repay_cap, mt.debt_cap);
-            (
-                amount - repay_hp_fee,
-                asset_debt
-                    .margin_debt
-                    .amount_to_shares(amount - repay_hp_fee, false),
-                0,
-                repay_hp_fee,
-            )
-        };
-        asset_debt.margin_debt.withdraw(repay_shares, repay_amount);
-        mt.token_d_shares.0 -= repay_shares.0;
-        mt.debt_cap = if repay_cap >= mt.debt_cap {
-            0
-        } else {
-            mt.debt_cap - repay_cap
-        };
-        // distribute hp_fee
-        asset_debt.prot_fee += repay_hp_fee;
-
-        // handle possible leftover debt asset, put them into user's supply
-        if left_amount > 0 {
-            let supply_shares = asset_debt.supplied.amount_to_shares(left_amount, false);
+        // Handle leftover as benefit (deposit to supply)
+        if repayment.leftover_amount > 0 {
+            let supply_shares = asset_debt.supplied.amount_to_shares(repayment.leftover_amount, false);
             if supply_shares.0 > 0 {
-                asset_debt.supplied.deposit(supply_shares, left_amount);
-                benefit_d_shares = supply_shares.0;
+                asset_debt.supplied.deposit(supply_shares, repayment.leftover_amount);
+                benefits.debt_token_shares = supply_shares.0;
             }
         }
 
-        if sr.op != "decrease" {
-            // try to repay remaining debt from margin
-            if mt.token_d_shares.0 > 0 && mt.token_d_id == mt.token_c_id {
-                let remain_debt_balance = asset_debt
-                    .margin_debt
-                    .shares_to_amount(mt.token_d_shares, true);
-                let margin_shares_to_repay = asset_debt
-                    .supplied
-                    .amount_to_shares(remain_debt_balance, true);
-                let (repay_debt_share, used_supply_share, repay_amount) =
-                    if margin_shares_to_repay <= mt.token_c_shares {
-                        (mt.token_d_shares, margin_shares_to_repay, remain_debt_balance)
-                    } else {
-                        // use all margin balance to repay
-                        let margin_balance = asset_debt
-                            .supplied
-                            .shares_to_amount(mt.token_c_shares, false);
-                        let repay_debt_shares = asset_debt
-                            .margin_debt
-                            .amount_to_shares(margin_balance, false);
-                        (repay_debt_shares, mt.token_c_shares, margin_balance)
-                    };
-                asset_debt
-                    .supplied
-                    .withdraw(used_supply_share, repay_amount);
-                asset_debt
-                    .margin_debt
-                    .withdraw(repay_debt_share, repay_amount);
-                mt.token_d_shares.0 -= repay_debt_share.0;
-                mt.token_c_shares.0 -= used_supply_share.0;
+        // === Section 2: Additional debt repayment from collateral (for full-close operations) ===
+        if operation.should_repay_from_collateral() {
+            let (repay_debt_shares, used_supply_shares, repay_amount) =
+                self.repay_debt_from_collateral(&position, &asset_debt);
+
+            if repay_amount > 0 {
+                asset_debt.supplied.withdraw(used_supply_shares, repay_amount);
+                asset_debt.margin_debt.withdraw(repay_debt_shares, repay_amount);
+                position.token_d_shares.0 -= repay_debt_shares.0;
+                position.token_c_shares.0 -= used_supply_shares.0;
             }
         }
 
-        if sr.op == "forceclose" {
-            // try to use protocol reserve to repay remaining debt
-            if mt.token_d_shares.0 > 0 {
-                let remain_debt_balance = asset_debt
-                    .margin_debt
-                    .shares_to_amount(mt.token_d_shares, true);
-                if asset_debt.reserved >= remain_debt_balance {
-                    asset_debt.reserved -= remain_debt_balance;
-                } else {
-                    let debt = remain_debt_balance - asset_debt.reserved;
-                    asset_debt.reserved = 0;
-                    let mut protocol_debts = read_protocol_debts_from_storage();
-                    protocol_debts.entry(mt.token_d_id.clone())
-                        .and_modify(|v| *v += debt)
-                        .or_insert(debt);
-                    write_protocol_debts_to_storage(protocol_debts);
-                    events::emit::new_protocol_debts(&mt.token_d_id, debt);
-                }
-                events::emit::forceclose_protocol_loss(&mt.token_d_id, remain_debt_balance);
-                asset_debt
-                    .margin_debt
-                    .withdraw(mt.token_d_shares, remain_debt_balance);
-                mt.token_d_shares.0 = 0;
-            }
+        // === Section 3: Protocol reserve coverage (forceclose only) ===
+        if operation.can_use_protocol_reserve() {
+            self.cover_debt_from_protocol_reserve(&mut position, &mut asset_debt);
         }
 
-        mt.is_locking = false;
-        // Update existing margin_position storage
-        account.margin_positions.insert(&sr.pos_id, &mt);
+        // === Section 4: Position settlement ===
+        position.is_locking = false;
+        account.margin_positions.insert(&sr.pos_id, &position);
 
+        // Build result event before potential position removal
         let event = EventDataMarginDecreaseResult {
             account_id: account.account_id.clone(),
             pos_id: sr.pos_id.clone(),
             liquidator_id: sr.liquidator_id.clone(),
-            token_c_id: mt.token_c_id.clone(),
-            token_c_shares: mt.token_c_shares,
-            token_d_id: mt.token_d_id.clone(),
-            token_d_shares: mt.token_d_shares,
-            token_p_id: mt.token_p_id.clone(),
-            token_p_amount: mt.token_p_amount,
-            holding_fee: repay_hp_fee,
+            token_c_id: position.token_c_id.clone(),
+            token_c_shares: position.token_c_shares,
+            token_d_id: position.token_d_id.clone(),
+            token_d_shares: position.token_d_shares,
+            token_p_id: position.token_p_id.clone(),
+            token_p_amount: position.token_p_amount,
+            holding_fee: repayment.holding_fee_paid,
         };
-        
-        // try to settle this position
-        if mt.token_d_shares.0 == 0 {
-            // close this position and remaining asset goes back to user's inner account
-            if mt.token_c_shares.0 > 0 {
-                benefit_m_shares = mt.token_c_shares.0;
-            }
-            if mt.token_p_amount > 0 {
-                let position_shares = asset_position
-                    .supplied
-                    .amount_to_shares(mt.token_p_amount, false);
-                asset_position
-                    .supplied
-                    .deposit(position_shares, mt.token_p_amount);
-                asset_position.margin_position -= mt.token_p_amount;
-                benefit_p_shares = position_shares.0;
-            }
-            // Remove margin_position storage
-            account.storage_tracker.start();
-            account.margin_positions.remove(&sr.pos_id);
-            account.storage_tracker.stop();
 
-            // As the position is about to close, stop service fee need to be removed and settled.
-            // Here, only remove and record stop service fee token_id and amount for later settlement.
-            if let Some(margin_stop) = account.stops.remove(&sr.pos_id) {
-                ssf_token_id = Some(margin_stop.service_token_id);
-                ssf_token_amount = Some(margin_stop.service_token_amount.0);
-            }
-
+        // Try to settle (close) the position if debt is fully repaid
+        let stop_fee_info = if position.token_d_shares.0 == 0 {
+            self.settle_closed_position(
+                &mut account,
+                &position,
+                &mut asset_position,
+                &sr.pos_id,
+                &mut benefits,
+            )
         } else {
-            if sr.op != "decrease" {
+            if operation.is_full_close() {
                 env::log_str(&format!(
                     "{} failed due to insufficient fund, user {}, pos_id {}",
-                    sr.op.clone(),
-                    account.account_id.clone(),
-                    sr.pos_id.clone()
+                    sr.op, account.account_id, sr.pos_id
                 ));
             }
-        }
+            None
+        };
 
-        // save all updates on the margin account so far, 
-        // as there won't be any additional storage cost, no panic would happen.
+        // === Section 5: Save account and distribute benefits ===
         self.internal_set_margin_account(&account_id, account);
 
-        // re-fetch user's margin account for possible benefits distribution
+        // Re-fetch user's margin account for possible benefits distribution
         let mut account = self.internal_unwrap_margin_account(&account_id);
-        // distribute benefits
         let mut account_updates = None;
-        if benefit_d_shares > 0 || benefit_m_shares > 0 || benefit_p_shares > 0 {
-            if sr.op == "liquidate" {
-                // The sr.liquidator_id in the liquidate operation must not be None.
-                let liquidator_id = sr.liquidator_id.clone().unwrap();
-                let owner_id = self.internal_config().owner_id;
-                if let Some(mut liquidator_account) = self.internal_get_margin_account(&liquidator_id) {
+
+        if benefits.has_any() {
+            match operation {
+                DecreaseOperation::Liquidate => {
+                    // Liquidation: distribute benefits among owner, liquidator, and user
+                    let liquidator_id = sr.liquidator_id.clone().expect("Liquidator required");
+                    let owner_id = self.internal_config().owner_id;
+
+                    if let Some(mut liquidator_account) = self.internal_get_margin_account(&liquidator_id) {
+                        let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
+                        let pd = PositionDirection::new(
+                            &position.token_c_id,
+                            &position.token_d_id,
+                            &position.token_p_id,
+                        );
+                        let mbtl = self.internal_unwrap_margin_base_token_limit_or_default(pd.get_base_token_id());
+                        let (owner_updates, liquidator_updates, user_updates) = account_supplied_updates(
+                            &mut owner_account,
+                            &mut liquidator_account,
+                            &mut account,
+                            &position,
+                            &mbtl,
+                            (benefits.collateral_shares, benefits.debt_token_shares, benefits.position_token_shares),
+                        );
+                        events::emit::margin_benefits(&owner_id, &owner_updates);
+                        self.internal_set_margin_account_without_panic(
+                            &owner_id,
+                            owner_account,
+                            &mut asset_debt,
+                            &mut asset_position,
+                            owner_updates,
+                        );
+                        events::emit::margin_benefits(&liquidator_id, &liquidator_updates);
+                        self.internal_set_margin_account_without_panic(
+                            &liquidator_id,
+                            liquidator_account,
+                            &mut asset_debt,
+                            &mut asset_position,
+                            liquidator_updates,
+                        );
+                        account_updates = Some(user_updates);
+                    } else {
+                        // Liquidator account not found: all benefits go to owner
+                        let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
+                        deposit_benefit_to_account(&mut owner_account, &position.token_c_id, benefits.collateral_shares);
+                        deposit_benefit_to_account(&mut owner_account, &position.token_d_id, benefits.debt_token_shares);
+                        deposit_benefit_to_account(&mut owner_account, &position.token_p_id, benefits.position_token_shares);
+                        let owner_updates = benefits.to_margin_updates(&position);
+                        events::emit::margin_benefits(&owner_id, &owner_updates);
+                        self.internal_set_margin_account_without_panic(
+                            &owner_id,
+                            owner_account,
+                            &mut asset_debt,
+                            &mut asset_position,
+                            owner_updates,
+                        );
+                    }
+                }
+                DecreaseOperation::ForceClose => {
+                    // Force close: all benefits go to protocol owner
+                    let owner_id = self.internal_config().owner_id;
                     let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
-                    let pd = PositionDirection::new(&mt.token_c_id, &mt.token_d_id, &mt.token_p_id);
-                    let mbtl = self.internal_unwrap_margin_base_token_limit_or_default(pd.get_base_token_id());
-                    let (owner_updates, liquidator_updates, user_updates) = account_supplied_updates(
-                        &mut owner_account, 
-                        &mut liquidator_account, 
-                        &mut account, 
-                        &mt, 
-                        &mbtl,
-                        (benefit_m_shares, benefit_d_shares, benefit_p_shares)
-                    );
+                    deposit_benefit_to_account(&mut owner_account, &position.token_c_id, benefits.collateral_shares);
+                    deposit_benefit_to_account(&mut owner_account, &position.token_d_id, benefits.debt_token_shares);
+                    deposit_benefit_to_account(&mut owner_account, &position.token_p_id, benefits.position_token_shares);
+                    let owner_updates = benefits.to_margin_updates(&position);
                     events::emit::margin_benefits(&owner_id, &owner_updates);
                     self.internal_set_margin_account_without_panic(
                         &owner_id,
                         owner_account,
                         &mut asset_debt,
                         &mut asset_position,
-                        owner_updates
-                    );
-                    events::emit::margin_benefits(&liquidator_id, &liquidator_updates);
-                    self.internal_set_margin_account_without_panic(
-                        &liquidator_id,
-                        liquidator_account,
-                        &mut asset_debt,
-                        &mut asset_position,
-                        liquidator_updates
-                    );
-                    account_updates = Some(user_updates);
-                } else {
-                    let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
-                    deposit_benefit_to_account(&mut owner_account, &mt.token_c_id, benefit_m_shares);
-                    deposit_benefit_to_account(&mut owner_account, &mt.token_d_id, benefit_d_shares);
-                    deposit_benefit_to_account(&mut owner_account, &mt.token_p_id, benefit_p_shares);
-                    let owner_updates = MarginAccountUpdates {
-                        token_c_update: (mt.token_c_id.clone(), benefit_m_shares),
-                        token_d_update: (mt.token_d_id.clone(), benefit_d_shares),
-                        token_p_update: (mt.token_p_id.clone(), benefit_p_shares),
-                    };
-                    events::emit::margin_benefits(&owner_id, &owner_updates);
-                    self.internal_set_margin_account_without_panic(
-                        &owner_id, 
-                        owner_account,
-                        &mut asset_debt,
-                        &mut asset_position,
-                        owner_updates
+                        owner_updates,
                     );
                 }
-            } else if sr.op == "forceclose" {
-                let owner_id = self.internal_config().owner_id;
-                let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
-                deposit_benefit_to_account(&mut owner_account, &mt.token_c_id, benefit_m_shares);
-                deposit_benefit_to_account(&mut owner_account, &mt.token_d_id, benefit_d_shares);
-                deposit_benefit_to_account(&mut owner_account, &mt.token_p_id, benefit_p_shares);
-                let owner_updates = MarginAccountUpdates {
-                    token_c_update: (mt.token_c_id.clone(), benefit_m_shares),
-                    token_d_update: (mt.token_d_id.clone(), benefit_d_shares),
-                    token_p_update: (mt.token_p_id.clone(), benefit_p_shares),
-                };
-                events::emit::margin_benefits(&owner_id, &owner_updates);
-                self.internal_set_margin_account_without_panic(
-                    &owner_id, 
-                    owner_account,
-                    &mut asset_debt,
-                    &mut asset_position,
-                    owner_updates
-                );
-            } else {
-                deposit_benefit_to_account(&mut account, &mt.token_c_id, benefit_m_shares);
-                deposit_benefit_to_account(&mut account, &mt.token_d_id, benefit_d_shares);
-                deposit_benefit_to_account(&mut account, &mt.token_p_id, benefit_p_shares);
-                account_updates = Some(MarginAccountUpdates {
-                    token_c_update: (mt.token_c_id.clone(), benefit_m_shares),
-                    token_d_update: (mt.token_d_id.clone(), benefit_d_shares),
-                    token_p_update: (mt.token_p_id.clone(), benefit_p_shares),
-                });
+                DecreaseOperation::Decrease | DecreaseOperation::Close | DecreaseOperation::Stop => {
+                    // Normal operations: benefits go to position owner
+                    deposit_benefit_to_account(&mut account, &position.token_c_id, benefits.collateral_shares);
+                    deposit_benefit_to_account(&mut account, &position.token_d_id, benefits.debt_token_shares);
+                    deposit_benefit_to_account(&mut account, &position.token_p_id, benefits.position_token_shares);
+                    account_updates = Some(benefits.to_margin_updates(&position));
+                }
             }
         }
 
-
-        if let Some(account_updates) = account_updates{
+        // Finalize user benefits if any
+        if let Some(account_updates) = account_updates {
             events::emit::margin_benefits(&account_id, &account_updates);
-            // contribute benefits to user's margin supply, may increase storage usage,
-            // if encounter storage problem, the benefit tokens will go to lostfound and user's margin account remain unchanged.
             self.internal_set_margin_account_without_panic(
                 &account_id,
                 account,
                 &mut asset_debt,
                 &mut asset_position,
-                account_updates
+                account_updates,
             );
-        } 
+        }
 
-        self.internal_set_asset_without_asset_basic_check(&mt.token_d_id, asset_debt);
-        self.internal_set_asset_without_asset_basic_check(&mt.token_p_id, asset_position);
+        // === Section 6: Save assets ===
+        self.internal_set_asset_without_asset_basic_check(&position.token_d_id, asset_debt);
+        self.internal_set_asset_without_asset_basic_check(&position.token_p_id, asset_position);
 
-        // handle service fee receiver account and service fee asset 
-        // if sr.op == "stop" then send stop service fee to sr.liquidator_id's supply
-        // else send stop service fee to owner's supply
-        if let Some(ssf_token_id) = ssf_token_id {
-            let mut asset_ssf = self.internal_unwrap_asset(&ssf_token_id);
-
-            // figure out recipient
-            let ssf_recipient = if sr.op == "stop" {
-                sr.liquidator_id.clone().unwrap_or(account_id.clone())
-            } else {
-                account_id.clone()
-            };
-            let mut ssf_account = 
-            if let Some(account) = self.internal_get_margin_account(&ssf_recipient) {
-                account
-            } else {
-                self.internal_unwrap_margin_account(&account_id)
-            };
-            let final_ssf_recipient = ssf_account.account_id.clone();
-
-            let amount = ssf_token_amount.unwrap();
-            let shares: Shares = asset_ssf.supplied.amount_to_shares(amount, false);
-            ssf_account.deposit_supply_shares(&ssf_token_id, &shares);
-            asset_ssf.supplied.deposit(shares, amount);
-            
-            if !self.try_to_set_margin_account(&final_ssf_recipient, ssf_account) {
-                // move shares to lostfound
-                asset_ssf.lostfound_shares += shares.0;
-                events::emit::lostfound_supply_shares(LostfoundSupplyShares {
-                    account_id: final_ssf_recipient.clone(),
-                    shares: HashMap::from([
-                        (ssf_token_id.clone(), shares),  
-                    ])
-                });
-            }
-            self.internal_set_asset_without_asset_basic_check(&ssf_token_id, asset_ssf);
+        // === Section 7: Service fee settlement ===
+        if let Some(fee_info) = stop_fee_info {
+            self.settle_stop_service_fee(
+                fee_info,
+                operation,
+                &account_id,
+                sr.liquidator_id.as_ref(),
+            );
         }
 
         event

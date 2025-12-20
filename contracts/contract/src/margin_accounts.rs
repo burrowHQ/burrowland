@@ -148,7 +148,7 @@ impl Contract {
 
     /// Set margin account state in case there is no changes on nested persistent collections.
     /// true if set is OK, false if set encountered storage problem and account state is unchanged
-    pub(crate) fn try_to_set_margin_account(&mut self, account_id: &AccountId, mut account: MarginAccount) -> bool {
+    pub(crate) fn try_to_set_margin_account(&mut self, account_id: &AccountId, account: MarginAccount) -> bool {
         let old_margin_account = self.internal_unwrap_margin_account(account_id);
         let mut storage = self.internal_unwrap_storage(account_id);
         if !account.storage_tracker.is_empty() {
