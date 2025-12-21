@@ -1,6 +1,6 @@
 use crate::*;
 
-use contract::{Config, AssetConfig, AssetDetailedView, PriceReceiverMsg, AccountDetailedView, AssetAmount, Action, TokenReceiverMsg};
+use contract::{Config, AssetConfig, AssetDetailedView, PriceReceiverMsg, AccountDetailedView, AssetAmount, Action, TokenReceiverMsg, MarginStopServiceFee};
 
 pub struct Burrowland(pub Contract);
 
@@ -1584,10 +1584,98 @@ impl Burrowland {
         amount: u128,
     ) -> Result<ExecutionFinalResult> {
         self.margin_execute_with_pyth(caller, vec![
-            MarginAction::DecreaseCollateral { 
+            MarginAction::DecreaseCollateral {
                 pos_id: pos_id.clone(), amount: amount.into()
             }
         ]).await
+    }
+
+    pub async fn margin_trading_set_stop_by_pyth(
+        &self,
+        caller: &Account,
+        pos_id: &String,
+        stop_profit: Option<u32>,
+        stop_loss: Option<u32>,
+    ) -> Result<ExecutionFinalResult> {
+        self.margin_execute_with_pyth(caller, vec![
+            MarginAction::SetStop {
+                pos_id: pos_id.clone(),
+                stop_profit,
+                stop_loss,
+            }
+        ]).await
+    }
+
+    pub async fn margin_trading_open_position_with_stop_by_pyth(
+        &self,
+        caller: &Account,
+        token_c_id: &AccountId,
+        token_c_amount: U128,
+        token_d_id: &AccountId,
+        token_d_amount: U128,
+        token_p_id: &AccountId,
+        min_token_p_amount: U128,
+        swap_indication: SwapIndication,
+        stop_profit: Option<u32>,
+        stop_loss: Option<u32>,
+    ) -> Result<ExecutionFinalResult> {
+        self.margin_execute_with_pyth(caller, vec![
+            MarginAction::OpenPosition {
+                token_c_id: near_sdk::AccountId::new_unchecked(token_c_id.to_string()),
+                token_c_amount,
+                token_d_id: near_sdk::AccountId::new_unchecked(token_d_id.to_string()),
+                token_d_amount,
+                token_p_id: near_sdk::AccountId::new_unchecked(token_p_id.to_string()),
+                min_token_p_amount,
+                swap_indication,
+                stop_profit,
+                stop_loss,
+            }
+        ]).await
+    }
+
+    pub async fn margin_trading_stop_mtposition_by_pyth(
+        &self,
+        caller: &Account,
+        pos_owner_id: &AccountId,
+        pos_id: &String,
+        token_p_amount: u128,
+        min_token_d_amount: u128,
+        swap_indication: SwapIndication,
+    ) -> Result<ExecutionFinalResult> {
+        self.margin_execute_with_pyth(caller, vec![
+            MarginAction::StopMTPosition {
+                pos_owner_id: near_sdk::AccountId::new_unchecked(pos_owner_id.to_string()),
+                pos_id: pos_id.clone(),
+                token_p_amount: token_p_amount.into(),
+                min_token_d_amount: min_token_d_amount.into(),
+                swap_indication,
+            }
+        ]).await
+    }
+
+    pub async fn set_mssf(
+        &self,
+        caller: &Account,
+        mssf: MarginStopServiceFee
+    ) -> Result<ExecutionFinalResult> {
+        caller
+            .call(self.0.id(), "set_mssf")
+            .args_json(json!({
+                "mssf": mssf
+            }))
+            .deposit(NearToken::from_yoctonear(1))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn get_mssf(&self) -> Result<Option<MarginStopServiceFee>> {
+        self.0
+            .call("get_mssf")
+            .view()
+            .await?
+            .json::<Option<MarginStopServiceFee>>()
     }
 
 }

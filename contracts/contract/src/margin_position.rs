@@ -943,3 +943,77 @@ fn validate_stop_settings(stop_profit: &Option<u32>, stop_loss: &Option<u32>) {
     //     );
     // }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ============= validate_stop_settings tests =============
+
+    #[test]
+    fn test_validate_stop_settings_valid_stop_loss() {
+        // Valid stop loss values (1-9999 BPS)
+        validate_stop_settings(&None, &Some(1));      // Minimum valid
+        validate_stop_settings(&None, &Some(5000));   // 50%
+        validate_stop_settings(&None, &Some(9000));   // 90%
+        validate_stop_settings(&None, &Some(9999));   // Maximum valid
+    }
+
+    #[test]
+    fn test_validate_stop_settings_valid_stop_profit() {
+        // Valid stop profit values (>10000 BPS)
+        validate_stop_settings(&Some(10001), &None);  // Minimum valid (100.01%)
+        validate_stop_settings(&Some(12000), &None);  // 120%
+        validate_stop_settings(&Some(20000), &None);  // 200%
+        validate_stop_settings(&Some(100000), &None); // 1000%
+    }
+
+    #[test]
+    fn test_validate_stop_settings_both_valid() {
+        // Both set with valid values
+        validate_stop_settings(&Some(12000), &Some(9000));
+        validate_stop_settings(&Some(15000), &Some(5000));
+    }
+
+    #[test]
+    fn test_validate_stop_settings_both_none() {
+        // Neither set (valid - just means no stops)
+        validate_stop_settings(&None, &None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop loss must be between 1 and 9999 BPS")]
+    fn test_validate_stop_settings_invalid_stop_loss_zero() {
+        validate_stop_settings(&None, &Some(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop loss must be between 1 and 9999 BPS")]
+    fn test_validate_stop_settings_invalid_stop_loss_10000() {
+        validate_stop_settings(&None, &Some(10000));
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop loss must be between 1 and 9999 BPS")]
+    fn test_validate_stop_settings_invalid_stop_loss_above_10000() {
+        validate_stop_settings(&None, &Some(10001));
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop profit must be greater than 10000 BPS")]
+    fn test_validate_stop_settings_invalid_stop_profit_10000() {
+        validate_stop_settings(&Some(10000), &None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop profit must be greater than 10000 BPS")]
+    fn test_validate_stop_settings_invalid_stop_profit_below_10000() {
+        validate_stop_settings(&Some(9999), &None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop profit must be greater than 10000 BPS")]
+    fn test_validate_stop_settings_invalid_stop_profit_zero() {
+        validate_stop_settings(&Some(0), &None);
+    }
+}

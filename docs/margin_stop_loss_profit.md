@@ -31,7 +31,9 @@ To incentivize keepers to monitor and execute stops, users pay a service fee (co
 #### MarginStop
 ```rust
 pub struct MarginStop {
+    /// profit rate to collateral in BPS
     pub stop_profit: Option<u32>,  // Target profit in BPS (e.g., 12000 = 120%)
+    /// loss rate to collateral in BPS
     pub stop_loss: Option<u32>,     // Stop-loss threshold in BPS (e.g., 9000 = 90%)
     pub service_token_id: TokenId,  // Token used for service fee
     pub service_token_amount: U128, // Amount of service fee locked
@@ -42,15 +44,74 @@ pub struct MarginStop {
 ```rust
 pub struct MarginStopServiceFee {
     pub token_id: AccountId,  // Token to charge for service fee
-    pub amount: U128,         // Amount to charge
+    pub amount: U128,         // Amount to charge (in burrow inner decimals)
+}
+```
+
+#### DecreaseOperation
+Enum representing the different types of position decrease operations:
+```rust
+pub enum DecreaseOperation {
+    Decrease,    // User voluntarily decreasing position
+    Close,       // User closing entire position
+    Liquidate,   // Liquidator closing unhealthy position
+    ForceClose,  // Force closing underwater position
+    Stop,        // Keeper executing stop order
+}
+```
+
+**Helper methods:**
+- `from_str(s: &str)` - Converts string operation type to enum
+- `is_full_close()` - Returns true for Close, Liquidate, ForceClose, Stop
+- `should_repay_from_collateral()` - Returns true for full-close operations
+- `can_use_protocol_reserve()` - Returns true only for ForceClose
+- `benefits_to_protocol_owner()` - Returns true for Liquidate and ForceClose
+
+#### Helper Structures
+
+**DebtRepaymentResult** - Result of debt repayment calculation:
+```rust
+pub struct DebtRepaymentResult {
+    pub repay_amount: Balance,        // Amount of debt token repaid
+    pub repay_shares: Shares,         // Shares of debt repaid
+    pub leftover_amount: Balance,     // Amount left over after full debt repayment
+    pub holding_fee_paid: Balance,    // Holding position fee paid from this repayment
+    pub remaining_debt_cap: Balance,  // Remaining debt cap after this repayment
+}
+```
+
+**SettlementBenefits** - Accumulated benefits from position settlement:
+```rust
+pub struct SettlementBenefits {
+    pub collateral_shares: u128,      // Collateral token shares (benefit_m_shares)
+    pub debt_token_shares: u128,      // Debt token shares from leftover (benefit_d_shares)
+    pub position_token_shares: u128,  // Position token shares (benefit_p_shares)
+}
+```
+
+**StopServiceFeeInfo** - Stop service fee info extracted during settlement:
+```rust
+pub struct StopServiceFeeInfo {
+    pub token_id: TokenId,
+    pub amount: Balance,
+}
+```
+
+**MarginAccountUpdates** - Tracks account balance updates for each token type:
+```rust
+pub struct MarginAccountUpdates {
+    pub token_c_update: (AccountId, u128),
+    pub token_d_update: (AccountId, u128),
+    pub token_p_update: (AccountId, u128),
 }
 ```
 
 ### Storage
 
 - **Account Level:** Each `MarginAccount` contains `stops: HashMap<PosId, MarginStop>`
-- **Global Config:** `MARGIN_STOP_SERVICE_FEE` stores the current fee policy
-- **Migration:** Account data migrates from `MarginAccountV1` to handle the new `stops` field
+- **Account View:** `MarginAccountDetailedView` exposes `stops: HashMap<PosId, MarginStop>` for queries
+- **Global Config:** `MARGIN_STOP_SERVICE_FEE` (storage key: "mssf") stores the current fee policy
+- **Migration:** Account data migrates from `MarginAccountV0`/`MarginAccountV1` to handle the new `stops` field via `VMarginAccount` enum
 
 ### Core Functions
 
@@ -100,28 +161,50 @@ pub(crate) fn is_stop_active(
 ) -> bool
 ```
 
+**Note:** Currently called with `slippage = 0` when checking stop conditions during `process_decrease_margin_position`.
+
 **Stop-Loss Check:**
 ```
-current_remain = (value_position + value_collateral) * (1 - slippage) - (value_debt + hp_fee)
-target_remain = value_collateral * stop_loss_bps / 10000
+// target remain collateral: value_collateral.mul_ratio(stop_loss)
+// current remain: (value_position + value_collateral).mul_ratio(10000-slippage) - (value_debt + total_hp_fee)
 
-Triggers if: current_remain < target_remain
+Triggers if: (value_position + value_collateral) * (10000 - slippage) / 10000
+           < value_collateral * stop_loss / 10000 + value_debt + total_hp_fee
 ```
 
 **Stop-Profit Check:**
 ```
-current_remain = (value_position + value_collateral) * (1 - slippage) - (value_debt + hp_fee)
-target_remain = value_collateral * stop_profit_bps / 10000
+// target gross profit: value_collateral.mul_ratio(stop_profit)
+// current remain: (value_position + value_collateral).mul_ratio(10000-slippage) - (value_debt + total_hp_fee)
 
-Triggers if: current_remain > target_remain
+Triggers if: (value_position + value_collateral) * (10000 - slippage) / 10000
+           > value_collateral * stop_profit / 10000 + value_debt + total_hp_fee
 ```
 
 The calculation accounts for:
-- Position token value at current prices
-- Debt token value including accrued interest
-- Holding position fees
-- Slippage when selling position tokens
-- Original collateral value
+- Position token value at current prices (`get_mtp_position_value`)
+- Debt token value including accrued interest (`get_mtp_debt_value`)
+- Collateral value (`get_mtp_collateral_value`)
+- Holding position fees (`get_mtp_hp_fee_value`)
+- Slippage when selling position tokens (currently 0)
+
+### Validation Rules
+
+Stop settings are validated with `validate_stop_settings()`:
+
+```rust
+fn validate_stop_settings(stop_profit: &Option<u32>, stop_loss: &Option<u32>) {
+    // Stop loss must be between 1 and 9999 BPS (0.01%-99.99%)
+    if let Some(sl) = stop_loss {
+        assert!(*sl > 0 && *sl < 10000);
+    }
+    // Stop profit must be greater than 10000 BPS (>100%)
+    if let Some(sp) = stop_profit {
+        assert!(*sp > 10000);
+    }
+    // Note: stop_loss < stop_profit check is currently commented out
+}
+```
 
 ## Workflow Examples
 
@@ -195,6 +278,65 @@ The calculation accounts for:
    - Associated `MarginStop` is removed from `stops`
    - Service fee is refunded to user's margin supply
 
+## Settlement Logic
+
+The `on_decrease_trade_return` callback handles position settlement with a structured approach:
+
+### Settlement Sections
+
+1. **Section 1: Debt Repayment Calculation**
+   - Uses `calculate_debt_repayment()` to compute repay amount, shares, leftover, and holding fee
+   - Applies debt repayment to asset and position
+   - Converts leftover to supply shares as benefit
+
+2. **Section 2: Collateral-Based Repayment**
+   - For full-close operations (Close, Liquidate, ForceClose, Stop)
+   - Uses `repay_debt_from_collateral()` when token_c == token_d
+   - Attempts to repay remaining debt using collateral
+
+3. **Section 3: Protocol Reserve Coverage**
+   - Only for ForceClose operations
+   - Uses `cover_debt_from_protocol_reserve()` to cover bad debt
+   - Tracks protocol debts if reserve is insufficient
+
+4. **Section 4: Position Settlement**
+   - For positions with zero debt remaining:
+     - `settle_closed_position()` converts assets to benefits
+     - Removes position from storage
+     - Extracts stop service fee info if present
+
+5. **Section 5: Benefits Distribution**
+   - **Liquidate:** Distributed among owner, liquidator, and user based on `liq_benefit_protocol_rate` and `liq_benefit_liquidator_rate`
+   - **ForceClose:** All benefits go to protocol owner
+   - **Decrease/Close/Stop:** Benefits go to position owner
+
+6. **Section 6: Asset Updates**
+   - Saves updated asset state without basic checks
+
+7. **Section 7: Service Fee Settlement**
+   - `settle_stop_service_fee()` distributes fee to appropriate recipient
+   - For Stop operations: fee goes to keeper (liquidator_id)
+   - For other operations: fee refunded to position owner
+
+### Helper Functions
+
+```rust
+// Calculate debt repayment with holding position fee
+fn calculate_debt_repayment(&self, position, asset_debt, swap_amount) -> DebtRepaymentResult
+
+// Repay remaining debt using collateral (when token_c == token_d)
+fn repay_debt_from_collateral(&self, position, asset_debt) -> (Shares, Shares, Balance)
+
+// Cover remaining debt using protocol reserve (forceclose only)
+fn cover_debt_from_protocol_reserve(&mut self, position, asset_debt)
+
+// Convert remaining assets to benefits, remove position
+fn settle_closed_position(&mut self, account, position, asset_position, pos_id, benefits) -> Option<StopServiceFeeInfo>
+
+// Distribute service fee to keeper or refund to owner
+fn settle_stop_service_fee(&mut self, fee_info, operation, position_owner_id, keeper_id)
+```
+
 ## Economic Model
 
 ### Fee Structure
@@ -240,16 +382,21 @@ Costs:
 
 ### Validation
 
-1. **Stop Conditions:** `is_stop_active()` validates mathematical conditions before allowing execution
+1. **Stop Conditions:** `is_stop_active()` validates mathematical conditions with slippage=0 before allowing execution
 2. **Position Locking:** Cannot modify stops while position has pending swap (`is_locking`)
-3. **Fee Policy:** Stop setting fails if `MARGIN_STOP_SERVICE_FEE` is not configured
+3. **Fee Policy:** Stop setting fails with "Margin stop service fee policy is not set." if `MARGIN_STOP_SERVICE_FEE` is not configured
 4. **Sufficient Balance:** User must have enough margin supply to pay service fee
+5. **Stop Value Ranges:**
+   - Stop loss: Must be between 1 and 9999 BPS (0.01%-99.99%)
+   - Stop profit: Must be greater than 10000 BPS (>100%)
+6. **Self-Stop Prevention:** Users cannot execute stops on their own positions ("Can't stop yourself")
 
 ### Storage Safety
 
-- **Try-based Updates:** `try_to_set_margin_account()` handles storage payment failures
-- **Lostfound Mechanism:** If service fee recipient lacks storage, fee goes to lostfound
+- **Try-based Updates:** `try_to_set_margin_account()` and `internal_set_margin_account_without_panic()` handle storage payment failures
+- **Lostfound Mechanism:** If service fee recipient lacks storage, fee goes to lostfound via `margin_account_token_shares_to_lostfound()`
 - **Atomic Operations:** Stop settings and fee handling are atomic within transactions
+- **Rollback Support:** `internal_set_margin_account_without_panic()` can rollback state on storage failure
 
 ### Edge Cases
 
@@ -306,14 +453,19 @@ Emitted when a keeper initiates a stop execution (uses existing `margin_decrease
 
 ### Files Modified
 
-- `contracts/contract/src/margin_stop_service_fee.rs` - New module for fee management
-- `contracts/contract/src/margin_accounts.rs` - Added `MarginStop` struct and `stops` field
-- `contracts/contract/src/margin_actions.rs` - Added `StopMTPosition` and `SetStop` actions
-- `contracts/contract/src/margin_position.rs` - Stop condition logic and fee handling
-- `contracts/contract/src/margin_trading.rs` - Service fee distribution in callbacks
-- `contracts/contract/src/events.rs` - New `set_stop` event
-- `contracts/contract/src/legacy.rs` - `MarginAccountV1` migration path
-- `contracts/contract/src/storage_keys.rs` - New storage key constant
+- `contracts/contract/src/margin_stop_service_fee.rs` - Fee policy management (`MarginStopServiceFee`, `set_mssf`, `get_mssf`)
+- `contracts/contract/src/margin_accounts.rs` - `MarginStop` struct, `stops` field, `MarginAccountDetailedView` with stops
+- `contracts/contract/src/margin_actions.rs` - `StopMTPosition` and `SetStop` actions, processing logic
+- `contracts/contract/src/margin_position.rs` - `is_stop_active()`, `validate_stop_settings()`, `process_set_stop()`
+- `contracts/contract/src/margin_trading.rs` - Extensively refactored with:
+  - `DecreaseOperation` enum
+  - `DebtRepaymentResult`, `SettlementBenefits`, `StopServiceFeeInfo`, `MarginAccountUpdates` structs
+  - `calculate_debt_repayment()`, `repay_debt_from_collateral()`, `cover_debt_from_protocol_reserve()`
+  - `settle_closed_position()`, `settle_stop_service_fee()`
+  - Refactored `on_decrease_trade_return()` with clear section-based logic
+- `contracts/contract/src/events.rs` - `set_stop` event
+- `contracts/contract/src/legacy.rs` - `MarginAccountV0`, `MarginAccountV1` migration paths
+- `contracts/contract/src/storage_keys.rs` - `MARGIN_STOP_SERVICE_FEE` constant ("mssf")
 - `contracts/contract/src/lib.rs` - Module registration
 
 ### Testing Recommendations

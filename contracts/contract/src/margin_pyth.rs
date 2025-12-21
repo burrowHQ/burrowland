@@ -77,6 +77,13 @@ impl Contract {
                     tokens.insert(mt.token_d_id.clone());
                     None
                 }
+                MarginAction::StopMTPosition { pos_owner_id, pos_id, token_p_amount: _, min_token_d_amount: _, swap_indication: _ } => {
+                    let pos_owner_account = self.internal_get_margin_account(pos_owner_id).expect("Margin account not exist");
+                    let mt = pos_owner_account.margin_positions.get(pos_id).expect("Position not exist");
+                    tokens.insert(mt.token_p_id.clone());
+                    tokens.insert(mt.token_d_id.clone());
+                    None
+                }
                 _ => None
             };
             if let Some(pos_id) = pos_id {
