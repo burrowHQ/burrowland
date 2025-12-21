@@ -468,8 +468,8 @@ impl Contract {
                 &position
             );
         }
-        self.internal_set_account(&sender_id, account);
-        self.internal_set_account(&liquidation_account_id, liquidation_account);
+        self.internal_force_set_account(&sender_id, account);
+        self.internal_force_set_account(&liquidation_account_id, liquidation_account);
     }
 
     #[private]
@@ -516,6 +516,6 @@ impl Contract {
                 events::emit::force_close(&liquidation_account_id, &collateral_sum, &repaid_sum, collateral_assets, borrowed_assets, &discount, &position);
             }
         }
-        self.internal_set_account(&liquidation_account_id, liquidation_account);
+        self.internal_force_set_account(&liquidation_account_id, liquidation_account);
     }
 }

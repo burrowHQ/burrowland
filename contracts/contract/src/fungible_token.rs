@@ -271,7 +271,7 @@ impl ExtSelf for Contract {
             let mut account = self.internal_unwrap_account(&account_id);
             self.internal_deposit_without_asset_basic_check(&mut account, &token_id, amount.0);
             events::emit::withdraw_failed(&account_id, amount.0, &token_id);
-            self.internal_set_account(&account_id, account);
+            self.internal_force_set_account(&account_id, account);
         } else {
             events::emit::withdraw_succeeded(&account_id, amount.0, &token_id);
         }
@@ -299,7 +299,7 @@ impl ExtSelf for Contract {
             let remain_amount = u128_ratio(amount.0, remain_ft_amount, ft_amount.0);
             let mut account = self.internal_unwrap_account(&account_id);
             self.internal_deposit_without_asset_basic_check(&mut account, &token_id, remain_amount);
-            self.internal_set_account(&account_id, account);
+            self.internal_force_set_account(&account_id, account);
             if remain_ft_amount == ft_amount.0 {
                 events::emit::withdraw_failed(&account_id, amount.0, &token_id);
             } else {
@@ -321,7 +321,7 @@ impl ExtSelf for Contract {
             let mut margin_account = self.internal_unwrap_margin_account(&account_id);
             self.internal_margin_deposit_without_asset_basic_check(&mut margin_account, &token_id, amount.0);
             events::emit::margin_asset_withdraw_failed(&account_id, amount.0, &token_id);
-            self.internal_set_margin_account(&account_id, margin_account);
+            self.internal_force_set_margin_account(&account_id, margin_account);
         } else {
             events::emit::margin_asset_withdraw_succeeded(&account_id, amount.0, &token_id);
         }

@@ -16,3 +16,5 @@ TODO_*.md
 docs/audit_*
 docs/refactor_*
 docs/*_plan.md
+docs/plan_*.md
+docs/*_analysis.md

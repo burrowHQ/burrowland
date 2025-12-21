@@ -913,8 +913,7 @@ impl Contract {
                 account.margin_positions.insert(&pos_id, &mt);
                 events::emit::margin_decrease_failed(&account_id, &pos_id);
             }
-            // TODO: consider using without panic version.
-            self.internal_set_margin_account(&account_id, account);
+            self.internal_force_set_margin_account(&account_id, account);
         }
     }
 }

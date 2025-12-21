@@ -1,4 +1,4 @@
-use crate::{*, events::emit::{EventDataMarginOpenResult,EventDataMarginDecreaseResult,LostfoundSupplyShares}};
+use crate::{*, events::emit::{EventDataMarginOpenResult,EventDataMarginDecreaseResult}};
 use near_sdk::serde_json;
 
 /// clients use this to indicate how to trading
@@ -490,7 +490,7 @@ impl Contract {
             open_fee: open_fee_amount,
         };
         events::emit::margin_open_succeeded(event);
-        self.internal_set_margin_account(&account_id, account);
+        self.internal_force_set_margin_account(&account_id, account);
     }
 
     /// Calculates debt repayment amounts including holding position fee
@@ -683,15 +683,7 @@ impl Contract {
         recipient_account.deposit_supply_shares(&fee_info.token_id, &shares);
         asset.supplied.deposit(shares, fee_info.amount);
 
-        if !self.try_to_set_margin_account(&final_recipient, recipient_account) {
-            // Fallback to lostfound
-            asset.lostfound_shares += shares.0;
-            events::emit::lostfound_supply_shares(LostfoundSupplyShares {
-                account_id: final_recipient,
-                shares: HashMap::from([(fee_info.token_id.clone(), shares)]),
-            });
-        }
-
+        self.internal_force_set_margin_account(&final_recipient, recipient_account);
         self.internal_set_asset_without_asset_basic_check(&fee_info.token_id, asset);
     }
 
@@ -781,11 +773,7 @@ impl Contract {
             None
         };
 
-        // === Section 5: Save account and distribute benefits ===
-        self.internal_set_margin_account(&account_id, account);
-
-        // Re-fetch user's margin account for possible benefits distribution
-        let mut account = self.internal_unwrap_margin_account(&account_id);
+        // === Section 5: Distribute benefits ===
         let mut account_updates = None;
 
         if benefits.has_any() {
@@ -812,21 +800,9 @@ impl Contract {
                             (benefits.collateral_shares, benefits.debt_token_shares, benefits.position_token_shares),
                         );
                         events::emit::margin_benefits(&owner_id, &owner_updates);
-                        self.internal_set_margin_account_without_panic(
-                            &owner_id,
-                            owner_account,
-                            &mut asset_debt,
-                            &mut asset_position,
-                            owner_updates,
-                        );
+                        self.internal_force_set_margin_account(&owner_id, owner_account);
                         events::emit::margin_benefits(&liquidator_id, &liquidator_updates);
-                        self.internal_set_margin_account_without_panic(
-                            &liquidator_id,
-                            liquidator_account,
-                            &mut asset_debt,
-                            &mut asset_position,
-                            liquidator_updates,
-                        );
+                        self.internal_force_set_margin_account(&liquidator_id, liquidator_account);
                         account_updates = Some(user_updates);
                     } else {
                         // Liquidator account not found: all benefits go to owner
@@ -836,13 +812,7 @@ impl Contract {
                         deposit_benefit_to_account(&mut owner_account, &position.token_p_id, benefits.position_token_shares);
                         let owner_updates = benefits.to_margin_updates(&position);
                         events::emit::margin_benefits(&owner_id, &owner_updates);
-                        self.internal_set_margin_account_without_panic(
-                            &owner_id,
-                            owner_account,
-                            &mut asset_debt,
-                            &mut asset_position,
-                            owner_updates,
-                        );
+                        self.internal_force_set_margin_account(&owner_id, owner_account);
                     }
                 }
                 DecreaseOperation::ForceClose => {
@@ -854,13 +824,7 @@ impl Contract {
                     deposit_benefit_to_account(&mut owner_account, &position.token_p_id, benefits.position_token_shares);
                     let owner_updates = benefits.to_margin_updates(&position);
                     events::emit::margin_benefits(&owner_id, &owner_updates);
-                    self.internal_set_margin_account_without_panic(
-                        &owner_id,
-                        owner_account,
-                        &mut asset_debt,
-                        &mut asset_position,
-                        owner_updates,
-                    );
+                    self.internal_force_set_margin_account(&owner_id, owner_account);
                 }
                 DecreaseOperation::Decrease | DecreaseOperation::Close | DecreaseOperation::Stop => {
                     // Normal operations: benefits go to position owner
@@ -872,17 +836,11 @@ impl Contract {
             }
         }
 
-        // Finalize user benefits if any
-        if let Some(account_updates) = account_updates {
-            events::emit::margin_benefits(&account_id, &account_updates);
-            self.internal_set_margin_account_without_panic(
-                &account_id,
-                account,
-                &mut asset_debt,
-                &mut asset_position,
-                account_updates,
-            );
+        // Finalize user account and emit benefits event if any
+        if let Some(ref account_updates) = account_updates {
+            events::emit::margin_benefits(&account_id, account_updates);
         }
+        self.internal_force_set_margin_account(&account_id, account);
 
         // === Section 6: Save assets ===
         self.internal_set_asset_without_asset_basic_check(&position.token_d_id, asset_debt);
