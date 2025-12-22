@@ -394,7 +394,7 @@ impl Contract {
             open_fee: open_fee_amount,
         };
         events::emit::margin_open_succeeded(event);
-        self.internal_set_margin_account(&account_id, account);
+        self.internal_force_set_margin_account(&account_id, account);
     }
 
     pub(crate) fn on_decrease_trade_return(
@@ -582,21 +582,9 @@ impl Contract {
                         (benefit_m_shares, benefit_d_shares, benefit_p_shares)
                     );
                     events::emit::margin_benefits(&owner_id, &owner_updates);
-                    self.internal_set_margin_account_without_panic(
-                        &owner_id,
-                        owner_account,
-                        &mut asset_debt,
-                        &mut asset_position,
-                        owner_updates
-                    );
+                    self.internal_force_set_margin_account(&owner_id, owner_account);
                     events::emit::margin_benefits(&liquidator_id, &liquidator_updates);
-                    self.internal_set_margin_account_without_panic(
-                        &liquidator_id,
-                        liquidator_account,
-                        &mut asset_debt,
-                        &mut asset_position,
-                        liquidator_updates
-                    );
+                    self.internal_force_set_margin_account(&liquidator_id, liquidator_account);
                     account_updates = Some(user_updates);
                 } else {
                     let mut owner_account = self.internal_unwrap_margin_account(&owner_id);
@@ -609,13 +597,7 @@ impl Contract {
                         token_p_update: (mt.token_p_id.clone(), benefit_p_shares),
                     };
                     events::emit::margin_benefits(&owner_id, &owner_updates);
-                    self.internal_set_margin_account_without_panic(
-                        &owner_id, 
-                        owner_account,
-                        &mut asset_debt,
-                        &mut asset_position,
-                        owner_updates
-                    );
+                    self.internal_force_set_margin_account(&owner_id, owner_account);
                 }
             } else if sr.op == "forceclose" {
                 let owner_id = self.internal_config().owner_id;
@@ -629,13 +611,7 @@ impl Contract {
                     token_p_update: (mt.token_p_id.clone(), benefit_p_shares),
                 };
                 events::emit::margin_benefits(&owner_id, &owner_updates);
-                self.internal_set_margin_account_without_panic(
-                    &owner_id, 
-                    owner_account,
-                    &mut asset_debt,
-                    &mut asset_position,
-                    owner_updates
-                );
+                self.internal_force_set_margin_account(&owner_id, owner_account);
             } else {
                 deposit_benefit_to_account(&mut account, &mt.token_c_id, benefit_m_shares);
                 deposit_benefit_to_account(&mut account, &mt.token_d_id, benefit_d_shares);
@@ -648,18 +624,11 @@ impl Contract {
             }
         }
 
+        // Finalize user account and emit benefits event if any
         if let Some(account_updates) = account_updates{
             events::emit::margin_benefits(&account_id, &account_updates);
-            self.internal_set_margin_account_without_panic(
-                &account_id,
-                account,
-                &mut asset_debt,
-                &mut asset_position,
-                account_updates
-            );
-        } else {
-            self.internal_set_margin_account(&account_id, account);
         }
+        self.internal_force_set_margin_account(&account_id, account);
 
         self.internal_set_asset_without_asset_basic_check(&mt.token_d_id, asset_debt);
         self.internal_set_asset_without_asset_basic_check(&mt.token_p_id, asset_position);
