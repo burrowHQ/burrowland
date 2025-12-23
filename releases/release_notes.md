@@ -2,7 +2,7 @@
 
 Version 0.15.8
 ```bash=
-# codehash: 6VWYXVkmgtTwkK6L9vNsrUUdc73hXvfrMYbCraFVV4TJ
+# codehash: HWwRcvNRC6R1aJu6MXkiVzxC9yXDyVGr6Q9pzFm1WEQB
 ```
 - refactored storage handling in async callbacks to prevent permanent state inconsistency by allowing temporary storage overdraft.
 - introduce a new mechanism enabling Liquid Staking Derivative (LSD) protocols to integrate with Burrowland by receiving callbacks after deposit and withdrawal operations.
