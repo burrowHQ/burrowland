@@ -444,6 +444,7 @@ impl Contract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_FT_TRANSFER_CALL_CALLBACK)
+                    .with_unused_gas_weight(0)
                     .callback_dex_trade(
                         account.account_id.clone(),
                         pos_id.clone(),
@@ -622,6 +623,7 @@ impl Contract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_FT_TRANSFER_CALL_CALLBACK)
+                    .with_unused_gas_weight(0)
                     .callback_dex_trade(
                         account.account_id.clone(),
                         pos_id.clone(),
