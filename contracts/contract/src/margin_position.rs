@@ -4,7 +4,7 @@ use near_contract_standards::fungible_token::core::ext_ft_core;
 
 
 pub const GAS_FOR_FT_TRANSFER_CALL: Gas = Gas(100 * Gas::ONE_TERA.0);
-pub const GAS_FOR_FT_TRANSFER_CALL_CALLBACK: Gas = Gas(20 * Gas::ONE_TERA.0);
+pub const GAS_FOR_FT_TRANSFER_CALL_CALLBACK: Gas = Gas(10 * Gas::ONE_TERA.0);
 
 pub enum PositionDirection {
     Long(TokenId),

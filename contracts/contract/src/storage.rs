@@ -91,12 +91,12 @@ impl Contract {
         if storage.storage_tracker.bytes_added >= storage.storage_tracker.bytes_released {
             let extra_bytes_used =
                 storage.storage_tracker.bytes_added - storage.storage_tracker.bytes_released;
-            storage.used_bytes = storage.used_bytes.saturating_add(extra_bytes_used);
+            storage.used_bytes = storage.used_bytes.checked_add(extra_bytes_used).unwrap_or(u64::MAX);
         } else {
             let bytes_released =
                 storage.storage_tracker.bytes_released - storage.storage_tracker.bytes_added;
-            storage.used_bytes = storage.used_bytes.saturating_sub(bytes_released);
-        }
+            storage.used_bytes = storage.used_bytes.checked_sub(bytes_released).unwrap_or(0);
+        };
         storage.storage_tracker.bytes_released = 0;
         storage.storage_tracker.bytes_added = 0;
         self.storage.insert(account_id, &storage.into());
