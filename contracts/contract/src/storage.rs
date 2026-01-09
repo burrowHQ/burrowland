@@ -107,11 +107,12 @@ impl Contract {
             .map(|storage| StorageBalance {
                 total: storage.storage_balance.into(),
                 available: U128(
-                    storage.storage_balance
-                        - std::cmp::max(
+                    storage.storage_balance.saturating_sub(
+                        std::cmp::max(
                             Balance::from(storage.used_bytes) * env::storage_byte_cost(),
                             self.storage_balance_bounds().min.0,
-                        ),
+                        )
+                    )
                 ),
             })
     }
@@ -227,6 +228,15 @@ impl StorageManagement for Contract {
     }
 }
 
+#[derive(Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Deserialize))]
+#[serde(crate = "near_sdk::serde")]
+pub struct StorageBalanceOfDetail {
+    pub deposit_amount: U128,
+    pub min_deposit_amount: U128,
+    pub used_amount: U128,
+}
+
 #[near_bindgen]
 impl Contract {
     /// Helper method for debugging storage usage that ignores minimum storage limits.
@@ -236,8 +246,17 @@ impl Contract {
                 total: storage.storage_balance.into(),
                 available: U128(
                     storage.storage_balance
-                        - Balance::from(storage.used_bytes) * env::storage_byte_cost(),
+                        .saturating_sub(Balance::from(storage.used_bytes) * env::storage_byte_cost())
                 ),
+            })
+    }
+
+    pub fn get_storage_balance_of_detail(&self, account_id: AccountId) -> Option<StorageBalanceOfDetail> {
+        self.internal_get_storage(&account_id)
+            .map(|storage| StorageBalanceOfDetail {
+                deposit_amount: storage.storage_balance.into(),
+                min_deposit_amount: self.storage_balance_bounds().min,
+                used_amount: U128(Balance::from(storage.used_bytes) * env::storage_byte_cost()),
             })
     }
 }
