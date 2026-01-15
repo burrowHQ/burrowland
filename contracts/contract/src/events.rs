@@ -470,20 +470,6 @@ pub mod emit {
         );
     }
 
-    #[derive(Serialize)]
-    #[serde(crate = "near_sdk::serde")]
-    pub struct LostfoundSupplyShares {
-        pub account_id: AccountId,
-        pub shares: HashMap<AccountId, U128>
-    }
-
-    pub fn lostfound_supply_shares(lostfound_supply_shares: LostfoundSupplyShares) {
-        log_event(
-            "lostfound_supply_share",
-            lostfound_supply_shares,
-        );
-    }
-
     pub fn new_protocol_debts(token_id: &AccountId, amount: u128) {
         log_event(
             "new_protocol_debts",

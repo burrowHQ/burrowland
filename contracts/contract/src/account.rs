@@ -244,6 +244,19 @@ impl Contract {
         storage.storage_tracker.stop();
         self.internal_set_storage(account_id, storage);
     }
+
+    /// Force set account state without storage coverage check.
+    /// Used in critical async callbacks to prevent permanent state inconsistency.
+    pub fn internal_force_set_account(&mut self, account_id: &AccountId, mut account: Account) {
+        let mut storage = self.internal_unwrap_storage(account_id);
+        storage
+            .storage_tracker
+            .consume(&mut account.storage_tracker);
+        storage.storage_tracker.start();
+        self.accounts.insert(account_id, &account.into());
+        storage.storage_tracker.stop();
+        self.internal_force_set_storage(account_id, storage);
+    }
 }
 
 #[near_bindgen]

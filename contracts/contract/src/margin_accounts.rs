@@ -1,5 +1,4 @@
 use crate::*;
-use events::emit::LostfoundSupplyShares;
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct MarginAccount {
@@ -103,17 +102,9 @@ impl Contract {
         self.internal_set_storage(account_id, storage);
     }
 
-    // Used for situations where the margin account may exceed storage limits due to the addition of a new supplied type, but cannot panic.
-    pub(crate) fn internal_set_margin_account_without_panic(
-        &mut self, 
-        account_id: &AccountId, 
-        mut account: MarginAccount, 
-        asset_debt: &mut Asset,
-        asset_position: &mut Asset,
-        margin_account_updates: MarginAccountUpdates,
-    ) {
-        // Retrieve the account before the update, used for rolling back the state in case of insufficient storage.
-        let old_margin_account = self.internal_unwrap_margin_account(account_id);
+    /// Force set margin account state without storage coverage check.
+    /// Used in critical async callbacks to prevent permanent state inconsistency.
+    pub(crate) fn internal_force_set_margin_account(&mut self, account_id: &AccountId, mut account: MarginAccount) {
         let mut storage = self.internal_unwrap_storage(account_id);
         storage
             .storage_tracker
@@ -121,12 +112,7 @@ impl Contract {
         storage.storage_tracker.start();
         self.margin_accounts.insert(account_id, &account.into());
         storage.storage_tracker.stop();
-        if !self.internal_set_storage_without_panic(account_id, storage) {
-            // Rollback the state.
-            self.margin_accounts.insert(account_id, &old_margin_account.into());
-            // Store the shares in asset.lostfound_shares.
-            margin_account_token_shares_to_lostfound(account_id, asset_debt, asset_position, margin_account_updates);
-        }
+        self.internal_force_set_storage(account_id, storage);
     }
 }
 
@@ -235,18 +221,4 @@ impl Contract {
     pub fn get_num_margin_accounts(&self) -> u32 {
         self.margin_accounts.len() as _
     }
-}
-
-pub fn margin_account_token_shares_to_lostfound(
-    account_id: &AccountId, 
-    asset_debt: &mut Asset,
-    asset_position: &mut Asset,
-    margin_account_updates: MarginAccountUpdates,
-) {
-    asset_debt.lostfound_shares += margin_account_updates.get_token_d_amount();
-    asset_position.lostfound_shares += margin_account_updates.get_token_p_amount();
-    events::emit::lostfound_supply_shares(LostfoundSupplyShares {
-        account_id: account_id.clone(),
-        shares: margin_account_updates.to_hash_map()
-    });
 }

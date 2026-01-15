@@ -1,4 +1,6 @@
 use std::collections::HashSet;
+use near_contract_standards::fungible_token::core::ext_ft_core;
+use near_sdk::PromiseOrValue;
 
 use crate::*;
 
@@ -975,6 +977,61 @@ impl Contract {
                 gap_amount,
                 Prices::from_prices(default_prices));
             None
+        }
+    }
+}
+
+#[near_bindgen]
+impl Contract {
+
+    pub fn client_echo_withdraw_by_shares(&mut self, token_id: TokenId, shares: Shares, client_echo: String) -> PromiseOrValue<U128> {
+        let account_id = env::predecessor_account_id();
+        assert!(in_client_echo_sender_whitelist(account_id.as_str()), "Unauthorized client echo sender: {}", account_id);
+        assert!(!token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
+
+        let mut asset = self.internal_unwrap_asset(&token_id);
+        assert!(
+            asset.config.can_withdraw,
+            "Withdrawals for this asset are not enabled"
+        );
+
+        let mut account = self.internal_unwrap_account(&account_id);
+        let mut account_asset = account.internal_unwrap_asset(&token_id);
+
+        let amount = asset.supplied.shares_to_amount(shares, false);
+        let ft_amount = amount / 10u128.pow(asset.config.extra_decimals as u32);
+
+        let available_amount = asset.available_amount();
+        assert!(
+            amount <= available_amount,
+            "Withdraw error: Exceeded available amount {} of {}",
+            available_amount,
+            &token_id
+        );
+
+        asset.supplied.withdraw(shares, amount);
+        self.internal_set_asset(&token_id, asset);
+
+        account_asset.withdraw_shares(shares);
+        account.internal_set_asset(&token_id, account_asset);
+        self.internal_account_apply_affected_farms(&mut account);
+        self.internal_set_account(&account_id, account);
+
+        if ft_amount > 0 {
+            events::emit::withdraw_started(&account_id, amount, &token_id);
+            ext_ft_core::ext(token_id.clone())
+                .with_attached_deposit(ONE_YOCTO)
+                .with_static_gas(Gas::ONE_TERA * 30)
+                .ft_transfer_call(account_id.clone(), ft_amount.into(), None, client_echo)
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(Gas(Gas::ONE_TERA.0 * 10))
+                        .with_unused_gas_weight(0)
+                        .after_ft_transfer_call(account_id.clone(), token_id.clone(), ft_amount.into(), amount.into())
+                ).into()
+        } else {
+            events::emit::withdraw_succeeded(&account_id, amount, &token_id);
+            PromiseOrValue::Value(U128(0))
         }
     }
 }
