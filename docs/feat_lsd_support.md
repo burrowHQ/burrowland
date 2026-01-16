@@ -30,8 +30,16 @@ TokenReceiverMsg::ClientEchoDeposit { client_echo: String }
 
 When a whitelisted contract deposits tokens with this message:
 1. The deposit is processed normally
-2. A callback is made to the sender: `on_burrowland_supply_client_echo(token_id, supplied_shares, msg)`
-3. The callback receives 50 TGas for processing
+2. A callback is made to the sender with the following JSON payload:
+   ```json
+   {
+     "token_id": "<token contract address>",
+     "supplied_shares": "<shares amount as U128>",
+     "supplied_ft_amount": "<original FT amount as U128>",
+     "msg": "<client_echo string>"
+   }
+   ```
+3. The callback method is `on_burrowland_supply_client_echo` and receives 50 TGas for processing
 
 **Usage:**
 ```json
@@ -186,7 +194,7 @@ No migration needed. The changes are backwards compatible.
 
 To use Client Echo:
 1. Request to be added to the client echo sender whitelist
-2. Implement `on_burrowland_supply_client_echo(token_id, supplied_shares, msg)` in your contract
+2. Implement `on_burrowland_supply_client_echo(token_id, supplied_shares, supplied_ft_amount, msg)` in your contract
 3. Use `ClientEchoDeposit` message for deposits
 4. Use `client_echo_withdraw_by_shares()` for withdrawals
 
