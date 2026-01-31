@@ -45,6 +45,7 @@ impl FungibleTokenReceiver for Contract {
             "Deposits for this asset are not enabled"
         );
 
+        let ft_amount = amount.0;
         let amount = amount.0 * 10u128.pow(asset.config.extra_decimals as u32);
 
         let (actions, with_pyth) = if msg.is_empty() {
@@ -142,6 +143,7 @@ impl FungibleTokenReceiver for Contract {
                             serde_json::json!({
                                 "token_id": token_id,
                                 "supplied_shares": supplied_shares,
+                                "supplied_ft_amount": U128(ft_amount),
                                 "msg": client_echo,
                             })
                             .to_string()
