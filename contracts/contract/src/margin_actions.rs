@@ -224,6 +224,11 @@ impl Contract {
                         account_id, &pos_owner_id,
                         "Can't stop yourself"
                     );
+                    // Fail-safe: ensure keeper has a margin account to receive service fee
+                    assert!(
+                        self.internal_get_margin_account(&account_id).is_some(),
+                        "Keeper must have a margin account to execute stops"
+                    );
                     let mut pos_owner = self.internal_unwrap_margin_account(&pos_owner_id);
                     let event = self.process_decrease_margin_position(
                         &mut pos_owner,

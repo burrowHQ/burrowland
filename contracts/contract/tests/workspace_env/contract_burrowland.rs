@@ -1,6 +1,6 @@
 use crate::*;
 
-use contract::{Config, AssetConfig, AssetDetailedView, PriceReceiverMsg, AccountDetailedView, AssetAmount, Action, TokenReceiverMsg, MarginStopServiceFee};
+use contract::{Config, AssetConfig, AssetDetailedView, PriceReceiverMsg, AccountDetailedView, AssetAmount, Action, TokenReceiverMsg, MarginStopServiceFee, StorageBalanceOfDetail};
 
 pub struct Burrowland(pub Contract);
 
@@ -900,6 +900,20 @@ impl Burrowland {
             .view()
             .await?
             .json::<TokenPythInfo>()
+    }
+
+    pub async fn get_storage_balance_of_detail(
+        &self,
+        account: &Account
+    ) -> Result<Option<StorageBalanceOfDetail>> {
+        self.0
+            .call("get_storage_balance_of_detail")
+            .args_json(json!({
+                "account_id": account.id()
+            }))
+            .view()
+            .await?
+            .json::<Option<StorageBalanceOfDetail>>()
     }
 }
 

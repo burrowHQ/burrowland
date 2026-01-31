@@ -80,14 +80,20 @@ pub struct DebtRepaymentResult {
 }
 ```
 
-**SettlementBenefits** - Accumulated benefits from position settlement:
+#### SettlementBenefits
+Accumulated benefits from position settlement:
 ```rust
+#[derive(Default)]
 pub struct SettlementBenefits {
     pub collateral_shares: u128,      // Collateral token shares (benefit_m_shares)
     pub debt_token_shares: u128,      // Debt token shares from leftover (benefit_d_shares)
     pub position_token_shares: u128,  // Position token shares (benefit_p_shares)
 }
 ```
+
+**Methods:**
+- `has_any()` - Returns true if any benefit shares are non-zero
+- `to_margin_updates(&position)` - Converts benefits to `MarginAccountUpdates` keyed by the position's token IDs
 
 **StopServiceFeeInfo** - Stop service fee info extracted during settlement:
 ```rust
@@ -134,6 +140,11 @@ MarginAction::SetStop {
     stop_loss: Option<u32>,
 }
 ```
+
+`process_set_stop` handles three cases:
+1. **Existing stop, both values null** → Remove stop, refund service fee to user's margin supply
+2. **Existing stop, at least one value set** → Refund old fee, charge new fee from current policy, store new stop
+3. **No existing stop, at least one value set** → Assert fee policy exists, charge fee, store new stop
 
 #### Executing Stops
 
@@ -194,17 +205,22 @@ Stop settings are validated with `validate_stop_settings()`:
 
 ```rust
 fn validate_stop_settings(stop_profit: &Option<u32>, stop_loss: &Option<u32>) {
-    // Stop loss must be between 1 and 9999 BPS (0.01%-99.99%)
     if let Some(sl) = stop_loss {
-        assert!(*sl > 0 && *sl < 10000);
+        assert!(
+            *sl > 0 && *sl < 10000,
+            "Stop loss must be between 1 and 9999 BPS (0.01%-99.99%)"
+        );
     }
-    // Stop profit must be greater than 10000 BPS (>100%)
     if let Some(sp) = stop_profit {
-        assert!(*sp > 10000);
+        assert!(
+            *sp > 10000,
+            "Stop profit must be greater than 10000 BPS (>100%)"
+        );
     }
-    // Note: stop_loss < stop_profit check is currently commented out
 }
 ```
+
+**Note:** An explicit `stop_loss < stop_profit` check is not needed because the individual bounds enforce it implicitly: `stop_loss < 10000 < stop_profit`.
 
 ## Workflow Examples
 
@@ -270,7 +286,16 @@ fn validate_stop_settings(stop_profit: &Option<u32>, stop_loss: &Option<u32>) {
 2. Contract removes `MarginStop` entry
 3. Service fee is refunded to user's margin supply
 
-### Example 4: Normal Position Close with Stop Set
+### Example 4: Failed Position Open with Stop Set
+
+1. User opens a position with stop settings, but the DEX swap fails
+2. During `callback_dex_trade` for failed open:
+   - Position is removed from `margin_positions`
+   - Collateral is returned to user's margin supply
+   - If a `MarginStop` was set, it is removed from `stops`
+   - Service fee is refunded to user's margin supply
+
+### Example 5: Normal Position Close with Stop Set
 
 1. User closes position normally before stop triggers
 2. During `callback_dex_trade` for position close:
@@ -369,7 +394,7 @@ Benefits:
 - No upfront cost (fee is refundable)
 
 Costs:
-- Service fee (only if stop executes or if position closes with stop active)
+- Service fee (only if stop is executed by a keeper; fee is refunded for normal close/decrease operations)
 - Potential slippage when stop executes
 
 ## Security Considerations
@@ -377,8 +402,9 @@ Costs:
 ### Access Control
 
 - **Owner Only:** Only position owner can set/modify stops via `SetStop`
-- **Anyone Can Execute:** Any account can trigger `StopMTPosition` (similar to liquidation)
-- **Admin Only:** Only contract owner can set service fee policy via `set_mssf()`
+- **Anyone Can Execute:** Any account with a margin account can trigger `StopMTPosition` (similar to liquidation)
+- **Admin Only:** Only contract owner can set service fee policy via `set_mssf()` (requires 1 yoctoNEAR)
+- **Margin Execute:** All margin actions require exactly 1 yoctoNEAR attached deposit via `margin_execute()`
 
 ### Validation
 
@@ -393,26 +419,32 @@ Costs:
 
 ### Storage Safety
 
-- **Try-based Updates:** `try_to_set_margin_account()` and `internal_set_margin_account_without_panic()` handle storage payment failures
-- **Lostfound Mechanism:** If service fee recipient lacks storage, fee goes to lostfound via `margin_account_token_shares_to_lostfound()`
+- **Force Updates:** `internal_force_set_margin_account()` handles storage updates in critical callbacks to prevent state inconsistency
+- **Fallback Recipient:** If service fee recipient lacks a margin account, fee goes to position owner's account instead
 - **Atomic Operations:** Stop settings and fee handling are atomic within transactions
-- **Rollback Support:** `internal_set_margin_account_without_panic()` can rollback state on storage failure
+- **Saturating Math:** Storage balance calculations use `saturating_sub()` to prevent underflow issues
 
 ### Edge Cases
 
 1. **Slippage Protection:** `min_token_d_amount` prevents excessive slippage during stop execution
-2. **Fee Refunds:** Multiple refund paths ensure users don't lose fees unnecessarily
-3. **Migration Safety:** `MarginAccountV1` provides backward compatibility
+2. **Fee Refunds:** Multiple refund paths ensure users don't lose fees unnecessarily:
+   - Normal close/decrease of a position with stop set → refunded
+   - Stop removal via `SetStop` with both values null → refunded
+   - Failed position open (DEX swap failure) with stop set → refunded
+3. **Migration Safety:** `MarginAccountV0` → `MarginAccountV1` → `Current` provides backward compatibility
 4. **Stop Removal:** Removing both profit and loss stops triggers full refund
+5. **Keeper Margin Account Required:** Keeper executing `StopMTPosition` must have a margin account to receive the service fee; otherwise the transaction panics
 
 ## Admin Operations
 
 ### Setting Service Fee Policy
 
+Requires exactly 1 yoctoNEAR attached and must be called by the contract owner.
+
 ```rust
 contract.set_mssf(MarginStopServiceFee {
     token_id: "usdc.token".parse().unwrap(),
-    amount: U128(1000000), // 1 USDC (6 decimals)
+    amount: U128(1000000), // 1 USDC (6 decimals, in burrow inner decimals)
 });
 ```
 
@@ -456,13 +488,15 @@ Emitted when a keeper initiates a stop execution (uses existing `margin_decrease
 - `contracts/contract/src/margin_stop_service_fee.rs` - Fee policy management (`MarginStopServiceFee`, `set_mssf`, `get_mssf`)
 - `contracts/contract/src/margin_accounts.rs` - `MarginStop` struct, `stops` field, `MarginAccountDetailedView` with stops
 - `contracts/contract/src/margin_actions.rs` - `StopMTPosition` and `SetStop` actions, processing logic
-- `contracts/contract/src/margin_position.rs` - `is_stop_active()`, `validate_stop_settings()`, `process_set_stop()`
+- `contracts/contract/src/margin_position.rs` - `is_stop_active()`, `validate_stop_settings()`, `process_set_stop()`, stop fee handling during open, failed-open refund in `callback_dex_trade`
 - `contracts/contract/src/margin_trading.rs` - Extensively refactored with:
   - `DecreaseOperation` enum
   - `DebtRepaymentResult`, `SettlementBenefits`, `StopServiceFeeInfo`, `MarginAccountUpdates` structs
   - `calculate_debt_repayment()`, `repay_debt_from_collateral()`, `cover_debt_from_protocol_reserve()`
   - `settle_closed_position()`, `settle_stop_service_fee()`
   - Refactored `on_decrease_trade_return()` with clear section-based logic
+- `contracts/contract/src/fungible_token.rs` - DEX callback echo handling for stop operations
+- `contracts/contract/src/margin_pyth.rs` - Pyth oracle price handling for stop execution
 - `contracts/contract/src/events.rs` - `set_stop` event
 - `contracts/contract/src/legacy.rs` - `MarginAccountV0`, `MarginAccountV1` migration paths
 - `contracts/contract/src/storage_keys.rs` - `MARGIN_STOP_SERVICE_FEE` constant ("mssf")
