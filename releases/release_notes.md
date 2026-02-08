@@ -1,5 +1,12 @@
 # Release Notes
 
+Version 0.15.9
+```bash=
+# codehash: FJQb35TRJFP8YCbQVxQ72eFL715E6tUP7j9o9coPQVvU
+```
+- introduce stop loss/profit on margin positions.
+- fix storage counting issue.
+
 Version 0.15.8
 ```bash=
 # codehash: 8bEuHhphsbFj3A6TUpxL8YBJ8KX3UFX4grA4vjuPt2TG
