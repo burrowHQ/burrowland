@@ -426,6 +426,8 @@ pub mod emit {
             "margin_liquidate_succeeded"
         } else if op_id == "forceclose" {
             "margin_forceclose_succeeded"
+        } else if op_id == "stop" {
+            "margin_stop_succeeded"
         } else {
             op_id
         };
