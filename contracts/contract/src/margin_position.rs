@@ -141,16 +141,18 @@ impl Contract {
         }
     }
 
-    /// check if the position meets stop-loss or stop-win currently.
-    /// estimate value of position tokens and debt tokens, including holding position fee.
-    /// deduct slippage from selling position tokens.
+    /// Check if the position meets stop-loss or stop-profit currently.
+    /// Estimates value of position tokens and debt tokens, including holding position fee.
+    /// Deducts slippage from selling position tokens.
+    /// Returns Some("stop_loss") or Some("stop_profit") if a condition is triggered,
+    /// or None if neither is active. Stop-loss takes precedence when both fire simultaneously.
     pub(crate) fn is_stop_active(
         &self,
         mt: &MarginTradingPosition,
         prices: &Prices,
         stop: &MarginStop,
         slippage: u32,
-    ) -> bool {
+    ) -> Option<&'static str> {
         let value_position = self.get_mtp_position_value(mt, prices);
         let value_debt = self.get_mtp_debt_value(mt, prices);
         let value_collateral = self.get_mtp_collateral_value(mt, prices);
@@ -160,7 +162,7 @@ impl Contract {
             // target remain collateral: value_collateral.mul_ratio(stop_loss)
             // current remain: (value_position + value_collateral).mul_ratio(10000-slippage) - (value_debt + total_hp_fee)
             if (value_position + value_collateral).mul_ratio(10000 - slippage) < value_collateral.mul_ratio(stop_loss) + value_debt + total_hp_fee {
-                return true;
+                return Some("stop_loss");
             }
         }
 
@@ -168,11 +170,11 @@ impl Contract {
             // target gross profit: value_collateral.mul_ratio(stop_profit)
             // current remain: (value_position + value_collateral).mul_ratio(10000-slippage) - (value_debt + total_hp_fee)
             if (value_position + value_collateral).mul_ratio(10000 - slippage) > value_collateral.mul_ratio(stop_profit) + value_debt + total_hp_fee {
-                return true;
+                return Some("stop_profit");
             }
         }
 
-        false
+        None
     }
 
     pub(crate) fn is_mt_liquidatable(
@@ -584,7 +586,7 @@ impl Contract {
             "min_debt_amount is too low"
         );
 
-        if op == "close" || op == "liquidate" || op == "stop" {
+        if op == "close" || op == "liquidate" || op == "stop_loss" || op == "stop_profit" {
             //   ensure all debt would be repaid
             //   and take holding-position fee into account
             if min_token_d_amount < total_debt_amount + hp_fee {
@@ -607,11 +609,11 @@ impl Contract {
                 self.is_mt_liquidatable(&mt, prices, mbtl.min_safety_buffer),
                 "Margin position is not liquidatable"
             );
-        } else if op == "stop" {
+        } else if op == "stop_loss" || op == "stop_profit" {
             let margin_stop = account.stops.get(pos_id);
             assert!(margin_stop.is_some(), "Margin position has no stop settings");
             assert!(
-                self.is_stop_active(&mt, prices, margin_stop.unwrap(), 0),
+                self.is_stop_active(&mt, prices, margin_stop.unwrap(), 0).is_some(),
                 "Margin position is not stopable yet"
             );
             // When collateral == debt token (Long direction), the settlement path can cover

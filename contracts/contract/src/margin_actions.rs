@@ -230,6 +230,11 @@ impl Contract {
                         "Keeper must have a margin account to execute stops"
                     );
                     let mut pos_owner = self.internal_unwrap_margin_account(&pos_owner_id);
+                    let mt = pos_owner.margin_positions.get(&pos_id).expect("Position not found");
+                    let margin_stop = pos_owner.stops.get(&pos_id).expect("Margin position has no stop settings");
+                    let stop_op = self.is_stop_active(&mt, &prices, &margin_stop, 0)
+                        .expect("Margin position is not stopable yet");
+                    let stop_started_event = if stop_op == "stop_loss" { "margin_stop_loss_started" } else { "margin_stop_profit_started" };
                     let event = self.process_decrease_margin_position(
                         &mut pos_owner,
                         &pos_id,
@@ -237,11 +242,11 @@ impl Contract {
                         min_debt_amount.into(),
                         &swap_indication,
                         &prices,
-                        "stop".to_string(),
+                        stop_op.to_string(),
                         Some(account_id.clone()),
                     );
                     self.internal_set_margin_account(&pos_owner_id, pos_owner);
-                    events::emit::margin_decrease_started("margin_stop_started", event);
+                    events::emit::margin_decrease_started(stop_started_event, event);
                 }
                 MarginAction::Withdraw { token_id, amount } => {
                     assert!(!token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));

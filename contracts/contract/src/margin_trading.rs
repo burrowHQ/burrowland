@@ -305,8 +305,10 @@ pub enum DecreaseOperation {
     Liquidate,
     /// Force closing underwater position
     ForceClose,
-    /// Keeper executing stop order
-    Stop,
+    /// Keeper executing stop-loss order
+    StopLoss,
+    /// Keeper executing stop-profit order
+    StopProfit,
 }
 
 impl DecreaseOperation {
@@ -316,14 +318,15 @@ impl DecreaseOperation {
             "close" => Self::Close,
             "liquidate" => Self::Liquidate,
             "forceclose" => Self::ForceClose,
-            "stop" => Self::Stop,
+            "stop_loss" => Self::StopLoss,
+            "stop_profit" => Self::StopProfit,
             _ => env::panic_str(&format!("Unknown decrease operation: {}", s)),
         }
     }
 
     /// Returns true if this operation should fully close the position
     pub fn is_full_close(&self) -> bool {
-        matches!(self, Self::Close | Self::Liquidate | Self::ForceClose | Self::Stop)
+        matches!(self, Self::Close | Self::Liquidate | Self::ForceClose | Self::StopLoss | Self::StopProfit)
     }
 
     /// Returns true if remaining debt should be repaid from collateral
@@ -666,7 +669,7 @@ impl Contract {
         let mut asset = self.internal_unwrap_asset(&fee_info.token_id);
 
         // Determine recipient: keeper for stop operation, owner otherwise
-        let recipient_id = if operation == DecreaseOperation::Stop {
+        let recipient_id = if operation == DecreaseOperation::StopLoss || operation == DecreaseOperation::StopProfit {
             keeper_id.unwrap_or(position_owner_id)
         } else {
             position_owner_id
@@ -752,6 +755,7 @@ impl Contract {
             token_p_id: position.token_p_id.clone(),
             token_p_amount: position.token_p_amount,
             holding_fee: repayment.holding_fee_paid,
+            fully_closed: position.token_d_shares.0 == 0,
         };
 
         // Try to settle (close) the position if debt is fully repaid
@@ -826,7 +830,7 @@ impl Contract {
                     events::emit::margin_benefits(&owner_id, &owner_updates);
                     self.internal_force_set_margin_account(&owner_id, owner_account);
                 }
-                DecreaseOperation::Decrease | DecreaseOperation::Close | DecreaseOperation::Stop => {
+                DecreaseOperation::Decrease | DecreaseOperation::Close | DecreaseOperation::StopLoss | DecreaseOperation::StopProfit => {
                     // Normal operations: benefits go to position owner
                     deposit_benefit_to_account(&mut account, &position.token_c_id, benefits.collateral_shares);
                     deposit_benefit_to_account(&mut account, &position.token_d_id, benefits.debt_token_shares);
