@@ -619,12 +619,20 @@ impl Contract {
             // Without this check, a keeper could pass a tiny token_p_amount, letting
             // collateral absorb all debt and leaving position tokens unsold — defeating
             // the stop order's purpose of exiting the risky position.
-            // Exception: when token_c == token_p, remaining unsold position tokens are
-            // the same asset as collateral, so no restriction is needed.
             if mt.token_c_id == mt.token_d_id {
                 assert!(
                     token_p_amount >= mt.token_p_amount,
                     "Stop: must use all position tokens in swap when collateral equals debt token"
+                );
+            } else if mt.token_c_id == mt.token_p_id {
+                // Short direction (collateral == position token): the swap only needs to
+                // produce enough debt token to cover total_debt + hp_fee. Cap min_token_d_amount
+                // so the keeper cannot over-swap collateral into debt token beyond what is needed.
+                // A slippage buffer is allowed here.
+                assert!(
+                    min_token_d_amount <= total_debt_amount + hp_fee
+                        + u128_ratio(total_debt_amount + hp_fee, mbtl.max_common_slippage_rate as u128, MAX_RATIO as u128),
+                    "Stop: min_debt_amount too large, would over-swap collateral"
                 );
             }
         } else if op == "forceclose" {
