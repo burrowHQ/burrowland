@@ -56,13 +56,14 @@ pub enum DecreaseOperation {
     Close,       // User closing entire position
     Liquidate,   // Liquidator closing unhealthy position
     ForceClose,  // Force closing underwater position
-    Stop,        // Keeper executing stop order
+    StopLoss,    // Keeper executing stop-loss order
+    StopProfit,  // Keeper executing stop-profit order
 }
 ```
 
 **Helper methods:**
-- `from_str(s: &str)` - Converts string operation type to enum
-- `is_full_close()` - Returns true for Close, Liquidate, ForceClose, Stop
+- `from_str(s: &str)` - Converts string operation type to enum (`"stop_loss"` → `StopLoss`, `"stop_profit"` → `StopProfit`)
+- `is_full_close()` - Returns true for Close, Liquidate, ForceClose, StopLoss, StopProfit
 - `should_repay_from_collateral()` - Returns true for full-close operations
 - `can_use_protocol_reserve()` - Returns true only for ForceClose
 - `benefits_to_protocol_owner()` - Returns true for Liquidate and ForceClose
@@ -160,7 +161,7 @@ MarginAction::StopMTPosition {
 
 ### Stop Condition Logic
 
-The `is_stop_active()` function determines if a stop should trigger:
+The `is_stop_active()` function determines which stop condition, if any, is triggered:
 
 ```rust
 pub(crate) fn is_stop_active(
@@ -169,10 +170,12 @@ pub(crate) fn is_stop_active(
     prices: &Prices,
     stop: &MarginStop,
     slippage: u32,
-) -> bool
+) -> Option<&'static str>
 ```
 
-**Note:** Currently called with `slippage = 0` when checking stop conditions during `process_decrease_margin_position`.
+Returns `Some("stop_loss")` or `Some("stop_profit")` when a condition is triggered, or `None` if neither is active. Stop-loss takes precedence when both conditions are simultaneously met.
+
+**Note:** Called with `slippage = 0` in both `margin_actions.rs` (to determine the op type) and as a validation guard inside `process_decrease_margin_position`.
 
 **Stop-Loss Check:**
 ```
@@ -265,10 +268,11 @@ fn validate_stop_settings(stop_profit: &Option<u32>, stop_loss: &Option<u32>) {
    }
    ```
 
-4. Contract validates stop condition using `is_stop_active()`
-5. Position is closed (swap position tokens, repay debt)
-6. Service fee is transferred to keeper's margin supply
-7. Remaining value is returned to user's margin supply
+4. Contract calls `is_stop_active()` to determine the stop type (`"stop_loss"` or `"stop_profit"`)
+5. Operation proceeds as `stop_loss` or `stop_profit` accordingly
+6. Position is closed (swap position tokens, repay debt)
+7. Service fee is transferred to keeper's margin supply
+8. Remaining value is returned to user's margin supply
 
 ### Example 3: Removing Stop
 
@@ -315,7 +319,7 @@ The `on_decrease_trade_return` callback handles position settlement with a struc
    - Converts leftover to supply shares as benefit
 
 2. **Section 2: Collateral-Based Repayment**
-   - For full-close operations (Close, Liquidate, ForceClose, Stop)
+   - For full-close operations (Close, Liquidate, ForceClose, StopLoss, StopProfit)
    - Uses `repay_debt_from_collateral()` when token_c == token_d
    - Attempts to repay remaining debt using collateral
 
@@ -333,14 +337,14 @@ The `on_decrease_trade_return` callback handles position settlement with a struc
 5. **Section 5: Benefits Distribution**
    - **Liquidate:** Distributed among owner, liquidator, and user based on `liq_benefit_protocol_rate` and `liq_benefit_liquidator_rate`
    - **ForceClose:** All benefits go to protocol owner
-   - **Decrease/Close/Stop:** Benefits go to position owner
+   - **Decrease/Close/StopLoss/StopProfit:** Benefits go to position owner
 
 6. **Section 6: Asset Updates**
    - Saves updated asset state without basic checks
 
 7. **Section 7: Service Fee Settlement**
    - `settle_stop_service_fee()` distributes fee to appropriate recipient
-   - For Stop operations: fee goes to keeper (liquidator_id)
+   - For StopLoss/StopProfit operations: fee goes to keeper (liquidator_id)
    - For other operations: fee refunded to position owner
 
 ### Helper Functions
@@ -477,9 +481,29 @@ Emitted when a user sets or modifies stop settings:
 }
 ```
 
-### margin_stop_started Event
+### margin_stop_loss_started / margin_stop_profit_started Events
 
-Emitted when a keeper initiates a stop execution (uses existing `margin_decrease_started` infrastructure with `"margin_stop_started"` event name).
+Emitted when a keeper initiates a stop execution. The contract calls `is_stop_active()` to determine which condition triggered, then emits either `"margin_stop_loss_started"` or `"margin_stop_profit_started"` (uses the existing `margin_decrease_started` infrastructure).
+
+### margin_stop_loss_succeeded / margin_stop_profit_succeeded Events
+
+Emitted after the DEX swap completes and the position is settled. The event name reflects which stop type was executed. Both events share the same `EventDataMarginDecreaseResult` payload:
+
+```rust
+pub struct EventDataMarginDecreaseResult {
+    pub account_id: AccountId,
+    pub pos_id: String,
+    pub liquidator_id: Option<AccountId>,  // keeper's account_id
+    pub token_c_id: TokenId,
+    pub token_c_shares: U128,              // remaining collateral shares
+    pub token_d_id: TokenId,
+    pub token_d_shares: U128,              // remaining debt shares (0 = fully closed)
+    pub token_p_id: TokenId,
+    pub token_p_amount: Balance,           // remaining position token amount
+    pub holding_fee: Balance,              // protocol fee paid from this operation
+    pub fully_closed: bool,               // true when debt is fully repaid
+}
+```
 
 ## Implementation Notes
 
