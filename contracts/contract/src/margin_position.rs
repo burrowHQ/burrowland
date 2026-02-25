@@ -614,6 +614,19 @@ impl Contract {
                 self.is_stop_active(&mt, prices, margin_stop.unwrap(), 0),
                 "Margin position is not stopable yet"
             );
+            // When collateral == debt token (Long direction), the settlement path can cover
+            // remaining debt from collateral (Section 2 in on_decrease_trade_return).
+            // Without this check, a keeper could pass a tiny token_p_amount, letting
+            // collateral absorb all debt and leaving position tokens unsold — defeating
+            // the stop order's purpose of exiting the risky position.
+            // Exception: when token_c == token_p, remaining unsold position tokens are
+            // the same asset as collateral, so no restriction is needed.
+            if mt.token_c_id == mt.token_d_id {
+                assert!(
+                    token_p_amount >= mt.token_p_amount,
+                    "Stop: must use all position tokens in swap when collateral equals debt token"
+                );
+            }
         } else if op == "forceclose" {
             assert!(
                 self.is_mt_forcecloseable(&mt, prices),

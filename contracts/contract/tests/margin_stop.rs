@@ -802,3 +802,188 @@ async fn test_margin_stop_storage_accounting() -> Result<()> {
 
     Ok(())
 }
+
+/// Test that a keeper cannot execute a stop order using partial position tokens when
+/// collateral == debt token (Long direction).
+///
+/// Attack vector: keeper passes a tiny token_p_amount so the settlement path
+/// (Section 2: repay_debt_from_collateral) absorbs all debt from collateral,
+/// returning the remaining position tokens to the owner unsold — defeating the
+/// stop order's purpose of exiting the risky position.
+///
+/// The fix enforces token_p_amount >= mt.token_p_amount when token_c == token_d.
+#[tokio::test]
+async fn test_stop_partial_token_p_rejected_when_c_eq_d() -> Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let root = worker.root_account()?;
+
+    let pyth_contract = deploy_mock_pyth(&root).await?;
+    let nusdt_token_contract = deploy_mock_ft(&root, "nusdt", 18).await?;
+    let wrap_token_contract = deploy_mock_ft(&root, "wrap", 18).await?;
+    let wrap_reserve_amount = d(10000, 24);
+    let nusdt_reserve_amount = d(10000, 6);
+    check!(wrap_token_contract.ft_mint(&root, &root, wrap_reserve_amount));
+    check!(nusdt_token_contract.ft_mint(&root, &root, nusdt_reserve_amount));
+
+    let ref_exchange_contract = deploy_ref_exchange(&root).await?;
+    {
+        check!(nusdt_token_contract.ft_storage_deposit(ref_exchange_contract.0.id()));
+        check!(wrap_token_contract.ft_storage_deposit(ref_exchange_contract.0.id()));
+        check!(ref_exchange_contract.storage_deposit(&root));
+        check!(ref_exchange_contract.extend_whitelisted_tokens(&root, vec![nusdt_token_contract.0.id(), wrap_token_contract.0.id()]));
+    }
+
+    let burrowland_contract = deploy_burrowland_with_pyth(&root).await?;
+    check!(burrowland_contract.add_asset_handler(&root, &wrap_token_contract));
+    check!(burrowland_contract.add_asset_handler(&root, &nusdt_token_contract));
+    check!(wrap_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
+    check!(nusdt_token_contract.ft_storage_deposit(burrowland_contract.0.id()));
+    check!(burrowland_contract.deposit_to_reserve(&wrap_token_contract, &root, wrap_reserve_amount));
+    check!(burrowland_contract.deposit_to_reserve(&nusdt_token_contract, &root, nusdt_reserve_amount));
+
+    let service_fee = d(1, 18);
+    check!(burrowland_contract.set_mssf(&root, MarginStopServiceFee {
+        token_id: near_sdk::AccountId::new_unchecked(nusdt_token_contract.0.id().to_string()),
+        amount: U128(service_fee),
+    }));
+
+    let alice = create_account(&root, "alice", None).await;
+    let bob = create_account(&root, "bob", None).await;
+    check!(ref_exchange_contract.storage_deposit(&alice));
+    check!(ref_exchange_contract.storage_deposit(&bob));
+    check!(burrowland_contract.storage_deposit(&alice));
+    check!(burrowland_contract.storage_deposit(&bob));
+
+    assert!(nusdt_token_contract.ft_mint(&root, &alice, d(10000, 6)).await?.is_success());
+    assert!(wrap_token_contract.ft_mint(&root, &alice, d(100000, 24)).await?.is_success());
+
+    check!(ref_exchange_contract.deposit(&nusdt_token_contract, &alice, d(10000, 6)));
+    check!(ref_exchange_contract.deposit(&wrap_token_contract, &alice, d(10000, 24)));
+
+    // Pool: 10000 USDT / 1000 NEAR → price $10/NEAR
+    check!(ref_exchange_contract.add_simple_swap_pool(&root, vec![nusdt_token_contract.0.id(), wrap_token_contract.0.id()], 5));
+    check!(ref_exchange_contract.add_simple_liquidity(&alice, 0, vec![U128(d(10000, 6)), U128(d(1000, 24))], Some(vec![U128(0), U128(0)])));
+
+    // nusdt extra_decimals = 12, so inner / 10^12 = FT amount
+    let extra_decimals_mult = d(1, 12);
+    let supply_amount = d(1000, 18);
+    check!(nusdt_token_contract.ft_mint(&root, &alice, supply_amount * 10));
+    // supply 1000 USDT margin + extra for service fee
+    check!(burrowland_contract.deposit_to_margin(&nusdt_token_contract, &alice, supply_amount / extra_decimals_mult + d(10, 6)));
+
+    check!(burrowland_contract.register_margin_dex(&root, ref_exchange_contract.0.id(), 1));
+    check!(burrowland_contract.register_margin_token(&root, nusdt_token_contract.0.id(), 0));
+    check!(burrowland_contract.register_margin_token(&root, wrap_token_contract.0.id(), 1));
+
+    // Set up Pyth prices: NEAR = $10, USDT = $1
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(burrowland_contract.add_token_pyth_info(&root, wrap_token_contract.0.id(), 24, 4, "27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", None, None));
+    check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
+        price: I64(1000000000), // $10
+        conf: U64(278100),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+    let current_timestamp = worker.view_block().await?.timestamp();
+    check!(burrowland_contract.add_token_pyth_info(&root, nusdt_token_contract.0.id(), 6, 4, "1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", None, None));
+    check!(pyth_contract.set_price("1fc18861232290221461220bd4e2acd1dcdfbc89c84092c93c18bdc7756c1588", PythPrice{
+        price: I64(100000000), // $1
+        conf: U64(103853),
+        expo: -8,
+        publish_time: nano_to_sec(current_timestamp) as i64,
+    }));
+
+    // Alice opens a LONG position: token_c == token_d == nusdt, token_p == wrap (NEAR)
+    // Collateral: 1000 USDT, Borrow: 1000 USDT, Buy: ~90 NEAR
+    // Oracle expects 100 NEAR from 1000 USDT at $10/NEAR; 10% max slippage → min = 90 NEAR
+    check!(logs burrowland_contract.margin_trading_open_position_with_stop_by_pyth(
+        &alice,
+        nusdt_token_contract.0.id(), d(1000, 18).into(),
+        nusdt_token_contract.0.id(), d(1000, 18).into(),
+        wrap_token_contract.0.id(), d(90, 24).into(),
+        SwapIndication {
+            dex_id: near_sdk::AccountId::new_unchecked(ref_exchange_contract.0.id().to_string()),
+            swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
+                referral_id: None,
+                client_echo: None,
+                skip_degen_price_sync: None,
+                actions: vec![
+                    RefV1Action::Swap(RefV1SwapAction{
+                        pool_id: 0,
+                        token_in: near_sdk::AccountId::new_unchecked(nusdt_token_contract.0.id().to_string()),
+                        amount_in: Some(U128(d(1000, 6))),
+                        token_out: near_sdk::AccountId::new_unchecked(wrap_token_contract.0.id().to_string()),
+                        min_amount_out: U128(d(90, 24)),
+                    })
+                ]
+            }).unwrap()
+        },
+        None,
+        Some(9000), // stop_loss at 90%
+    ));
+
+    let alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
+    assert_eq!(alice_margin_account.margin_positions.len(), 1);
+    assert_eq!(alice_margin_account.stops.len(), 1);
+
+    let pos_id = alice_margin_account.margin_positions.keys().collect::<Vec<&String>>()[0].clone();
+    let position = alice_margin_account.margin_positions.get(&pos_id).unwrap();
+    let position_amount = position.token_p_amount;  // NEAR inner amount
+    let debt_balance = position.token_d_info.balance + 10u128.pow(20);
+
+    // Drop NEAR price to $5 to trigger stop-loss:
+    // value_position = ~90 NEAR * $5 = $450
+    // (value_p + value_c) = $450 + $1000 = $1450 < 0.9 * $1000 + $1000 + fee = $1900 ✓
+    let stop_timestamp = worker.view_block().await?.timestamp();
+    check!(pyth_contract.set_price("27e867f0f4f61076456d1a73b14c7edc1cf5cef4f4d6193a33424288f11bd0f4", PythPrice{
+        price: I64(500000000), // $5
+        conf: U64(278100),
+        expo: -8,
+        publish_time: nano_to_sec(stop_timestamp) as i64,
+    }));
+
+    // Partial position amount (half): would leave half the NEAR unsold
+    let partial_p_amount = position_amount / 2;
+    // wrap has extra_decimals=0, so ft_amount == inner_amount
+    // min_token_d_amount: ~45 NEAR * $5 = $225 USDT, 90% = ~$202.5 USDT inner
+    // Use d(205, 18) which passes the slippage check but still less than the full debt,
+    // so the guard "must use all position tokens" fires (not the slippage check).
+    let partial_min_debt = d(205, 18);
+
+    // Keeper (bob) attempts to stop with partial position amount.
+    // Should fail: token_c == token_d == nusdt, so all position tokens must be used.
+    check!(
+        burrowland_contract.margin_trading_stop_mtposition_by_pyth(
+            &bob,
+            alice.id(),
+            &pos_id,
+            partial_p_amount,
+            partial_min_debt,
+            SwapIndication {
+                dex_id: near_sdk::AccountId::new_unchecked(ref_exchange_contract.0.id().to_string()),
+                swap_action_text: serde_json::to_string(&RefV1TokenReceiverMessage::Execute{
+                    referral_id: None,
+                    client_echo: None,
+                    skip_degen_price_sync: None,
+                    actions: vec![
+                        RefV1Action::Swap(RefV1SwapAction{
+                            pool_id: 0,
+                            token_in: near_sdk::AccountId::new_unchecked(wrap_token_contract.0.id().to_string()),
+                            amount_in: Some(U128(partial_p_amount)),
+                            token_out: near_sdk::AccountId::new_unchecked(nusdt_token_contract.0.id().to_string()),
+                            min_amount_out: U128(partial_min_debt / extra_decimals_mult),
+                        })
+                    ]
+                }).unwrap()
+            }
+        ),
+        "must use all position tokens in swap when collateral equals debt token"
+    );
+
+    // Position should still be open and unchanged
+    let alice_margin_account = burrowland_contract.get_margin_account(&alice).await?.unwrap();
+    assert_eq!(alice_margin_account.margin_positions.len(), 1, "Position should remain open after failed stop");
+    assert_eq!(alice_margin_account.stops.len(), 1, "Stop should remain set after failed stop");
+
+    Ok(())
+}
