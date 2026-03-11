@@ -141,6 +141,42 @@ impl Contract {
         }
     }
 
+    /// Check if the position meets stop-loss or stop-profit currently.
+    /// Estimates value of position tokens and debt tokens, including holding position fee.
+    /// Deducts slippage from selling position tokens.
+    /// Returns Some("stop_loss") or Some("stop_profit") if a condition is triggered,
+    /// or None if neither is active. Stop-loss takes precedence when both fire simultaneously.
+    pub(crate) fn is_stop_active(
+        &self,
+        mt: &MarginTradingPosition,
+        prices: &Prices,
+        stop: &MarginStop,
+        slippage: u32,
+    ) -> Option<&'static str> {
+        let value_position = self.get_mtp_position_value(mt, prices);
+        let value_debt = self.get_mtp_debt_value(mt, prices);
+        let value_collateral = self.get_mtp_collateral_value(mt, prices);
+        let total_hp_fee = self.get_mtp_hp_fee_value(mt, prices);
+
+        if let Some(stop_loss) = stop.stop_loss {
+            // target remain collateral: value_collateral.mul_ratio(stop_loss)
+            // current remain: (value_position + value_collateral).mul_ratio(10000-slippage) - (value_debt + total_hp_fee)
+            if (value_position + value_collateral).mul_ratio(10000 - slippage) < value_collateral.mul_ratio(stop_loss) + value_debt + total_hp_fee {
+                return Some("stop_loss");
+            }
+        }
+
+        if let Some(stop_profit) = stop.stop_profit {
+            // target gross profit: value_collateral.mul_ratio(stop_profit)
+            // current remain: (value_position + value_collateral).mul_ratio(10000-slippage) - (value_debt + total_hp_fee)
+            if (value_position + value_collateral).mul_ratio(10000 - slippage) > value_collateral.mul_ratio(stop_profit) + value_debt + total_hp_fee {
+                return Some("stop_profit");
+            }
+        }
+
+        None
+    }
+
     pub(crate) fn is_mt_liquidatable(
         &self,
         mt: &MarginTradingPosition,
@@ -277,6 +313,8 @@ impl Contract {
         min_token_p_amount: Balance,
         swap_indication: &SwapIndication,
         prices: &Prices,
+        stop_profit: &Option<u32>, 
+        stop_loss: &Option<u32>,
     ) -> EventDataMarginOpen {
         let margin_config = self.internal_margin_config();
         let pd = PositionDirection::new(token_c_id, token_d_id, token_p_id);
@@ -400,6 +438,24 @@ impl Contract {
             token_p_id.clone(),
         );
 
+        // process stop service
+        let mut margin_stop = None;
+        if stop_profit.is_some() || stop_loss.is_some() {
+            // Validate stop settings before processing
+            validate_stop_settings(stop_profit, stop_loss);
+            if let Some(mssf) = read_mssf_from_storage() {
+                let (amount, _) = self.internal_margin_withdraw_supply(account, &mssf.token_id, Some(mssf.amount.into()));
+                margin_stop = Some(MarginStop {
+                    stop_profit: *stop_profit,
+                    stop_loss: *stop_loss,
+                    service_token_id: mssf.token_id.clone(),
+                    service_token_amount: amount.into(),
+                });
+            } else {
+                env::panic_str("Margin stop service fee policy is not set.");
+            }
+        }
+
         // passes all check, start to open
         let event = EventDataMarginOpen {
             account_id: account.account_id.clone(),
@@ -420,6 +476,9 @@ impl Contract {
         account.margin_positions.insert(&pos_id, &mt);
         account.storage_tracker.stop();
         account.position_latest_actions.insert(pos_id.clone(), ts.into());
+        if let Some(margin_stop) = margin_stop {
+            account.stops.insert(pos_id.clone(), margin_stop);
+        }
         // step 4: call dex to trade and wait for callback
         // organize swap action
         let swap_ref = SwapReference {
@@ -527,7 +586,7 @@ impl Contract {
             "min_debt_amount is too low"
         );
 
-        if op == "close" || op == "liquidate" {
+        if op == "close" || op == "liquidate" || op == "stop_loss" || op == "stop_profit" {
             //   ensure all debt would be repaid
             //   and take holding-position fee into account
             if min_token_d_amount < total_debt_amount + hp_fee {
@@ -550,6 +609,34 @@ impl Contract {
                 self.is_mt_liquidatable(&mt, prices, mbtl.min_safety_buffer),
                 "Margin position is not liquidatable"
             );
+        } else if op == "stop_loss" || op == "stop_profit" {
+            let margin_stop = account.stops.get(pos_id);
+            assert!(margin_stop.is_some(), "Margin position has no stop settings");
+            assert!(
+                self.is_stop_active(&mt, prices, margin_stop.unwrap(), 0).is_some(),
+                "Margin position is not stopable yet"
+            );
+            // When collateral == debt token (Long direction), the settlement path can cover
+            // remaining debt from collateral (Section 2 in on_decrease_trade_return).
+            // Without this check, a keeper could pass a tiny token_p_amount, letting
+            // collateral absorb all debt and leaving position tokens unsold — defeating
+            // the stop order's purpose of exiting the risky position.
+            if mt.token_c_id == mt.token_d_id {
+                assert!(
+                    token_p_amount >= mt.token_p_amount,
+                    "Stop: must use all position tokens in swap when collateral equals debt token"
+                );
+            } else if mt.token_c_id == mt.token_p_id {
+                // Short direction (collateral == position token): the swap only needs to
+                // produce enough debt token to cover total_debt + hp_fee. Cap min_token_d_amount
+                // so the keeper cannot over-swap collateral into debt token beyond what is needed.
+                // A slippage buffer is allowed here.
+                assert!(
+                    min_token_d_amount <= total_debt_amount + hp_fee
+                        + u128_ratio(total_debt_amount + hp_fee, mbtl.max_common_slippage_rate as u128, MAX_RATIO as u128),
+                    "Stop: min_debt_amount too large, would over-swap collateral"
+                );
+            }
         } else if op == "forceclose" {
             assert!(
                 self.is_mt_forcecloseable(&mt, prices),
@@ -736,6 +823,64 @@ impl Contract {
             &claim_token_p_shares,
         );
     }
+
+    pub(crate) fn process_set_stop(
+        &mut self,
+        account: &mut MarginAccount,
+        pos_id: &String,
+        stop_profit: Option<u32>,
+        stop_loss: Option<u32>,
+    ) {
+        let mt = account
+            .margin_positions
+            .get(pos_id)
+            .expect("Position not exist");
+        assert!(
+            !mt.is_locking,
+            "Position is currently waiting for a trading result."
+        );
+        // Validate stop settings before processing
+        validate_stop_settings(&stop_profit, &stop_loss);
+        if let Some(margin_stop) = account.stops.remove(pos_id) {
+            if stop_profit.is_none() && stop_loss.is_none() {
+                // remove stop, refund fee back to user
+                self.internal_margin_deposit(account, &margin_stop.service_token_id, margin_stop.service_token_amount.0);
+
+            } else {
+                // update stop: refund old fee and charge new fee based on current policy
+                self.internal_margin_deposit(account, &margin_stop.service_token_id, margin_stop.service_token_amount.0);
+
+                if let Some(mssf) = read_mssf_from_storage() {
+                    let (amount, _) = self.internal_margin_withdraw_supply(account, &mssf.token_id, Some(mssf.amount.into()));
+                    let margin_stop = MarginStop {
+                        stop_profit,
+                        stop_loss,
+                        service_token_id: mssf.token_id.clone(),
+                        service_token_amount: amount.into(),
+                    };
+                    account.stops.insert(pos_id.clone(), margin_stop);
+                } else {
+                    env::panic_str("Margin stop service fee policy is not set.");
+                }
+            }
+
+        } else {
+            // add stop
+            assert!(stop_profit.is_some() || stop_loss.is_some(), "No margin stop exists for this position");
+            if let Some(mssf) = read_mssf_from_storage() {
+                let (amount, _) = self.internal_margin_withdraw_supply(account, &mssf.token_id, Some(mssf.amount.into()));
+                let margin_stop = MarginStop {
+                    stop_profit,
+                    stop_loss,
+                    service_token_id: mssf.token_id.clone(),
+                    service_token_amount: amount.into(),
+                };
+                account.stops.insert(pos_id.clone(), margin_stop);
+            } else {
+                env::panic_str("Margin stop service fee policy is not set.");
+            }
+        }
+    }
 }
 
 #[near_bindgen]
@@ -770,6 +915,10 @@ impl Contract {
                 account.storage_tracker.start();
                 account.margin_positions.remove(&pos_id);
                 account.storage_tracker.stop();
+                // Remove pos_id from stop and refund to user's supply if necessary
+                if let Some(margin_stop) = account.stops.remove(&pos_id) {
+                    self.internal_margin_deposit(&mut account, &margin_stop.service_token_id, margin_stop.service_token_amount.into());
+                }
                 events::emit::margin_open_failed(&account_id, &pos_id);
                 
             } else if op == "decrease" {
@@ -796,5 +945,97 @@ impl Contract {
             }
             self.internal_force_set_margin_account(&account_id, account);
         }
+    }
+}
+
+/// Validates stop-loss and stop-profit BPS values.
+/// - stop_loss must be between 1 and 9999 BPS (0.01% - 99.99%)
+/// - stop_profit must be greater than 10000 BPS (> 100%)
+fn validate_stop_settings(stop_profit: &Option<u32>, stop_loss: &Option<u32>) {
+    if let Some(sl) = stop_loss {
+        assert!(
+            *sl > 0 && *sl < 10000,
+            "Stop loss must be between 1 and 9999 BPS (0.01%-99.99%)"
+        );
+    }
+    if let Some(sp) = stop_profit {
+        assert!(
+            *sp > 10000,
+            "Stop profit must be greater than 10000 BPS (>100%)"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ============= validate_stop_settings tests =============
+
+    #[test]
+    fn test_validate_stop_settings_valid_stop_loss() {
+        // Valid stop loss values (1-9999 BPS)
+        validate_stop_settings(&None, &Some(1));      // Minimum valid
+        validate_stop_settings(&None, &Some(5000));   // 50%
+        validate_stop_settings(&None, &Some(9000));   // 90%
+        validate_stop_settings(&None, &Some(9999));   // Maximum valid
+    }
+
+    #[test]
+    fn test_validate_stop_settings_valid_stop_profit() {
+        // Valid stop profit values (>10000 BPS)
+        validate_stop_settings(&Some(10001), &None);  // Minimum valid (100.01%)
+        validate_stop_settings(&Some(12000), &None);  // 120%
+        validate_stop_settings(&Some(20000), &None);  // 200%
+        validate_stop_settings(&Some(100000), &None); // 1000%
+    }
+
+    #[test]
+    fn test_validate_stop_settings_both_valid() {
+        // Both set with valid values
+        validate_stop_settings(&Some(12000), &Some(9000));
+        validate_stop_settings(&Some(15000), &Some(5000));
+    }
+
+    #[test]
+    fn test_validate_stop_settings_both_none() {
+        // Neither set (valid - just means no stops)
+        validate_stop_settings(&None, &None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop loss must be between 1 and 9999 BPS")]
+    fn test_validate_stop_settings_invalid_stop_loss_zero() {
+        validate_stop_settings(&None, &Some(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop loss must be between 1 and 9999 BPS")]
+    fn test_validate_stop_settings_invalid_stop_loss_10000() {
+        validate_stop_settings(&None, &Some(10000));
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop loss must be between 1 and 9999 BPS")]
+    fn test_validate_stop_settings_invalid_stop_loss_above_10000() {
+        validate_stop_settings(&None, &Some(10001));
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop profit must be greater than 10000 BPS")]
+    fn test_validate_stop_settings_invalid_stop_profit_10000() {
+        validate_stop_settings(&Some(10000), &None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop profit must be greater than 10000 BPS")]
+    fn test_validate_stop_settings_invalid_stop_profit_below_10000() {
+        validate_stop_settings(&Some(9999), &None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Stop profit must be greater than 10000 BPS")]
+    fn test_validate_stop_settings_invalid_stop_profit_zero() {
+        validate_stop_settings(&Some(0), &None);
     }
 }

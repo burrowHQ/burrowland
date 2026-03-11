@@ -52,7 +52,7 @@ impl Contract {
                 MarginAction::DecreaseCollateral { pos_id, amount: _ } => {
                     Some(pos_id)
                 }
-                MarginAction::OpenPosition { token_c_id: _, token_c_amount: _, token_d_id, token_d_amount: _, token_p_id, min_token_p_amount: _, swap_indication: _ } => {
+                MarginAction::OpenPosition { token_c_id: _, token_c_amount: _, token_d_id, token_d_amount: _, token_p_id, min_token_p_amount: _, swap_indication: _, stop_profit: _, stop_loss: _, } => {
                     tokens.insert(token_p_id.clone());
                     tokens.insert(token_d_id.clone());
                     None
@@ -71,6 +71,13 @@ impl Contract {
                     None
                 }
                 MarginAction::ForceCloseMTPosition { pos_owner_id, pos_id, token_p_amount: _, min_token_d_amount: _, swap_indication: _ } => {
+                    let pos_owner_account = self.internal_get_margin_account(pos_owner_id).expect("Margin account not exist");
+                    let mt = pos_owner_account.margin_positions.get(pos_id).expect("Position not exist");
+                    tokens.insert(mt.token_p_id.clone());
+                    tokens.insert(mt.token_d_id.clone());
+                    None
+                }
+                MarginAction::StopMTPosition { pos_owner_id, pos_id, token_p_amount: _, min_token_d_amount: _, swap_indication: _ } => {
                     let pos_owner_account = self.internal_get_margin_account(pos_owner_id).expect("Margin account not exist");
                     let mt = pos_owner_account.margin_positions.get(pos_id).expect("Position not exist");
                     tokens.insert(mt.token_p_id.clone());

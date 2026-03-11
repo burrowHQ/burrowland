@@ -415,6 +415,7 @@ pub mod emit {
         pub token_p_amount: Balance,
         #[serde(with = "u128_dec_format")]
         pub holding_fee: Balance,
+        pub fully_closed: bool,
     }
 
     pub fn margin_decrease_succeeded(op_id: &str, data: EventDataMarginDecreaseResult) {
@@ -426,6 +427,10 @@ pub mod emit {
             "margin_liquidate_succeeded"
         } else if op_id == "forceclose" {
             "margin_forceclose_succeeded"
+        } else if op_id == "stop_loss" {
+            "margin_stop_loss_succeeded"
+        } else if op_id == "stop_profit" {
+            "margin_stop_profit_succeeded"
         } else {
             op_id
         };
@@ -595,6 +600,23 @@ pub mod emit {
                 amount,
                 token_id: &token_id,
             },
+        );
+    }
+
+    pub fn set_stop(
+        account_id: &AccountId,
+        stop_profit: &Option<u32>,
+        stop_loss: &Option<u32>,
+        position: &String
+    ) {
+        log_event(
+            "set_stop",
+            json!({
+                "account_id": account_id,
+                "stop_profit": stop_profit,
+                "stop_loss": stop_loss,
+                "position": position,
+            }),
         );
     }
 }

@@ -24,6 +24,8 @@ pub enum MarginAction {
         token_p_id: AccountId,
         min_token_p_amount: U128,
         swap_indication: SwapIndication,
+        stop_profit: Option<u32>,
+        stop_loss: Option<u32>,
     },
     DecreaseMTPosition {
         pos_id: PosId,
@@ -51,6 +53,18 @@ pub enum MarginAction {
         min_token_d_amount: U128,
         swap_indication: SwapIndication,
     },
+    StopMTPosition {
+        pos_owner_id: AccountId,
+        pos_id: PosId,
+        token_p_amount: U128,
+        min_token_d_amount: U128,
+        swap_indication: SwapIndication,
+    },
+    SetStop {
+        pos_id: PosId,
+        stop_profit: Option<u32>,
+        stop_loss: Option<u32>,
+    },
 }
 
 impl Contract {
@@ -76,6 +90,8 @@ impl Contract {
                     token_p_id: position_asset_id,
                     min_token_p_amount: min_position_amount,
                     swap_indication,
+                    stop_profit,
+                    stop_loss,
                 } => {
                     let event = self.internal_margin_open_position(
                         ts,
@@ -88,6 +104,8 @@ impl Contract {
                         min_position_amount.into(),
                         &swap_indication,
                         &prices,
+                        &stop_profit,
+                        &stop_loss,
                     );
                     events::emit::margin_open_started(event);
                 }
@@ -195,6 +213,41 @@ impl Contract {
                     self.internal_set_margin_account(&pos_owner_id, pos_owner);
                     events::emit::margin_decrease_started("margin_forceclose_started", event);
                 }
+                MarginAction::StopMTPosition {
+                    pos_owner_id,
+                    pos_id,
+                    token_p_amount: position_amount,
+                    min_token_d_amount: min_debt_amount,
+                    swap_indication,
+                } => {
+                    assert_ne!(
+                        account_id, &pos_owner_id,
+                        "Can't stop yourself"
+                    );
+                    // Fail-safe: ensure keeper has a margin account to receive service fee
+                    assert!(
+                        self.internal_get_margin_account(&account_id).is_some(),
+                        "Keeper must have a margin account to execute stops"
+                    );
+                    let mut pos_owner = self.internal_unwrap_margin_account(&pos_owner_id);
+                    let mt = pos_owner.margin_positions.get(&pos_id).expect("Position not found");
+                    let margin_stop = pos_owner.stops.get(&pos_id).expect("Margin position has no stop settings");
+                    let stop_op = self.is_stop_active(&mt, &prices, &margin_stop, 0)
+                        .expect("Margin position is not stopable yet");
+                    let stop_started_event = if stop_op == "stop_loss" { "margin_stop_loss_started" } else { "margin_stop_profit_started" };
+                    let event = self.process_decrease_margin_position(
+                        &mut pos_owner,
+                        &pos_id,
+                        position_amount.into(),
+                        min_debt_amount.into(),
+                        &swap_indication,
+                        &prices,
+                        stop_op.to_string(),
+                        Some(account_id.clone()),
+                    );
+                    self.internal_set_margin_account(&pos_owner_id, pos_owner);
+                    events::emit::margin_decrease_started(stop_started_event, event);
+                }
                 MarginAction::Withdraw { token_id, amount } => {
                     assert!(!token_id.to_string().starts_with(SHADOW_V1_TOKEN_PREFIX));
                     let asset = self.internal_unwrap_asset(&token_id);
@@ -212,6 +265,15 @@ impl Contract {
                             events::emit::margin_asset_withdraw_succeeded(&account_id, amount, &token_id);
                         }
                     }
+                }
+                MarginAction::SetStop {
+                    pos_id,
+                    stop_profit,
+                    stop_loss,
+                } => {
+                    self.process_set_stop(account, &pos_id, stop_profit, stop_loss);
+                    events::emit::set_stop(account_id, &stop_profit, &stop_loss, &pos_id);
+
                 }
             }
         }

@@ -104,6 +104,7 @@ impl FungibleTokenReceiver for Contract {
                     let mut account = self.internal_unwrap_margin_account(&swap_ref.account_id);
                     let action_ts = account.position_latest_actions.remove(&swap_ref.pos_id).expect("There is no action for the position").0;
                     if sender_id == config.owner_id {
+                        // only owner can resume blocked magin actions pending for a while
                         require!(env::block_timestamp() - action_ts >= sec_to_nano(self.internal_margin_config().max_position_action_wait_sec), "Please wait for the position action");
                     } else {
                         require!(self.internal_margin_config().registered_dexes.contains_key(&sender_id), "Not allow");
@@ -114,6 +115,8 @@ impl FungibleTokenReceiver for Contract {
                         || swap_ref.op == "close"
                         || swap_ref.op == "liquidate"
                         || swap_ref.op == "forceclose"
+                        || swap_ref.op == "stop_loss"
+                        || swap_ref.op == "stop_profit"
                     {
                         let event = self.on_decrease_trade_return(account, amount, &swap_ref);
                         events::emit::margin_decrease_succeeded(&swap_ref.op, event);
